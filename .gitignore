@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+dot_editor/Lib/
+dot_editor/Include/
+dot_editor/Scripts/
+dot_editor/pyvenv.cfg
