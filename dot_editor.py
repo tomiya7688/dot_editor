@@ -1,10 +1,12 @@
 import tkinter as tk
 import json
+from pathlib import Path
 from tkinter.colorchooser import askcolor
 from PIL import Image, ImageDraw, ImageTk
 import tkinter.simpledialog
 from tkinter import filedialog
 from pixel_backend import PixelCanvas
+from pixel_layers import LayeredPixelCanvas
 
 class PixelEditor:
     def __init__(self, master):
@@ -29,7 +31,7 @@ class PixelEditor:
         self.palette_colors = [(255, 255, 255), (0, 0, 0), (255, 80, 80), (255, 190, 70), (255, 240, 100), (90, 210, 130), (80, 180, 255), (170, 110, 255)]
         self.history = []
         self.future = []
-        self.backend = PixelCanvas(self.num_pixels_x)
+        self.backend = LayeredPixelCanvas(self.num_pixels_x)
         self.zoom_factor = 1.0
         self.display_pixel_size = self.pixel_size
 
@@ -60,6 +62,14 @@ class PixelEditor:
         self.save_project_button.grid(row=16, column=0, padx=5, pady=5)
         self.load_project_button = tk.Button(button_frame, text="プロジェクト読込", command=self.load_project)
         self.load_project_button.grid(row=17, column=0, padx=5, pady=5)
+
+        self.layer_list = tk.Listbox(button_frame, height=4, width=18, bg="#111820", fg="#f0f3f6", selectbackground="#3f6685")
+        self.layer_list.grid(row=18, column=0, padx=5, pady=5)
+        self.add_layer_button = tk.Button(button_frame, text="レイヤー追加", command=self.add_layer)
+        self.add_layer_button.grid(row=19, column=0, padx=5, pady=2)
+        self.remove_layer_button = tk.Button(button_frame, text="レイヤー削除", command=self.remove_layer)
+        self.remove_layer_button.grid(row=20, column=0, padx=5, pady=2)
+        self.layer_list.bind("<<ListboxSelect>>", self.select_layer)
 
         # リセットボタン
         self.reset_button = tk.Button(button_frame, text="リセット", command=self.reset_canvas)
@@ -97,7 +107,7 @@ class PixelEditor:
 
         for button in (
             self.color_button, self.size_button, self.canvas_size_button,
-            self.save_button, self.save_project_button, self.load_project_button, self.reset_button, self.upscale_button,
+            self.save_button, self.save_project_button, self.load_project_button, self.reset_button, self.upscale_button, self.add_layer_button, self.remove_layer_button,
             self.split_button, self.undo_button, self.redo_button,
             self.eyedropper_button, self.eraser_button, self.import_button, self.fill_button,
         ):
@@ -105,6 +115,7 @@ class PixelEditor:
 
         # 初期キャンバスサイズを設定
         self.update_canvas_size()
+        self.refresh_layer_list()
 
         # ドット絵を描く
         self.canvas.bind("<Button-1>", self.paint_pixel)  # 左クリックで色を塗る
@@ -113,6 +124,52 @@ class PixelEditor:
         self.canvas.bind("<B1-Motion>", self.paint_pixel)  # クリックしたまま移動した場合にも色を塗る
         self.canvas.bind("<ButtonPress-2>", self.begin_pan)
         self.canvas.bind("<B2-Motion>", self.pan_canvas)
+
+    def refresh_composite(self):
+        self.image = self.backend.composite().resize(
+            (self.canvas_width, self.canvas_height),
+            Image.Resampling.NEAREST,
+        )
+        self.draw = ImageDraw.Draw(self.image)
+
+    def refresh_layer_list(self):
+        if not hasattr(self, "layer_list"):
+            return
+        self.layer_list.delete(0, tk.END)
+        names = list(self.backend.layers)
+        for name in names:
+            self.layer_list.insert(tk.END, name)
+        if self.backend.active_layer in names:
+            self.layer_list.selection_set(names.index(self.backend.active_layer))
+
+    def add_layer(self):
+        name = tk.simpledialog.askstring("レイヤー追加", "レイヤー名")
+        if not name:
+            return
+        try:
+            self.backend.add_layer(name)
+        except ValueError:
+            return
+        self.refresh_layer_list()
+        self.refresh_composite()
+        self.update_canvas()
+
+    def remove_layer(self):
+        try:
+            self.backend.remove_layer()
+        except (KeyError, ValueError):
+            return
+        self.refresh_layer_list()
+        self.refresh_composite()
+        self.update_canvas()
+
+    def select_layer(self, _event=None):
+        selection = self.layer_list.curselection()
+        if not selection:
+            return
+        self.backend.select_layer(self.layer_list.get(selection[0]))
+        self.refresh_composite()
+        self.update_canvas()
 
     def update_canvas_size(self, preserve_image=False):
         """キャンバスのサイズを更新"""
@@ -128,14 +185,12 @@ class PixelEditor:
 
         old_image = getattr(self, "image", None)
 
-        # 新しい画像を作成
+        # 新しい画像と共有バックエンドを作成
         self.refined_cells.clear()
         self.child_pixels.clear()
+        self.backend = LayeredPixelCanvas(self.num_pixels_x)
         try:
-            self.image = Image.new("RGBA", (self.canvas_width, self.canvas_height), (0, 0, 0, 0))
-            if preserve_image and old_image is not None:
-                resized = old_image.resize((self.canvas_width, self.canvas_height), Image.Resampling.NEAREST)
-                self.image.paste(resized)
+            self.refresh_composite()
             self.draw = ImageDraw.Draw(self.image)
         except ValueError:
             print("無効なサイズが設定されました。")
@@ -212,6 +267,18 @@ class PixelEditor:
             self.current_color = self.image.getpixel((image_x, image_y))
             self.tool = "brush"
             return
+        if isinstance(self.backend, LayeredPixelCanvas) and not self.refined_cells:
+            self.push_history()
+            color = tuple(self.current_color[:3]) + (255,)
+            if self.tool == "fill":
+                self.backend.fill(x, y, color)
+            else:
+                self.backend.paint(x, y, color, erase=self.tool == "eraser")
+            self.selected_cell = (x, y)
+            self.tool = "brush" if self.tool == "fill" else self.tool
+            self.refresh_composite()
+            self.update_canvas()
+            return
         self.push_history()
         self.selected_cell = (x, y)
         paint_color = (0, 0, 0, 0) if self.tool == "eraser" else self.current_color
@@ -238,16 +305,27 @@ class PixelEditor:
         self.current_color = (255, 255, 255)
         self.tool = "eraser"
 
-    def push_history(self):
-        """現在の編集状態を履歴へ保存する"""
+    def make_snapshot(self):
         children = {key: [row[:] for row in value] for key, value in self.child_pixels.items()}
-        self.history.append((self.image.copy(), self.num_pixels_x, self.num_pixels_y, set(self.refined_cells), children))
+        return (
+            self.image.copy(),
+            self.backend.to_source(),
+            self.num_pixels_x,
+            self.num_pixels_y,
+            set(self.refined_cells),
+            children,
+        )
+
+    def push_history(self):
+        """共有バックエンドと表示状態を履歴へ保存する"""
+        self.history.append(self.make_snapshot())
         if len(self.history) > 100:
             self.history.pop(0)
         self.future.clear()
 
     def restore_snapshot(self, snapshot):
-        self.image, self.num_pixels_x, self.num_pixels_y, refined, children = snapshot
+        self.image, source, self.num_pixels_x, self.num_pixels_y, refined, children = snapshot
+        self.backend = LayeredPixelCanvas.from_source(source)
         self.refined_cells = set(refined)
         self.child_pixels = {key: [row[:] for row in value] for key, value in children.items()}
         self.pixel_size = self.canvas_width // self.num_pixels_x
@@ -256,21 +334,20 @@ class PixelEditor:
         self.canvas.config(width=min(self.canvas_width, display_width), height=min(self.canvas_height, display_height))
         self.canvas.configure(scrollregion=(0, 0, display_width, display_height))
         self.draw = ImageDraw.Draw(self.image)
+        self.refresh_layer_list()
         self.create_grid()
         self.update_canvas()
 
     def undo(self):
         if not self.history:
             return
-        current = (self.image.copy(), self.num_pixels_x, self.num_pixels_y, set(self.refined_cells), {key: [row[:] for row in value] for key, value in self.child_pixels.items()})
-        self.future.append(current)
+        self.future.append(self.make_snapshot())
         self.restore_snapshot(self.history.pop())
 
     def redo(self):
         if not self.future:
             return
-        current = (self.image.copy(), self.num_pixels_x, self.num_pixels_y, set(self.refined_cells), {key: [row[:] for row in value] for key, value in self.child_pixels.items()})
-        self.history.append(current)
+        self.history.append(self.make_snapshot())
         self.restore_snapshot(self.future.pop())
 
     def update_canvas(self):
@@ -299,9 +376,8 @@ class PixelEditor:
         size = (max(1, round(source.width * ratio)), max(1, round(source.height * ratio)))
         resized = source.resize(size, Image.Resampling.NEAREST)
         fitted.alpha_composite(resized, ((self.canvas_width - size[0]) // 2, (self.canvas_height - size[1]) // 2))
-        self.backend.import_image(source)
-        self.image = self.backend.image.copy()
-        self.draw = ImageDraw.Draw(self.image)
+        self.backend.active.import_image(source)
+        self.refresh_composite()
         self.update_canvas()
 
     def save_project(self):
@@ -312,8 +388,6 @@ class PixelEditor:
         )
         if not file_path:
             return
-        self.backend.image = self.image.copy()
-        self.backend.size = self.num_pixels_x
         Path(file_path).write_text(
             json.dumps(self.backend.to_source(), ensure_ascii=False, indent=2) + "\\n",
             encoding="utf-8",
@@ -328,16 +402,17 @@ class PixelEditor:
             return
         try:
             source = json.loads(Path(file_path).read_text(encoding="utf-8"))
-            self.backend = PixelCanvas.from_source(source)
+            if "layers" in source:
+                self.backend = LayeredPixelCanvas.from_source(source)
+            else:
+                flat = PixelCanvas.from_source(source)
+                self.backend = LayeredPixelCanvas(flat.size)
+                self.backend.active.image = flat.image
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             return
         self.num_pixels_x = self.backend.size
         self.num_pixels_y = self.backend.size
-        self.image = self.backend.image.resize(
-            (self.canvas_width, self.canvas_height),
-            Image.Resampling.NEAREST,
-        )
-        self.draw = ImageDraw.Draw(self.image)
+        self.refresh_composite()
         self.refined_cells.clear()
         self.child_pixels.clear()
         self.history.clear()
@@ -355,8 +430,6 @@ class PixelEditor:
                                                           ("JPEG files", "*.jpg"),
                                                           ("All files", "*.*")])
         if file_path:
-            self.backend.image = self.image.copy()
-            self.backend.size = self.num_pixels_x
             self.backend.save_png(file_path)
 
     def reset_canvas(self):
@@ -368,14 +441,11 @@ class PixelEditor:
         next_size = self.num_pixels_x * 2
         if next_size > 256:
             return
-        self.backend.image = self.image.copy()
-        self.backend.size = self.num_pixels_x
         if not self.backend.upscale():
             return
         self.num_pixels_x = self.backend.size
         self.num_pixels_y = self.backend.size
-        self.image = self.backend.image.copy()
-        self.draw = ImageDraw.Draw(self.image)
+        self.refresh_composite()
         self.pixel_size = self.canvas_width // self.num_pixels_x
         self.refined_cells.clear()
         self.child_pixels.clear()
