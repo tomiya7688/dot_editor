@@ -169,32 +169,51 @@ class PixelEditor:
         self.refresh_composite()
         self.update_canvas()
 
-    def update_canvas_size(self, preserve_image=False):
-        """キャンバスのサイズを更新"""
-        # ドットサイズの計算（キャンバス幅をドット数で割って計算）
-        self.pixel_size = self.canvas_width // self.num_pixels_x  # ドットサイズはキャンバス幅 / ドット数（横）
+    def update_canvas_size(self):
+        """表示キャンバス寸法を、作品データを保持したまま反映する"""
+        self.pixel_size = max(1, self.canvas_width // self.num_pixels_x)
         self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
-        
-        # キャンバスのサイズを設定
+
         display_width = round(self.canvas_width * self.zoom_factor)
         display_height = round(self.canvas_height * self.zoom_factor)
-        self.canvas.config(width=min(self.canvas_width, display_width), height=min(self.canvas_height, display_height))
+        self.canvas.config(
+            width=min(self.canvas_width, display_width),
+            height=min(self.canvas_height, display_height),
+        )
         self.canvas.configure(scrollregion=(0, 0, display_width, display_height))
 
-        old_image = getattr(self, "image", None)
-
-        # 新しい画像と共有バックエンドを作成
-        self.backend = LayeredPixelCanvas(self.num_pixels_x)
         try:
             self.refresh_composite()
-            self.draw = ImageDraw.Draw(self.image)
         except ValueError:
-            print("無効なサイズが設定されました。")
+            print("無効な表示サイズが設定されました。")
             return
 
-        # グリッドを再描画
         self.create_grid()
         self.update_canvas()
+
+    def set_display_size(self, width, height):
+        """表示領域だけを変更し、backend・レイヤー・履歴を保持する"""
+        width = int(width)
+        height = int(height)
+        if width <= 0 or height <= 0:
+            raise ValueError("display size must be positive")
+        self.canvas_width = width
+        self.canvas_height = height
+        self.update_canvas_size()
+
+    def reset_canvas_model(self, size=None):
+        """明示的なリセット操作として新しい作品データを作る"""
+        target = self.num_pixels_x if size is None else int(size)
+        if target not in PixelCanvas.SUPPORTED_SIZES:
+            raise ValueError("unsupported canvas size")
+        self.num_pixels_x = target
+        self.num_pixels_y = target
+        self.backend = LayeredPixelCanvas(target)
+        self.selected_cell = None
+        self.history.clear()
+        self.future.clear()
+        self.refresh_layer_list()
+        self.update_canvas_size()
 
     def create_grid(self):
         """ズーム倍率に合わせてグリッドを描画"""
@@ -422,8 +441,8 @@ class PixelEditor:
             self.backend.save_png(file_path)
 
     def reset_canvas(self):
-        """キャンバスをリセット"""
-        self.update_canvas_size()
+        """作品データを明示的に初期化する"""
+        self.reset_canvas_model()
 
     def upscale_resolution(self):
         """ドット数を倍にし、既存の絵と分割セルを最近傍で引き継ぐ"""
@@ -457,32 +476,36 @@ class PixelEditor:
         self.update_canvas()
 
     def change_size(self):
-        """ドットサイズを変更"""
-        size = tk.simpledialog.askinteger("サイズ変更", "サイズを選択してください（4, 8, 16, 32 など）",
-                                          minvalue=2, maxvalue=256)
-        if size not in PixelCanvas.SUPPORTED_SIZES:
+        """論理解像度を変更する（現時点では明示的な再初期化）"""
+        size = tk.simpledialog.askinteger(
+            "サイズ変更",
+            "サイズを選択してください（4, 8, 16, 32 など）",
+            minvalue=2,
+            maxvalue=256,
+        )
+        if size is None or size not in PixelCanvas.SUPPORTED_SIZES:
             return
-        if size:
-            self.num_pixels_x = size  # ドット数を変更（横方向）
-            self.num_pixels_y = size  # ドット数を変更（縦方向）
-            self.update_canvas_size()
+        self.reset_canvas_model(size)
 
     def change_canvas_size(self):
-        """キャンバスの大きさを変更"""
-        while True:
-            width = tk.simpledialog.askinteger("キャンバス幅", "キャンバスの横幅（ピクセル）を指定",
-                                              minvalue=100, maxvalue=5000)
-            height = tk.simpledialog.askinteger("キャンバス高さ", "キャンバスの縦幅（ピクセル）を指定",
-                                               minvalue=100, maxvalue=5000)
-            # 入力が無効でないか確認
-            if width and height and width > 0 and height > 0:
-                self.canvas_width = width
-                self.canvas_height = height
-                break
-            else:
-                print("無効なサイズが設定されました。")
-
-        self.update_canvas_size()
+        """表示キャンバスの大きさだけを変更する"""
+        width = tk.simpledialog.askinteger(
+            "キャンバス幅",
+            "キャンバスの横幅（ピクセル）を指定",
+            minvalue=100,
+            maxvalue=5000,
+        )
+        if width is None:
+            return
+        height = tk.simpledialog.askinteger(
+            "キャンバス高さ",
+            "キャンバスの縦幅（ピクセル）を指定",
+            minvalue=100,
+            maxvalue=5000,
+        )
+        if height is None:
+            return
+        self.set_display_size(width, height)
 
 if __name__ == "__main__":
     root = tk.Tk()
