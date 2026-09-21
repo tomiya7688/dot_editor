@@ -161,6 +161,56 @@ def check_display_resize() -> None:
     assert editor.future == []
 
 
+def check_tool_state_ui() -> None:
+    from dot_editor import PixelEditor
+
+    class FakeWidget:
+        def __init__(self) -> None:
+            self.options: dict[str, object] = {}
+
+        def configure(self, **kwargs: object) -> None:
+            self.options.update(kwargs)
+
+    editor = PixelEditor.__new__(PixelEditor)
+    editor.tool = "brush"
+    editor.current_color = (10, 20, 30)
+    editor.tool_buttons = {
+        "brush": FakeWidget(),
+        "fill": FakeWidget(),
+        "eraser": FakeWidget(),
+        "picker": FakeWidget(),
+    }
+    editor.tool_status_label = FakeWidget()
+
+    editor.refresh_tool_state()
+    assert editor.tool_buttons["brush"].options["relief"] == "sunken"
+    assert editor.tool_buttons["fill"].options["relief"] == "flat"
+    assert editor.tool_status_label.options["text"] == "現在: ブラシ"
+
+    editor.set_tool("eraser")
+    assert editor.tool == "eraser"
+    assert editor.tool_buttons["eraser"].options["relief"] == "sunken"
+    assert editor.tool_buttons["brush"].options["relief"] == "flat"
+    assert editor.tool_status_label.options["text"] == "現在: 消しゴム"
+    assert editor.current_color == (10, 20, 30)
+
+    editor.activate_eyedropper()
+    assert editor.tool == "picker"
+    assert editor.tool_status_label.options["text"] == "現在: スポイト"
+
+    editor.set_palette_color((255, 0, 0))
+    assert editor.current_color == (255, 0, 0)
+    assert editor.tool == "brush"
+    assert editor.tool_buttons["brush"].options["relief"] == "sunken"
+
+    try:
+        editor.set_tool("unknown")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unknown drawing tools must be rejected")
+
+
 def run_cli_failure(*arguments: str) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         [PYTHON, str(CLI), *arguments],
@@ -364,6 +414,7 @@ def main() -> int:
         ("backend", check_backend),
         ("layers", check_layers),
         ("display-resize", check_display_resize),
+        ("tool-state-ui", check_tool_state_ui),
         ("cli", check_cli),
         ("gui-invalid-project", check_gui_invalid_project),
     )
