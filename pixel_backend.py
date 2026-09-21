@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from PIL import Image
 
 Color = tuple[int, int, int, int]
 ChildCoordinate = tuple[int, int]
 RefinedCells = dict[tuple[int, int], list[list[Color]]]
+DetailPolicy = Literal["preserve", "discard"]
 
 
 class PixelCanvas:
@@ -101,6 +102,12 @@ class PixelCanvas:
         self.image = Image.new("RGBA", (target, target), (0, 0, 0, 0))
         self._refined_cells.clear()
 
+    @staticmethod
+    def _validate_detail_policy(detail_policy: str) -> DetailPolicy:
+        if detail_policy not in ("preserve", "discard"):
+            raise ValueError("detail_policy must be 'preserve' or 'discard'")
+        return detail_policy  # type: ignore[return-value]
+
     def paint(
         self,
         x: int,
@@ -108,10 +115,12 @@ class PixelCanvas:
         color: tuple[int, ...],
         erase: bool = False,
         child: ChildCoordinate | None = None,
+        detail_policy: DetailPolicy = "preserve",
     ) -> bool:
         if not self._in_bounds(x, y):
             return False
         replacement = (0, 0, 0, 0) if erase else self._normalize_color(color)
+        policy = self._validate_detail_policy(detail_policy)
 
         if child is not None:
             child_x, child_y = self._validate_child(child)
@@ -124,22 +133,14 @@ class PixelCanvas:
             return True
 
         current = self.image.getpixel((x, y))
-        if self.is_split(x, y):
-            children = self._refined_cells[(x, y)]
-            if current == replacement and all(pixel == replacement for row in children for pixel in row):
-                return False
-            self._snapshot()
-            self.image.putpixel((x, y), replacement)
-            self._refined_cells[(x, y)] = [
-                [replacement, replacement],
-                [replacement, replacement],
-            ]
-            return True
-
-        if current == replacement:
+        has_detail = self.is_split(x, y)
+        if current == replacement and not (has_detail and policy == "discard"):
             return False
+
         self._snapshot()
         self.image.putpixel((x, y), replacement)
+        if has_detail and policy == "discard":
+            del self._refined_cells[(x, y)]
         return True
 
     def sample(
@@ -157,10 +158,18 @@ class PixelCanvas:
             raise ValueError("child sampling requires a split cell")
         return self._refined_cells[(x, y)][child_y][child_x]
 
-    def fill(self, x: int, y: int, color: tuple[int, ...], erase: bool = False) -> int:
+    def fill(
+        self,
+        x: int,
+        y: int,
+        color: tuple[int, ...],
+        erase: bool = False,
+        detail_policy: DetailPolicy = "preserve",
+    ) -> int:
         if not self._in_bounds(x, y):
             return 0
         replacement = (0, 0, 0, 0) if erase else self._normalize_color(color)
+        policy = self._validate_detail_policy(detail_policy)
         original = self.image.getpixel((x, y))
         if original == replacement:
             return 0
@@ -181,12 +190,30 @@ class PixelCanvas:
         self._snapshot()
         for point in points:
             self.image.putpixel(point, replacement)
-            if point in self._refined_cells:
-                self._refined_cells[point] = [
-                    [replacement, replacement],
-                    [replacement, replacement],
-                ]
+            if policy == "discard":
+                self._refined_cells.pop(point, None)
         return len(points)
+
+    def discard_detail(self, x: int, y: int, width: int = 1, height: int = 1) -> int:
+        """Discard refined child data only inside the requested parent-cell region."""
+        if width <= 0 or height <= 0:
+            raise ValueError("detail discard region must have positive width and height")
+        if not self._in_bounds(x, y):
+            raise IndexError("detail discard region starts outside the canvas")
+        end_x = min(self.size, x + width)
+        end_y = min(self.size, y + height)
+        targets = [
+            (px, py)
+            for py in range(y, end_y)
+            for px in range(x, end_x)
+            if (px, py) in self._refined_cells
+        ]
+        if not targets:
+            return 0
+        self._snapshot()
+        for point in targets:
+            del self._refined_cells[point]
+        return len(targets)
 
     def import_image(self, source: str | Path | Image.Image) -> None:
         loaded = Image.open(source).convert("RGBA") if not isinstance(source, Image.Image) else source.convert("RGBA")
