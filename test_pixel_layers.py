@@ -1,14 +1,39 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from PIL import Image
+
 from pixel_layers import LayeredPixelCanvas
 
 layers = LayeredPixelCanvas(4)
 layers.add_layer("人物")
 layers.paint(1, 1, (255, 0, 0, 255))
+assert layers.split_cell(1, 1)
+layers.paint(1, 1, (0, 0, 255, 255), child=(1, 0))
+
 layers.select_layer("背景")
 layers.paint(0, 0, (0, 0, 30, 255))
 composite = layers.composite()
+assert composite.size == (8, 8)
 assert composite.getpixel((0, 0)) == (0, 0, 30, 255)
-assert composite.getpixel((1, 1)) == (255, 0, 0, 255)
+assert composite.getpixel((3, 2)) == (0, 0, 255, 255)
+assert composite.getpixel((2, 2)) == (255, 0, 0, 255)
+
 restored_layers = LayeredPixelCanvas.from_source(layers.to_source())
 assert set(restored_layers.layers) == {"背景", "人物"}
-assert restored_layers.composite().getpixel((1, 1)) == (255, 0, 0, 255)
+restored_layers.select_layer("人物")
+assert restored_layers.is_split(1, 1)
+assert restored_layers.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+assert restored_layers.composite().tobytes() == composite.tobytes()
+
+restored_layers.select_layer("背景")
+assert restored_layers.composite().getpixel((3, 2)) == (0, 0, 255, 255)
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "layered-refined.png"
+    restored_layers.save_png(path)
+    with Image.open(path) as exported:
+        assert exported.size == (8, 8)
+        assert exported.getpixel((3, 2)) == (0, 0, 255, 255)
+
 print("layer backend ok")
