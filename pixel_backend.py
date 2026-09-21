@@ -209,18 +209,26 @@ class PixelCanvas:
                     output.putpixel((x * 2 + child_x, y * 2 + child_y), color)
         return output
 
-    def upscale(self) -> bool:
-        if self.size >= self.SUPPORTED_SIZES[-1]:
+    def resize(self, target: int) -> bool:
+        """Resize the logical canvas with nearest-neighbour sampling.
+
+        Split-cell detail is rendered first, then normalized into regular
+        pixels at the target logical resolution.
+        """
+        self._validate_size(target)
+        if target == self.size:
             return False
-        target = self.size * 2
+        source = self._native_image()
         self._snapshot()
-        if self.has_refinements:
-            self.image = self._native_image()
-        else:
-            self.image = self.image.resize((target, target), Image.Resampling.NEAREST)
+        self.image = source.resize((target, target), Image.Resampling.NEAREST)
         self.size = target
         self._refined_cells.clear()
         return True
+
+    def upscale(self) -> bool:
+        if self.size >= self.SUPPORTED_SIZES[-1]:
+            return False
+        return self.resize(self.size * 2)
 
     def undo(self) -> bool:
         if not self._history:
