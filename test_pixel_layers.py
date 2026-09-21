@@ -55,4 +55,63 @@ assert {layer.size for layer in resizable_restored.layers.values()} == {2}
 resizable_restored.select_layer("人物")
 assert resizable_restored.sample(1, 1) == (255, 0, 0, 255)
 
+def expect_invalid(source):
+    try:
+        LayeredPixelCanvas.from_source(source)
+    except ValueError:
+        return
+    raise AssertionError("invalid layered project must be rejected")
+
+base_layer = {
+    "canvas_size": 2,
+    "pixels": [[None, None], [None, None]],
+}
+expect_invalid(
+    {
+        "canvas_size": 2,
+        "active_layer": "背景",
+        "layers": [
+            {"name": "背景", "source": base_layer},
+            {"name": "背景", "source": base_layer},
+        ],
+    }
+)
+expect_invalid(
+    {
+        "canvas_size": 2,
+        "active_layer": "",
+        "layers": [{"name": "", "source": base_layer}],
+    }
+)
+expect_invalid(
+    {
+        "canvas_size": 2,
+        "active_layer": "不存在",
+        "layers": [{"name": "背景", "source": base_layer}],
+    }
+)
+expect_invalid(
+    {
+        "canvas_size": 2,
+        "active_layer": "背景",
+        "layers": [
+            {"name": "背景", "source": base_layer},
+            {
+                "name": "人物",
+                "source": {
+                    "canvas_size": 4,
+                    "pixels": [[None] * 4 for _ in range(4)],
+                },
+            },
+        ],
+    }
+)
+expect_invalid(
+    {
+        "canvas_size": 4,
+        "active_layer": "背景",
+        "layers": [{"name": "背景", "source": base_layer}],
+    }
+)
+
 print("layer backend ok")

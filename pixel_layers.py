@@ -121,25 +121,52 @@ class LayeredPixelCanvas:
 
     @classmethod
     def from_source(cls, source: dict[str, Any]) -> "LayeredPixelCanvas":
+        if not isinstance(source, dict):
+            raise ValueError("layered project must be a JSON object")
+
         entries = source.get("layers")
         if not isinstance(entries, list) or not entries:
-            raise ValueError("layer source must contain layers")
-        first_source = entries[0].get("source") if isinstance(entries[0], dict) else None
-        if not isinstance(first_source, dict):
-            raise ValueError("invalid layer source")
-        first_canvas = PixelCanvas.from_source(first_source)
-        model = cls(first_canvas.size)
-        model.layers.clear()
-        for index, entry in enumerate(entries):
-            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+            raise ValueError("layer source must contain at least one layer")
+
+        model: LayeredPixelCanvas | None = None
+        expected_size: int | None = None
+        seen_names: set[str] = set()
+
+        for entry in entries:
+            if not isinstance(entry, dict):
                 raise ValueError("invalid layer entry")
+
+            name = entry.get("name")
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("layer name must not be empty")
+            if name in seen_names:
+                raise ValueError(f"duplicate layer name: {name}")
+            seen_names.add(name)
+
             layer_source = entry.get("source")
             if not isinstance(layer_source, dict):
                 raise ValueError("invalid layer source")
-            layer = first_canvas if index == 0 else PixelCanvas.from_source(layer_source)
-            if layer.size != first_canvas.size:
+            layer = PixelCanvas.from_source(layer_source)
+
+            if expected_size is None:
+                expected_size = layer.size
+                model = cls(layer.size)
+                model.layers.clear()
+            elif layer.size != expected_size:
                 raise ValueError("all layers must use the same canvas size")
-            model.layers[entry["name"]] = layer
+
+            assert model is not None
+            model.layers[name] = layer
+
+        assert model is not None and expected_size is not None
+
+        declared_size = source.get("canvas_size")
+        if declared_size is not None:
+            if not isinstance(declared_size, int) or declared_size != expected_size:
+                raise ValueError("layered canvas_size does not match layer size")
+
         active = source.get("active_layer", next(iter(model.layers)))
-        model.select_layer(active if isinstance(active, str) else next(iter(model.layers)))
+        if not isinstance(active, str) or active not in model.layers:
+            raise ValueError("active_layer must reference an existing layer")
+        model.active_layer = active
         return model

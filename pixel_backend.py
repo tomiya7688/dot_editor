@@ -303,6 +303,8 @@ class PixelCanvas:
 
     @classmethod
     def from_source(cls, source: dict[str, Any]) -> "PixelCanvas":
+        if not isinstance(source, dict):
+            raise ValueError("pixel project must be a JSON object")
         size = source.get("canvas_size")
         pixels = source.get("pixels")
         if not isinstance(size, int) or not isinstance(pixels, list):

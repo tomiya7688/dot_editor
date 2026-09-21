@@ -96,4 +96,11 @@ except ValueError:
 else:
     raise AssertionError("unsupported logical size must be rejected")
 
+try:
+    PixelCanvas.from_source(["not", "an", "object"])  # type: ignore[arg-type]
+except ValueError:
+    pass
+else:
+    raise AssertionError("non-object pixel project must be rejected")
+
 print("pixel backend ok")

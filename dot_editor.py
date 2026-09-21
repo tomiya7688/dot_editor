@@ -441,7 +441,7 @@ class PixelEditor:
                 self.backend = LayeredPixelCanvas(flat.size)
                 self.backend.layers = {"背景": flat}
                 self.backend.active_layer = "背景"
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError, json.JSONDecodeError):
             return
         self.num_pixels_x = self.backend.size
         self.num_pixels_y = self.backend.size
