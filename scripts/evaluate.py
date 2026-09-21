@@ -77,7 +77,8 @@ def check_backend() -> None:
     assert preserved.discard_detail(1, 1) == 1
     assert not preserved.is_split(1, 1)
     assert preserved.undo()
-    assert preserved.is_split(1, 1)
+    assert not preserved.is_split(1, 1)
+    assert preserved.has_detail_at(1, 1)
     assert preserved.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
 
     assert restored_refined.resize(8)
