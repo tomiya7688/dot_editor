@@ -5,23 +5,35 @@ from typing import Any
 
 from PIL import Image
 
-from pixel_backend import ChildCoordinate, DetailPolicy, PixelCanvas
+from pixel_backend import ChildCoordinate, DetailPolicy, PixelCanvas, Resolution
 
 
 class LayeredPixelCanvas:
     """Layer-aware composition built on the shared PixelCanvas model."""
 
-    def __init__(self, size: int = 16) -> None:
-        self.layers: dict[str, PixelCanvas] = {"背景": PixelCanvas(size)}
+    def __init__(self, size: int | Resolution = 16, height: int | None = None) -> None:
+        self.layers: dict[str, PixelCanvas] = {"背景": PixelCanvas(size, height)}
         self.active_layer = "背景"
-
-    @property
-    def size(self) -> int:
-        return self.layers[self.active_layer].size
 
     @property
     def active(self) -> PixelCanvas:
         return self.layers[self.active_layer]
+
+    @property
+    def width(self) -> int:
+        return self.active.width
+
+    @property
+    def height(self) -> int:
+        return self.active.height
+
+    @property
+    def resolution(self) -> Resolution:
+        return self.active.resolution
+
+    @property
+    def size(self) -> int:
+        return self.active.size
 
     @property
     def has_refinements(self) -> bool:
@@ -32,8 +44,16 @@ class LayeredPixelCanvas:
         return any(layer.has_detail for layer in self.layers.values())
 
     @property
-    def native_size(self) -> int:
-        return self.size * 2 if self.has_refinements else self.size
+    def native_resolution(self) -> Resolution:
+        return (
+            self.width * 2 if self.has_refinements else self.width,
+            self.height * 2 if self.has_refinements else self.height,
+        )
+
+    @property
+    def native_size(self) -> int | Resolution:
+        width, height = self.native_resolution
+        return width if width == height else (width, height)
 
     def add_layer(self, name: str) -> None:
         clean = str(name).strip()
@@ -41,7 +61,7 @@ class LayeredPixelCanvas:
             raise ValueError("layer name must not be empty")
         if clean in self.layers:
             raise ValueError(f"layer already exists: {clean}")
-        self.layers[clean] = PixelCanvas(self.size)
+        self.layers[clean] = PixelCanvas(self.resolution)
         self.active_layer = clean
 
     def select_layer(self, name: str) -> None:
@@ -115,37 +135,53 @@ class LayeredPixelCanvas:
     def discard_detail(self, x: int, y: int, width: int = 1, height: int = 1) -> int:
         return self.active.discard_detail(x, y, width, height)
 
-    def resize(self, target: int) -> bool:
-        if target == self.size:
+    def set_resolution(self, width: int, height: int | None = None) -> bool:
+        resolved_height = width if height is None else height
+        PixelCanvas._validate_resolution(int(width), int(resolved_height))
+        target = (int(width), int(resolved_height))
+        if target == self.resolution:
             return False
-        PixelCanvas._validate_size(target)
         for layer in self.layers.values():
-            layer.resize(target)
+            layer.set_resolution(*target)
         return True
 
-    def upscale(self) -> bool:
-        if self.size >= PixelCanvas.SUPPORTED_SIZES[-1]:
-            return False
-        return self.resize(self.size * 2)
+    def resize(self, target: int) -> bool:
+        return self.set_resolution(target, target)
 
-    def composite(self) -> Image.Image:
-        target_size = self.native_size
-        result = Image.new("RGBA", (target_size, target_size), (0, 0, 0, 0))
+    def upscale(self) -> bool:
+        target = (self.width * 2, self.height * 2)
+        if target[0] > PixelCanvas.MAX_RESOLUTION or target[1] > PixelCanvas.MAX_RESOLUTION:
+            return False
+        return self.set_resolution(*target)
+
+    def composite(self, resolution: Resolution | None = None) -> Image.Image:
+        target = self.native_resolution if resolution is None else resolution
+        result = Image.new("RGBA", target, (0, 0, 0, 0))
         for layer in self.layers.values():
-            result.alpha_composite(layer.render(target_size))
+            result.alpha_composite(layer.render(target))
         return result
 
-    def save_png(self, path: str | Path, export_size: int | None = None) -> None:
-        output = self.composite()
-        if export_size is not None:
-            if export_size < output.width:
-                raise ValueError("export size cannot be smaller than native canvas size")
-            output = output.resize((export_size, export_size), Image.Resampling.NEAREST)
-        output.save(path, "PNG")
+    def save_png(
+        self,
+        path: str | Path,
+        export_size: int | Resolution | None = None,
+    ) -> None:
+        if export_size is None:
+            target = self.native_resolution
+        elif isinstance(export_size, tuple):
+            target = PixelCanvas._coerce_resolution(export_size)
+        else:
+            target = (int(export_size), int(export_size))
+        self.composite(target).save(path, "PNG")
 
     def to_source(self) -> dict[str, Any]:
+        canvas_size: int | list[int] = (
+            self.width if self.width == self.height else [self.width, self.height]
+        )
         return {
-            "canvas_size": self.size,
+            "canvas_size": canvas_size,
+            "canvas_width": self.width,
+            "canvas_height": self.height,
             "active_layer": self.active_layer,
             "layers": [
                 {"name": name, "source": canvas.to_source()}
@@ -163,13 +199,12 @@ class LayeredPixelCanvas:
             raise ValueError("layer source must contain at least one layer")
 
         model: LayeredPixelCanvas | None = None
-        expected_size: int | None = None
+        expected_resolution: Resolution | None = None
         seen_names: set[str] = set()
 
         for entry in entries:
             if not isinstance(entry, dict):
                 raise ValueError("invalid layer entry")
-
             name = entry.get("name")
             if not isinstance(name, str) or not name.strip():
                 raise ValueError("layer name must not be empty")
@@ -182,22 +217,36 @@ class LayeredPixelCanvas:
                 raise ValueError("invalid layer source")
             layer = PixelCanvas.from_source(layer_source)
 
-            if expected_size is None:
-                expected_size = layer.size
-                model = cls(layer.size)
+            if expected_resolution is None:
+                expected_resolution = layer.resolution
+                model = cls(expected_resolution)
                 model.layers.clear()
-            elif layer.size != expected_size:
-                raise ValueError("all layers must use the same canvas size")
+            elif layer.resolution != expected_resolution:
+                raise ValueError("all layers must use the same canvas resolution")
 
             assert model is not None
             model.layers[name] = layer
 
-        assert model is not None and expected_size is not None
+        assert model is not None and expected_resolution is not None
 
-        declared_size = source.get("canvas_size")
-        if declared_size is not None:
-            if not isinstance(declared_size, int) or declared_size != expected_size:
-                raise ValueError("layered canvas_size does not match layer size")
+        declared_width = source.get("canvas_width")
+        declared_height = source.get("canvas_height")
+        if declared_width is not None or declared_height is not None:
+            if (
+                not isinstance(declared_width, int)
+                or not isinstance(declared_height, int)
+                or (declared_width, declared_height) != expected_resolution
+            ):
+                raise ValueError("layered canvas resolution does not match layer resolution")
+        elif "canvas_size" in source:
+            declared = source["canvas_size"]
+            expected_declared: int | list[int] = (
+                expected_resolution[0]
+                if expected_resolution[0] == expected_resolution[1]
+                else [expected_resolution[0], expected_resolution[1]]
+            )
+            if declared != expected_declared:
+                raise ValueError("layered canvas_size does not match layer resolution")
 
         active = source.get("active_layer", next(iter(model.layers)))
         if not isinstance(active, str) or active not in model.layers:
