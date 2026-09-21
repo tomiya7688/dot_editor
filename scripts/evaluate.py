@@ -161,6 +161,19 @@ def check_display_resize() -> None:
     assert editor.future == []
 
 
+def run_cli_failure(*arguments: str) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        [PYTHON, str(CLI), *arguments],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "Traceback" not in result.stdout
+    assert "Traceback" not in result.stderr
+    return result
+
+
 def run_cli(*arguments: str) -> None:
     result = subprocess.run(
         [PYTHON, str(CLI), *arguments],
@@ -266,6 +279,84 @@ def check_cli() -> None:
         with Image.open(layered_png) as exported:
             assert exported.getpixel((4, 4))[:3] == (255, 0, 0)
 
+        malformed = root / "malformed.json"
+        malformed.write_text("{not valid json", encoding="utf-8")
+        failure = run_cli_failure(
+            "edit",
+            "--project",
+            str(malformed),
+            "--upscale",
+        )
+        assert "failed to read project" in failure.stderr
+
+        invalid_layered = root / "invalid-layered.json"
+        invalid_layered.write_text(
+            json.dumps(
+                {
+                    "canvas_size": 2,
+                    "active_layer": "missing",
+                    "layers": [
+                        {
+                            "name": "背景",
+                            "source": {
+                                "canvas_size": 2,
+                                "pixels": [[None, None], [None, None]],
+                            },
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        failure = run_cli_failure(
+            "export",
+            "--project",
+            str(invalid_layered),
+            "--output",
+            str(root / "invalid.png"),
+        )
+        assert "active_layer" in failure.stderr
+
+
+def check_gui_invalid_project() -> None:
+    import dot_editor
+    from dot_editor import PixelEditor
+    from pixel_layers import LayeredPixelCanvas
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "invalid.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "canvas_size": 2,
+                    "active_layer": "missing",
+                    "layers": [
+                        {
+                            "name": "背景",
+                            "source": {
+                                "canvas_size": 2,
+                                "pixels": [[None, None], [None, None]],
+                            },
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        editor = PixelEditor.__new__(PixelEditor)
+        editor.backend = LayeredPixelCanvas(2)
+        original_backend = editor.backend
+        original_dialog = dot_editor.filedialog.askopenfilename
+        dot_editor.filedialog.askopenfilename = lambda **_kwargs: str(path)
+        try:
+            editor.load_project()
+        finally:
+            dot_editor.filedialog.askopenfilename = original_dialog
+        assert editor.backend is original_backend
+
 
 def main() -> int:
     checks = (
@@ -274,6 +365,7 @@ def main() -> int:
         ("layers", check_layers),
         ("display-resize", check_display_resize),
         ("cli", check_cli),
+        ("gui-invalid-project", check_gui_invalid_project),
     )
     for name, check in checks:
         check()
