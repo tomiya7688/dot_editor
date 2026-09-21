@@ -128,3 +128,7 @@ GitHub Actions でも push / pull request ごとに同じ評価とテストを�
 - [開発予定](docs/開発予定.md)
 - [コーディングルール](docs/コーディングルール.md)
 - [提案書](docs/提案.md)
+
+## ライセンス
+
+このプロジェクトは [MIT License](LICENSE) の下で公開します。依存ライブラリにはそれぞれのライセンスが適用されます。
