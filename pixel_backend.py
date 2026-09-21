@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from PIL import Image
 
 Color = tuple[int, int, int, int]
 ChildCoordinate = tuple[int, int]
 RefinedCells = dict[tuple[int, int], list[list[Color]]]
+DetailPolicy = Literal["preserve", "discard"]
+CanvasState = tuple[Image.Image, RefinedCells, set[tuple[int, int]]]
 
 
 class PixelCanvas:
@@ -22,8 +24,9 @@ class PixelCanvas:
         self.size = size
         self.image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         self._refined_cells: RefinedCells = {}
-        self._history: list[tuple[Image.Image, RefinedCells]] = []
-        self._future: list[tuple[Image.Image, RefinedCells]] = []
+        self._expanded_cells: set[tuple[int, int]] = set()
+        self._history: list[CanvasState] = []
+        self._future: list[CanvasState] = []
 
     @classmethod
     def _validate_size(cls, size: int) -> None:
@@ -46,14 +49,19 @@ class PixelCanvas:
             for key, rows in source.items()
         }
 
-    def _state(self) -> tuple[Image.Image, RefinedCells]:
-        return self.image.copy(), self._copy_refined_cells(self._refined_cells)
+    def _state(self) -> CanvasState:
+        return (
+            self.image.copy(),
+            self._copy_refined_cells(self._refined_cells),
+            set(self._expanded_cells),
+        )
 
-    def _restore_state(self, state: tuple[Image.Image, RefinedCells]) -> None:
-        image, refined = state
+    def _restore_state(self, state: CanvasState) -> None:
+        image, refined, expanded = state
         self.image = image.copy()
         self.size = self.image.width
         self._refined_cells = self._copy_refined_cells(refined)
+        self._expanded_cells = set(expanded)
 
     def _snapshot(self) -> None:
         self._history.append(self._state())
@@ -73,6 +81,12 @@ class PixelCanvas:
 
     @property
     def has_refinements(self) -> bool:
+        """Whether any cells are currently expanded for 2x2 editing."""
+        return bool(self._expanded_cells)
+
+    @property
+    def has_detail(self) -> bool:
+        """Whether preserved child detail exists, including collapsed cells."""
         return bool(self._refined_cells)
 
     @property
@@ -80,17 +94,37 @@ class PixelCanvas:
         return self.size * 2 if self.has_refinements else self.size
 
     def is_split(self, x: int, y: int) -> bool:
+        return (x, y) in self._expanded_cells
+
+    def has_detail_at(self, x: int, y: int) -> bool:
         return (x, y) in self._refined_cells
 
     def split_cell(self, x: int, y: int) -> bool:
         if not self._in_bounds(x, y) or self.is_split(x, y):
             return False
-        base = self.image.getpixel((x, y))
         self._snapshot()
-        self._refined_cells[(x, y)] = [
-            [base, base],
-            [base, base],
-        ]
+        if not self.has_detail_at(x, y):
+            base = self.image.getpixel((x, y))
+            self._refined_cells[(x, y)] = [
+                [base, base],
+                [base, base],
+            ]
+        self._expanded_cells.add((x, y))
+        return True
+
+    def collapse_cell(self, x: int, y: int, discard_detail: bool = False) -> bool:
+        """Collapse a split cell while preserving child detail by default."""
+        if not self._in_bounds(x, y):
+            return False
+        point = (x, y)
+        has_expanded = point in self._expanded_cells
+        has_detail = point in self._refined_cells
+        if not has_expanded and not (discard_detail and has_detail):
+            return False
+        self._snapshot()
+        self._expanded_cells.discard(point)
+        if discard_detail:
+            self._refined_cells.pop(point, None)
         return True
 
     def new(self, size: int | None = None) -> None:
@@ -100,6 +134,13 @@ class PixelCanvas:
         self.size = target
         self.image = Image.new("RGBA", (target, target), (0, 0, 0, 0))
         self._refined_cells.clear()
+        self._expanded_cells.clear()
+
+    @staticmethod
+    def _validate_detail_policy(detail_policy: str) -> DetailPolicy:
+        if detail_policy not in ("preserve", "discard"):
+            raise ValueError("detail_policy must be 'preserve' or 'discard'")
+        return detail_policy  # type: ignore[return-value]
 
     def paint(
         self,
@@ -108,10 +149,12 @@ class PixelCanvas:
         color: tuple[int, ...],
         erase: bool = False,
         child: ChildCoordinate | None = None,
+        detail_policy: DetailPolicy = "preserve",
     ) -> bool:
         if not self._in_bounds(x, y):
             return False
         replacement = (0, 0, 0, 0) if erase else self._normalize_color(color)
+        policy = self._validate_detail_policy(detail_policy)
 
         if child is not None:
             child_x, child_y = self._validate_child(child)
@@ -124,22 +167,15 @@ class PixelCanvas:
             return True
 
         current = self.image.getpixel((x, y))
-        if self.is_split(x, y):
-            children = self._refined_cells[(x, y)]
-            if current == replacement and all(pixel == replacement for row in children for pixel in row):
-                return False
-            self._snapshot()
-            self.image.putpixel((x, y), replacement)
-            self._refined_cells[(x, y)] = [
-                [replacement, replacement],
-                [replacement, replacement],
-            ]
-            return True
-
-        if current == replacement:
+        has_detail = self.has_detail_at(x, y)
+        if current == replacement and not (has_detail and policy == "discard"):
             return False
+
         self._snapshot()
         self.image.putpixel((x, y), replacement)
+        if has_detail and policy == "discard":
+            self._refined_cells.pop((x, y), None)
+            self._expanded_cells.discard((x, y))
         return True
 
     def sample(
@@ -153,14 +189,22 @@ class PixelCanvas:
         if child is None:
             return self.image.getpixel((x, y))
         child_x, child_y = self._validate_child(child)
-        if not self.is_split(x, y):
-            raise ValueError("child sampling requires a split cell")
+        if not self.has_detail_at(x, y):
+            raise ValueError("child sampling requires preserved child detail")
         return self._refined_cells[(x, y)][child_y][child_x]
 
-    def fill(self, x: int, y: int, color: tuple[int, ...], erase: bool = False) -> int:
+    def fill(
+        self,
+        x: int,
+        y: int,
+        color: tuple[int, ...],
+        erase: bool = False,
+        detail_policy: DetailPolicy = "preserve",
+    ) -> int:
         if not self._in_bounds(x, y):
             return 0
         replacement = (0, 0, 0, 0) if erase else self._normalize_color(color)
+        policy = self._validate_detail_policy(detail_policy)
         original = self.image.getpixel((x, y))
         if original == replacement:
             return 0
@@ -181,12 +225,32 @@ class PixelCanvas:
         self._snapshot()
         for point in points:
             self.image.putpixel(point, replacement)
-            if point in self._refined_cells:
-                self._refined_cells[point] = [
-                    [replacement, replacement],
-                    [replacement, replacement],
-                ]
+            if policy == "discard":
+                self._refined_cells.pop(point, None)
+                self._expanded_cells.discard(point)
         return len(points)
+
+    def discard_detail(self, x: int, y: int, width: int = 1, height: int = 1) -> int:
+        """Discard refined child data only inside the requested parent-cell region."""
+        if width <= 0 or height <= 0:
+            raise ValueError("detail discard region must have positive width and height")
+        if not self._in_bounds(x, y):
+            raise IndexError("detail discard region starts outside the canvas")
+        end_x = min(self.size, x + width)
+        end_y = min(self.size, y + height)
+        targets = [
+            (px, py)
+            for py in range(y, end_y)
+            for px in range(x, end_x)
+            if (px, py) in self._refined_cells
+        ]
+        if not targets:
+            return 0
+        self._snapshot()
+        for point in targets:
+            del self._refined_cells[point]
+            self._expanded_cells.discard(point)
+        return len(targets)
 
     def import_image(self, source: str | Path | Image.Image) -> None:
         loaded = Image.open(source).convert("RGBA") if not isinstance(source, Image.Image) else source.convert("RGBA")
@@ -198,12 +262,14 @@ class PixelCanvas:
         self._snapshot()
         self.image = fitted
         self._refined_cells.clear()
+        self._expanded_cells.clear()
 
     def _native_image(self) -> Image.Image:
         if not self.has_refinements:
             return self.image.copy()
         output = self.image.resize((self.size * 2, self.size * 2), Image.Resampling.NEAREST)
-        for (x, y), children in self._refined_cells.items():
+        for x, y in sorted(self._expanded_cells):
+            children = self._refined_cells[(x, y)]
             for child_y, row in enumerate(children):
                 for child_x, color in enumerate(row):
                     output.putpixel((x * 2 + child_x, y * 2 + child_y), color)
@@ -223,6 +289,7 @@ class PixelCanvas:
         self.image = source.resize((target, target), Image.Resampling.NEAREST)
         self.size = target
         self._refined_cells.clear()
+        self._expanded_cells.clear()
         return True
 
     def upscale(self) -> bool:
@@ -292,6 +359,7 @@ class PixelCanvas:
                 {
                     "x": x,
                     "y": y,
+                    "expanded": (x, y) in self._expanded_cells,
                     "children": [
                         [self._color_to_source(color) for color in row]
                         for row in children
@@ -325,10 +393,13 @@ class PixelCanvas:
             x = entry.get("x")
             y = entry.get("y")
             children = entry.get("children")
+            expanded = entry.get("expanded", True)
             if not isinstance(x, int) or not isinstance(y, int) or not canvas._in_bounds(x, y):
                 raise ValueError("refined cell coordinate out of range")
             if (x, y) in canvas._refined_cells:
                 raise ValueError("duplicate refined cell")
+            if not isinstance(expanded, bool):
+                raise ValueError("refined cell expanded must be a boolean")
             if (
                 not isinstance(children, list)
                 or len(children) != 2
@@ -339,4 +410,6 @@ class PixelCanvas:
                 [cls._color_from_source(value) for value in row]
                 for row in children
             ]
+            if expanded:
+                canvas._expanded_cells.add((x, y))
         return canvas

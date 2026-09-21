@@ -5,7 +5,7 @@ from typing import Any
 
 from PIL import Image
 
-from pixel_backend import ChildCoordinate, PixelCanvas
+from pixel_backend import ChildCoordinate, DetailPolicy, PixelCanvas
 
 
 class LayeredPixelCanvas:
@@ -26,6 +26,10 @@ class LayeredPixelCanvas:
     @property
     def has_refinements(self) -> bool:
         return any(layer.has_refinements for layer in self.layers.values())
+
+    @property
+    def has_detail(self) -> bool:
+        return any(layer.has_detail for layer in self.layers.values())
 
     @property
     def native_size(self) -> int:
@@ -60,6 +64,12 @@ class LayeredPixelCanvas:
     def split_cell(self, x: int, y: int) -> bool:
         return self.active.split_cell(x, y)
 
+    def collapse_cell(self, x: int, y: int, discard_detail: bool = False) -> bool:
+        return self.active.collapse_cell(x, y, discard_detail=discard_detail)
+
+    def has_detail_at(self, x: int, y: int) -> bool:
+        return self.active.has_detail_at(x, y)
+
     def paint(
         self,
         x: int,
@@ -67,8 +77,16 @@ class LayeredPixelCanvas:
         color: tuple[int, ...],
         erase: bool = False,
         child: ChildCoordinate | None = None,
+        detail_policy: DetailPolicy = "preserve",
     ) -> bool:
-        return self.active.paint(x, y, color, erase, child)
+        return self.active.paint(
+            x,
+            y,
+            color,
+            erase=erase,
+            child=child,
+            detail_policy=detail_policy,
+        )
 
     def sample(
         self,
@@ -78,8 +96,24 @@ class LayeredPixelCanvas:
     ) -> tuple[int, int, int, int]:
         return self.active.sample(x, y, child)
 
-    def fill(self, x: int, y: int, color: tuple[int, ...], erase: bool = False) -> int:
-        return self.active.fill(x, y, color, erase)
+    def fill(
+        self,
+        x: int,
+        y: int,
+        color: tuple[int, ...],
+        erase: bool = False,
+        detail_policy: DetailPolicy = "preserve",
+    ) -> int:
+        return self.active.fill(
+            x,
+            y,
+            color,
+            erase=erase,
+            detail_policy=detail_policy,
+        )
+
+    def discard_detail(self, x: int, y: int, width: int = 1, height: int = 1) -> int:
+        return self.active.discard_detail(x, y, width, height)
 
     def resize(self, target: int) -> bool:
         if target == self.size:
