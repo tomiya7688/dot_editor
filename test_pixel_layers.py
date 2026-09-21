@@ -55,6 +55,27 @@ assert {layer.size for layer in resizable_restored.layers.values()} == {2}
 resizable_restored.select_layer("人物")
 assert resizable_restored.sample(1, 1) == (255, 0, 0, 255)
 
+detail_layers = LayeredPixelCanvas(4)
+detail_layers.add_layer("人物")
+assert detail_layers.paint(1, 1, (255, 0, 0, 255))
+assert detail_layers.split_cell(1, 1)
+assert detail_layers.paint(1, 1, (0, 0, 255, 255), child=(1, 0))
+assert detail_layers.paint(
+    1,
+    1,
+    (0, 255, 0, 255),
+    detail_policy="preserve",
+)
+assert detail_layers.is_split(1, 1)
+assert detail_layers.sample(1, 1) == (0, 255, 0, 255)
+assert detail_layers.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+assert detail_layers.discard_detail(1, 1) == 1
+assert not detail_layers.is_split(1, 1)
+assert detail_layers.active.undo()
+assert detail_layers.is_split(1, 1)
+assert detail_layers.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+
+
 def expect_invalid(source):
     try:
         LayeredPixelCanvas.from_source(source)
