@@ -4,25 +4,44 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
-$Venv = Join-Path $Root "dot_editor"
+$Venv = Join-Path $Root ".venv"
 $Python = Join-Path $Venv "Scripts\python.exe"
-$BasePython = "I:\program_files\ide\python\python.exe"
 
 if (-not (Test-Path -LiteralPath $Python)) {
-    if (-not (Test-Path -LiteralPath $BasePython)) {
-        $BasePython = (Get-Command py -ErrorAction SilentlyContinue).Source
-        if (-not $BasePython) {
-            throw "Python 3 is required to create the development environment."
-        }
-        & $BasePython -3 -m venv $Venv
+    $PyLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if ($PyLauncher) {
+        & $PyLauncher.Source -3 -m venv $Venv
     } else {
-        & $BasePython -m venv $Venv
+        $BasePython = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $BasePython) {
+            throw "Python 3.10 or later is required to create the development environment."
+        }
+        & $BasePython.Source -m venv $Venv
     }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to create the virtual environment."
+    }
+}
+
+& $Python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 'Python 3.10 or later is required.')"
+if ($LASTEXITCODE -ne 0) {
+    throw "Python 3.10 or later is required."
 }
 
 if (-not $SkipInstall) {
     & $Python -m pip install --upgrade pip
-    & $Python -m pip install Pillow
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to upgrade pip."
+    }
+
+    & $Python -m pip install -r (Join-Path $Root "requirements.txt")
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install project dependencies."
+    }
 }
 
-& $Python $PSScriptRoot\evaluate.py
+& $Python (Join-Path $PSScriptRoot "evaluate.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "Project evaluation failed."
+}
