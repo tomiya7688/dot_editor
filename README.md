@@ -4,10 +4,10 @@ Hyper Dot Editor は、GUI と CLI から同じバックエンドを使ってド
 
 ## 必要環境
 
-- Python 3.10 以降
+- Python 3.10〜3.14（CIで全バージョンを必須検証）
 - Pillow（`requirements.txt` で管理）
 
-GitHub Actions では Python 3.10 / 3.12 / 3.13 を検証しています。
+GitHub Actions では Python 3.10 / 3.11 / 3.12 / 3.13 / 3.14 の全バージョンを検証しています。
 
 ## セットアップ
 
