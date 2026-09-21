@@ -86,6 +86,66 @@ def check_layers() -> None:
     assert restored.is_split(1, 1)
     assert restored.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
 
+def check_display_resize() -> None:
+    from dot_editor import PixelEditor
+    from pixel_layers import LayeredPixelCanvas
+
+    class FakeCanvas:
+        def __init__(self) -> None:
+            self.settings: dict[str, object] = {}
+
+        def config(self, **kwargs: object) -> None:
+            self.settings.update(kwargs)
+
+        def configure(self, **kwargs: object) -> None:
+            self.settings.update(kwargs)
+
+    editor = PixelEditor.__new__(PixelEditor)
+    editor.canvas_width = 640
+    editor.canvas_height = 640
+    editor.num_pixels_x = 4
+    editor.num_pixels_y = 4
+    editor.zoom_factor = 1.0
+    editor.pixel_size = 160
+    editor.display_pixel_size = 160
+    editor.canvas = FakeCanvas()
+    editor.backend = LayeredPixelCanvas(4)
+    editor.backend.paint(0, 0, (0, 20, 40, 255))
+    editor.backend.add_layer("人物")
+    editor.backend.paint(1, 1, (255, 0, 0, 255))
+    assert editor.backend.split_cell(1, 1)
+    assert editor.backend.paint(1, 1, (0, 0, 255, 255), child=(1, 0))
+    editor.selected_cell = (1, 1)
+    editor.history = [("history",)]
+    editor.future = [("future",)]
+    editor.create_grid = lambda: None
+    editor.update_canvas = lambda: None
+    editor.refresh_layer_list = lambda: None
+
+    backend = editor.backend
+    before = backend.to_source()
+    history_before = list(editor.history)
+    future_before = list(editor.future)
+
+    editor.set_display_size(800, 480)
+
+    assert editor.backend is backend
+    assert editor.backend.to_source() == before
+    assert editor.history == history_before
+    assert editor.future == future_before
+    assert editor.canvas_width == 800
+    assert editor.canvas_height == 480
+    assert editor.image.size == (800, 480)
+    assert set(editor.backend.layers) == {"背景", "人物"}
+    assert editor.backend.is_split(1, 1)
+
+    editor.reset_canvas_model()
+    assert editor.backend is not backend
+    assert editor.backend.to_source() != before
+    assert editor.history == []
+    assert editor.future == []
+
+
 def run_cli(*arguments: str) -> None:
     result = subprocess.run(
         [PYTHON, str(CLI), *arguments],
@@ -197,6 +257,7 @@ def main() -> int:
         ("compile", check_compile),
         ("backend", check_backend),
         ("layers", check_layers),
+        ("display-resize", check_display_resize),
         ("cli", check_cli),
     )
     for name, check in checks:
