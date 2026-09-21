@@ -20,17 +20,22 @@ class PixelEditor:
         self.num_pixels_x = 2  # 初期ドット数（横方向）
         self.num_pixels_y = 2  # 初期ドット数（縦方向）
 
-        self.pixel_size = self.canvas_width // self.num_pixels_x  # ドットのサイズ（初期設定）
+        self.pixel_width = self.canvas_width / self.num_pixels_x
+        self.pixel_height = self.canvas_height / self.num_pixels_y
+        self.pixel_size = max(1, int(min(self.pixel_width, self.pixel_height)))
 
-        # current_colorの初期設定（デフォルトは黒）
+        # current_colorの初期設定
         self.current_color = (255, 255, 255)
         self.selected_cell = None
         self.tool = "brush"
+        self.detail_policy = "preserve"
         self.palette_colors = [(255, 255, 255), (0, 0, 0), (255, 80, 80), (255, 190, 70), (255, 240, 100), (90, 210, 130), (80, 180, 255), (170, 110, 255)]
         self.history = []
         self.future = []
         self.backend = LayeredPixelCanvas(self.num_pixels_x)
         self.zoom_factor = 1.0
+        self.display_pixel_width = self.pixel_width
+        self.display_pixel_height = self.pixel_height
         self.display_pixel_size = self.pixel_size
 
         # キャンバスの作成
@@ -90,6 +95,16 @@ class PixelEditor:
             tool_group,
             "選択セルを4分割",
             self.split_selected_cell,
+        )
+        self.collapse_button = self.make_toolbar_button(
+            tool_group,
+            "選択セルの分割を閉じる",
+            self.collapse_selected_cell,
+        )
+        self.discard_detail_button = self.make_toolbar_button(
+            tool_group,
+            "選択セルの細部を破棄",
+            self.discard_selected_detail,
         )
         self.tool_status_label = tk.Label(
             tool_group,
@@ -174,6 +189,33 @@ class PixelEditor:
             "解像度アップ",
             self.upscale_resolution,
         )
+        detail_frame = tk.Frame(view_group, bg="#101820")
+        detail_frame.pack(fill="x", padx=6, pady=(0, 6))
+        self.detail_policy_var = tk.StringVar(value=self.detail_policy)
+        tk.Radiobutton(
+            detail_frame,
+            text="細部保持",
+            variable=self.detail_policy_var,
+            value="preserve",
+            command=lambda: self.set_detail_policy("preserve"),
+            bg="#101820",
+            fg="#f0f3f6",
+            selectcolor="#17212b",
+            activebackground="#101820",
+            activeforeground="#f0f3f6",
+        ).pack(side="left")
+        tk.Radiobutton(
+            detail_frame,
+            text="細部破棄",
+            variable=self.detail_policy_var,
+            value="discard",
+            command=lambda: self.set_detail_policy("discard"),
+            bg="#101820",
+            fg="#f0f3f6",
+            selectcolor="#17212b",
+            activebackground="#101820",
+            activeforeground="#f0f3f6",
+        ).pack(side="left")
         zoom_buttons = tk.Frame(view_group, bg="#101820")
         zoom_buttons.pack(fill="x", padx=6, pady=(0, 6))
         self.zoom_out_button = self.make_toolbar_button(
@@ -309,6 +351,15 @@ class PixelEditor:
         if label is not None:
             label.configure(text=f"現在: {names[self.tool]}")
 
+    def set_detail_policy(self, policy):
+        """粗い編集時に既存の細部を保持するか破棄するか選ぶ"""
+        if policy not in ("preserve", "discard"):
+            raise ValueError("detail policy must be preserve or discard")
+        self.detail_policy = policy
+        variable = getattr(self, "detail_policy_var", None)
+        if variable is not None and variable.get() != policy:
+            variable.set(policy)
+
     def refresh_composite(self):
         self.image = self.backend.composite().resize(
             (self.canvas_width, self.canvas_height),
@@ -357,8 +408,15 @@ class PixelEditor:
 
     def update_canvas_size(self):
         """表示キャンバス寸法を、作品データを保持したまま反映する"""
-        self.pixel_size = max(1, self.canvas_width // self.num_pixels_x)
-        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
+        self.pixel_width = self.canvas_width / self.num_pixels_x
+        self.pixel_height = self.canvas_height / self.num_pixels_y
+        self.pixel_size = max(1, int(min(self.pixel_width, self.pixel_height)))
+        self.display_pixel_width = self.pixel_width * self.zoom_factor
+        self.display_pixel_height = self.pixel_height * self.zoom_factor
+        self.display_pixel_size = max(
+            1,
+            int(min(self.display_pixel_width, self.display_pixel_height)),
+        )
 
         display_width = round(self.canvas_width * self.zoom_factor)
         display_height = round(self.canvas_height * self.zoom_factor)
@@ -387,57 +445,62 @@ class PixelEditor:
         self.canvas_height = height
         self.update_canvas_size()
 
-    def reset_canvas_model(self, size=None):
+    def reset_canvas_model(self, size=None, height=None):
         """明示的なリセット操作として新しい作品データを作る"""
-        target = self.num_pixels_x if size is None else int(size)
-        if target not in PixelCanvas.SUPPORTED_SIZES:
-            raise ValueError("unsupported canvas size")
-        self.num_pixels_x = target
-        self.num_pixels_y = target
-        self.backend = LayeredPixelCanvas(target)
+        width = self.num_pixels_x if size is None else int(size)
+        resolved_height = self.num_pixels_y if height is None and size is None else (
+            width if height is None else int(height)
+        )
+        PixelCanvas._validate_resolution(width, resolved_height)
+        self.num_pixels_x = width
+        self.num_pixels_y = resolved_height
+        self.backend = LayeredPixelCanvas((width, resolved_height))
         self.selected_cell = None
         self.history.clear()
         self.future.clear()
         self.refresh_layer_list()
         self.update_canvas_size()
 
-    def resize_logical_canvas(self, size):
-        """既存作品を保持したまま論理解像度を最近傍変換する"""
-        target = int(size)
-        if target not in PixelCanvas.SUPPORTED_SIZES:
-            raise ValueError("unsupported canvas size")
-        if target == self.backend.size:
+    def resize_logical_canvas(self, width, height=None):
+        """内部の詳細データを保持したまま論理解像度だけを切り替える"""
+        target_width = int(width)
+        target_height = target_width if height is None else int(height)
+        PixelCanvas._validate_resolution(target_width, target_height)
+        if (target_width, target_height) == self.backend.resolution:
             return False
 
         self.push_history()
-        if not self.backend.resize(target):
+        if not self.backend.set_resolution(target_width, target_height):
             self.history.pop()
             return False
 
-        self.num_pixels_x = target
-        self.num_pixels_y = target
+        self.num_pixels_x = target_width
+        self.num_pixels_y = target_height
         self.selected_cell = None
-        self.pixel_size = max(1, self.canvas_width // self.num_pixels_x)
-        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
-        self.refresh_composite()
         self.refresh_layer_list()
-        self.create_grid()
-        self.update_canvas()
+        self.update_canvas_size()
         return True
 
     def create_grid(self):
-        """ズーム倍率に合わせてグリッドを描画"""
+        """現在の論理解像度に合わせてグリッドを描画"""
         self.canvas.delete("all")
         width = round(self.canvas_width * self.zoom_factor)
         height = round(self.canvas_height * self.zoom_factor)
-        for x in range(0, width + 1, self.display_pixel_size):
+        for column in range(self.num_pixels_x + 1):
+            x = round(column * width / self.num_pixels_x)
             self.canvas.create_line(x, 0, x, height, fill="#303945")
-        for y in range(0, height + 1, self.display_pixel_size):
+        for row in range(self.num_pixels_y + 1):
+            y = round(row * height / self.num_pixels_y)
             self.canvas.create_line(0, y, width, y, fill="#303945")
 
     def set_zoom(self, factor):
         self.zoom_factor = max(0.5, min(4.0, float(factor)))
-        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
+        self.display_pixel_width = self.pixel_width * self.zoom_factor
+        self.display_pixel_height = self.pixel_height * self.zoom_factor
+        self.display_pixel_size = max(
+            1,
+            int(min(self.display_pixel_width, self.display_pixel_height)),
+        )
         self.canvas.config(
             width=round(self.canvas_width * self.zoom_factor),
             height=round(self.canvas_height * self.zoom_factor),
@@ -481,10 +544,13 @@ class PixelEditor:
     def _child_coordinate(self, x, y, image_x, image_y):
         if not self.backend.is_split(x, y):
             return None
-        half = max(1, self.pixel_size // 2)
-        child_x = min(1, max(0, (image_x - x * self.pixel_size) // half))
-        child_y = min(1, max(0, (image_y - y * self.pixel_size) // half))
-        return int(child_x), int(child_y)
+        left = x * self.canvas_width / self.num_pixels_x
+        right = (x + 1) * self.canvas_width / self.num_pixels_x
+        top = y * self.canvas_height / self.num_pixels_y
+        bottom = (y + 1) * self.canvas_height / self.num_pixels_y
+        child_x = 0 if image_x < (left + right) / 2 else 1
+        child_y = 0 if image_y < (top + bottom) / 2 else 1
+        return child_x, child_y
 
     def paint_pixel(self, event):
         """セルまたは細分化済みの子セルをバックエンド経由で塗る"""
@@ -492,10 +558,14 @@ class PixelEditor:
         canvas_y = self.canvas.canvasy(event.y)
         image_x = min(self.canvas_width - 1, max(0, int(canvas_x / self.zoom_factor)))
         image_y = min(self.canvas_height - 1, max(0, int(canvas_y / self.zoom_factor)))
-        x = image_x // self.pixel_size
-        y = image_y // self.pixel_size
-        if not (0 <= x < self.num_pixels_x and 0 <= y < self.num_pixels_y):
-            return
+        x = min(
+            self.num_pixels_x - 1,
+            max(0, int(image_x * self.num_pixels_x / self.canvas_width)),
+        )
+        y = min(
+            self.num_pixels_y - 1,
+            max(0, int(image_y * self.num_pixels_y / self.canvas_height)),
+        )
 
         child = self._child_coordinate(x, y, image_x, image_y)
         if self.tool == "picker":
@@ -505,17 +575,27 @@ class PixelEditor:
 
         self.push_history()
         color = tuple(self.current_color[:3]) + (255,)
+        policy = getattr(self, "detail_policy", "preserve")
         if self.tool == "fill":
-            self.backend.fill(x, y, color)
+            changed = self.backend.fill(
+                x,
+                y,
+                color,
+                detail_policy=policy,
+            ) > 0
             self.set_tool("brush")
         else:
-            self.backend.paint(
+            changed = self.backend.paint(
                 x,
                 y,
                 color,
                 erase=self.tool == "eraser",
                 child=child,
+                detail_policy=policy,
             )
+        if not changed:
+            self.history.pop()
+            return
         self.selected_cell = (x, y)
         self.refresh_composite()
         self.update_canvas()
@@ -545,7 +625,12 @@ class PixelEditor:
     def restore_snapshot(self, snapshot):
         source, self.num_pixels_x, self.num_pixels_y = snapshot
         self.backend = LayeredPixelCanvas.from_source(source)
-        self.pixel_size = self.canvas_width // self.num_pixels_x
+        self.pixel_width = self.canvas_width / self.num_pixels_x
+        self.pixel_height = self.canvas_height / self.num_pixels_y
+        self.pixel_size = max(1, int(min(self.pixel_width, self.pixel_height)))
+        self.display_pixel_width = self.pixel_width * self.zoom_factor
+        self.display_pixel_height = self.pixel_height * self.zoom_factor
+        self.display_pixel_size = max(1, int(min(self.display_pixel_width, self.display_pixel_height)))
         display_width = round(self.canvas_width * self.zoom_factor)
         display_height = round(self.canvas_height * self.zoom_factor)
         self.canvas.config(width=min(self.canvas_width, display_width), height=min(self.canvas_height, display_height))
@@ -623,18 +708,22 @@ class PixelEditor:
                 self.backend = LayeredPixelCanvas.from_source(source)
             else:
                 flat = PixelCanvas.from_source(source)
-                self.backend = LayeredPixelCanvas(flat.size)
+                self.backend = LayeredPixelCanvas(flat.resolution)
                 self.backend.layers = {"背景": flat}
                 self.backend.active_layer = "背景"
         except (OSError, UnicodeError, ValueError, TypeError, KeyError, json.JSONDecodeError):
             return
-        self.num_pixels_x = self.backend.size
-        self.num_pixels_y = self.backend.size
+        self.num_pixels_x = self.backend.width
+        self.num_pixels_y = self.backend.height
         self.refresh_composite()
         self.history.clear()
         self.future.clear()
-        self.pixel_size = self.canvas_width // self.num_pixels_x
-        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
+        self.pixel_width = self.canvas_width / self.num_pixels_x
+        self.pixel_height = self.canvas_height / self.num_pixels_y
+        self.pixel_size = max(1, int(min(self.pixel_width, self.pixel_height)))
+        self.display_pixel_width = self.pixel_width * self.zoom_factor
+        self.display_pixel_height = self.pixel_height * self.zoom_factor
+        self.display_pixel_size = max(1, int(min(self.display_pixel_width, self.display_pixel_height)))
         self.refresh_layer_list()
         self.create_grid()
         self.update_canvas()
@@ -654,11 +743,15 @@ class PixelEditor:
         self.reset_canvas_model()
 
     def upscale_resolution(self):
-        """論理解像度を1段階上げ、既存作品を最近傍で保持する"""
-        next_size = self.num_pixels_x * 2
-        if next_size not in PixelCanvas.SUPPORTED_SIZES:
+        """縦横の論理解像度を2倍へ切り替え、内部詳細は保持する"""
+        next_width = self.num_pixels_x * 2
+        next_height = self.num_pixels_y * 2
+        if (
+            next_width > PixelCanvas.MAX_RESOLUTION
+            or next_height > PixelCanvas.MAX_RESOLUTION
+        ):
             return
-        self.resize_logical_canvas(next_size)
+        self.resize_logical_canvas(next_width, next_height)
 
     def split_selected_cell(self):
         """選択中の親セルをバックエンド上で2x2の子セルへ細分化する"""
@@ -674,17 +767,49 @@ class PixelEditor:
         self.refresh_composite()
         self.update_canvas()
 
-    def change_size(self):
-        """既存作品を保持したまま論理解像度を変更する"""
-        size = tk.simpledialog.askinteger(
-            "サイズ変更",
-            "サイズを選択してください（2, 4, 8, 16, 32, 64, 128, 256）",
-            minvalue=2,
-            maxvalue=256,
-        )
-        if size is None or size not in PixelCanvas.SUPPORTED_SIZES:
+    def collapse_selected_cell(self):
+        """選択セルを粗い表示へ戻す。細部データは保持する。"""
+        if self.selected_cell is None:
             return
-        self.resize_logical_canvas(size)
+        x, y = self.selected_cell
+        self.push_history()
+        if not self.backend.collapse_cell(x, y):
+            self.history.pop()
+            return
+        self.refresh_composite()
+        self.update_canvas()
+
+    def discard_selected_detail(self):
+        """選択セル内の保持済み細部だけを明示的に破棄する"""
+        if self.selected_cell is None:
+            return
+        x, y = self.selected_cell
+        self.push_history()
+        if self.backend.discard_detail(x, y) <= 0:
+            self.history.pop()
+            return
+        self.refresh_composite()
+        self.update_canvas()
+
+    def change_size(self):
+        """任意の縦横論理解像度へ非破壊で切り替える"""
+        width = tk.simpledialog.askinteger(
+            "論理解像度",
+            f"横セル数（1〜{PixelCanvas.MAX_RESOLUTION}）",
+            minvalue=1,
+            maxvalue=PixelCanvas.MAX_RESOLUTION,
+        )
+        if width is None:
+            return
+        height = tk.simpledialog.askinteger(
+            "論理解像度",
+            f"縦セル数（1〜{PixelCanvas.MAX_RESOLUTION}）",
+            minvalue=1,
+            maxvalue=PixelCanvas.MAX_RESOLUTION,
+        )
+        if height is None:
+            return
+        self.resize_logical_canvas(width, height)
 
     def change_canvas_size(self):
         """表示キャンバスの大きさだけを変更する"""
