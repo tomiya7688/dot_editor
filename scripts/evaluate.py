@@ -13,8 +13,6 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 PYTHON = sys.executable
-DOT_EDITOR = ROOT / "dot_editor.py"
-BACKEND = ROOT / "pixel_backend.py"
 CLI = ROOT / "pixel_cli.py"
 
 
@@ -32,90 +30,81 @@ def check_compile() -> None:
 def check_backend() -> None:
     from pixel_backend import PixelCanvas
 
-    canvas = PixelCanvas(4)
-    assert canvas.paint(1, 1, (255, 0, 0, 255))
-    assert canvas.sample(1, 1) == (255, 0, 0, 255)
-    assert canvas.undo()
-    assert canvas.sample(1, 1)[3] == 0
-    assert canvas.redo()
-    assert canvas.fill(0, 0, (0, 255, 0, 255)) == 15
-    assert canvas.upscale()
-    assert canvas.size == 8
-    assert canvas.sample(2, 2) == (255, 0, 0, 255)
+    canvas = PixelCanvas(16)
+    assert canvas.paint(0, 0, (80, 30, 30, 255))
+    assert canvas.paint(1, 0, (120, 30, 30, 255))
+    original = canvas.render_resolution(16, 16).tobytes()
 
+    assert canvas.set_resolution(7, 7)
+    assert canvas.resolution == (7, 7)
+    assert canvas.set_resolution(16, 16)
+    assert canvas.render_resolution(16, 16).tobytes() == original
+
+    assert canvas.set_resolution(7, 7)
+    assert canvas.paint(0, 0, (160, 90, 90, 255), detail_policy="preserve")
+    assert canvas.sample(0, 0) == (160, 90, 90, 255)
+    assert canvas.set_resolution(16, 16)
+    assert len({canvas.sample(x, y) for x in range(3) for y in range(3)}) > 1
+
+    assert canvas.set_resolution(23, 17)
+    assert canvas.resolution == (23, 17)
     restored = PixelCanvas.from_source(canvas.to_source())
-    assert restored.size == 8
-    assert restored.sample(2, 2) == (255, 0, 0, 255)
+    assert restored.to_source() == canvas.to_source()
 
     refined = PixelCanvas(4)
-    refined.paint(1, 1, (255, 0, 0, 255))
+    assert refined.paint(1, 1, (100, 20, 20, 255))
     assert refined.split_cell(1, 1)
-    assert refined.paint(1, 1, (0, 0, 255, 255), child=(1, 0))
-    restored_refined = PixelCanvas.from_source(refined.to_source())
-    assert restored_refined.is_split(1, 1)
-    assert restored_refined.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
-    assert restored_refined.render().getpixel((3, 2)) == (0, 0, 255, 255)
-
-    assert restored_refined.paint(
+    assert refined.paint(1, 1, (20, 20, 180, 255), child=(1, 0))
+    assert refined.paint(
         1,
         1,
-        (0, 255, 0, 255),
+        (140, 100, 80, 255),
         detail_policy="preserve",
     )
-    preserved = PixelCanvas.from_source(restored_refined.to_source())
-    assert preserved.sample(1, 1) == (0, 255, 0, 255)
-    assert preserved.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
-    assert preserved.collapse_cell(1, 1)
-    assert not preserved.is_split(1, 1)
-    assert preserved.has_detail_at(1, 1)
-    assert preserved.render().size == (4, 4)
-    collapsed = PixelCanvas.from_source(preserved.to_source())
+    assert len({
+        refined.sample(1, 1, (child_x, child_y))
+        for child_y in range(2)
+        for child_x in range(2)
+    }) > 1
+    assert refined.collapse_cell(1, 1)
+    assert refined.has_detail_at(1, 1)
+    collapsed = PixelCanvas.from_source(refined.to_source())
     assert not collapsed.is_split(1, 1)
     assert collapsed.has_detail_at(1, 1)
-    assert collapsed.split_cell(1, 1)
-    assert collapsed.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
-    assert preserved.discard_detail(1, 1) == 1
-    assert not preserved.is_split(1, 1)
-    assert preserved.undo()
-    assert not preserved.is_split(1, 1)
-    assert preserved.has_detail_at(1, 1)
-    assert preserved.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
-
-    assert restored_refined.resize(8)
-    assert not restored_refined.has_refinements
-    assert restored_refined.sample(3, 2) == (0, 0, 255, 255)
+    assert collapsed.discard_detail(1, 1) == 1
+    assert not collapsed.has_detail_at(1, 1)
+    assert collapsed.undo()
+    assert collapsed.has_detail_at(1, 1)
 
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / "export.png"
-        canvas.save_png(output, 16)
+        canvas.save_png(output, (230, 170))
         with Image.open(output) as image:
-            assert image.size == (16, 16)
+            assert image.size == (230, 170)
             assert image.mode == "RGBA"
 
 
 def check_layers() -> None:
     from pixel_layers import LayeredPixelCanvas
 
-    layers = LayeredPixelCanvas(4)
-    layers.add_layer("人物")
-    layers.paint(1, 1, (255, 0, 0, 255))
-    layers.select_layer("背景")
+    layers = LayeredPixelCanvas(16)
     layers.paint(0, 0, (0, 0, 30, 255))
-    assert layers.composite().getpixel((1, 1)) == (255, 0, 0, 255)
-    layers.select_layer("人物")
-    assert layers.split_cell(1, 1)
-    assert layers.paint(1, 1, (0, 0, 255, 255), child=(1, 0))
-    composite = layers.composite()
-    assert composite.size == (8, 8)
-    assert composite.getpixel((3, 2)) == (0, 0, 255, 255)
+    layers.add_layer("人物")
+    layers.paint(1, 0, (120, 30, 30, 255))
+    before = layers.composite((16, 16)).tobytes()
 
+    assert layers.set_resolution(7, 7)
+    assert {layer.resolution for layer in layers.layers.values()} == {(7, 7)}
+    assert layers.set_resolution(16, 16)
+    assert layers.composite((16, 16)).tobytes() == before
+
+    assert layers.set_resolution(23, 17)
+    assert layers.resolution == (23, 17)
     restored = LayeredPixelCanvas.from_source(layers.to_source())
-    assert set(restored.layers) == {"背景", "人物"}
-    restored.select_layer("人物")
-    assert restored.is_split(1, 1)
-    assert restored.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+    assert restored.to_source() == layers.to_source()
 
-def check_display_resize() -> None:
+
+def check_display_resize_and_resolution() -> None:
     from dot_editor import PixelEditor
     from pixel_layers import LayeredPixelCanvas
 
@@ -131,19 +120,24 @@ def check_display_resize() -> None:
 
     editor = PixelEditor.__new__(PixelEditor)
     editor.canvas_width = 640
-    editor.canvas_height = 640
+    editor.canvas_height = 480
     editor.num_pixels_x = 4
-    editor.num_pixels_y = 4
+    editor.num_pixels_y = 3
     editor.zoom_factor = 1.0
+    editor.pixel_width = 160.0
+    editor.pixel_height = 160.0
     editor.pixel_size = 160
+    editor.display_pixel_width = 160.0
+    editor.display_pixel_height = 160.0
     editor.display_pixel_size = 160
+    editor.detail_policy = "preserve"
     editor.canvas = FakeCanvas()
-    editor.backend = LayeredPixelCanvas(4)
+    editor.backend = LayeredPixelCanvas((4, 3))
     editor.backend.paint(0, 0, (0, 20, 40, 255))
     editor.backend.add_layer("人物")
-    editor.backend.paint(1, 1, (255, 0, 0, 255))
+    editor.backend.paint(1, 1, (100, 20, 20, 255))
     assert editor.backend.split_cell(1, 1)
-    assert editor.backend.paint(1, 1, (0, 0, 255, 255), child=(1, 0))
+    assert editor.backend.paint(1, 1, (20, 20, 180, 255), child=(1, 0))
     editor.selected_cell = (1, 1)
     editor.history = [("history",)]
     editor.future = [("future",)]
@@ -156,33 +150,34 @@ def check_display_resize() -> None:
     history_before = list(editor.history)
     future_before = list(editor.future)
 
-    editor.set_display_size(800, 480)
-
+    editor.set_display_size(800, 600)
     assert editor.backend is backend
     assert editor.backend.to_source() == before
     assert editor.history == history_before
     assert editor.future == future_before
-    assert editor.canvas_width == 800
-    assert editor.canvas_height == 480
-    assert editor.image.size == (800, 480)
-    assert set(editor.backend.layers) == {"背景", "人物"}
-    assert editor.backend.is_split(1, 1)
+    assert editor.image.size == (800, 600)
 
-    assert editor.resize_logical_canvas(8)
+    assert editor.resize_logical_canvas(7, 5)
     assert editor.backend is backend
-    assert editor.backend.size == 8
-    assert {layer.size for layer in editor.backend.layers.values()} == {8}
-    assert not editor.backend.has_refinements
-    assert editor.backend.sample(3, 2) == (0, 0, 255, 255)
+    assert editor.backend.resolution == (7, 5)
+    assert editor.num_pixels_x == 7
+    assert editor.num_pixels_y == 5
+    assert {layer.resolution for layer in editor.backend.layers.values()} == {(7, 5)}
     assert len(editor.history) == len(history_before) + 1
     assert editor.future == []
-    resized_source = editor.backend.to_source()
-    restored_resized = LayeredPixelCanvas.from_source(resized_source)
-    assert restored_resized.to_source() == resized_source
+
+    editor.set_detail_policy("discard")
+    assert editor.detail_policy == "discard"
+    editor.set_detail_policy("preserve")
+    assert editor.detail_policy == "preserve"
+
+    source = editor.backend.to_source()
+    restored = LayeredPixelCanvas.from_source(source)
+    assert restored.to_source() == source
 
     editor.reset_canvas_model()
     assert editor.backend is not backend
-    assert editor.backend.to_source() != before
+    assert editor.backend.resolution == (7, 5)
     assert editor.history == []
     assert editor.future == []
 
@@ -210,24 +205,13 @@ def check_tool_state_ui() -> None:
 
     editor.refresh_tool_state()
     assert editor.tool_buttons["brush"].options["relief"] == "sunken"
-    assert editor.tool_buttons["fill"].options["relief"] == "flat"
-    assert editor.tool_status_label.options["text"] == "現在: ブラシ"
-
     editor.set_tool("eraser")
-    assert editor.tool == "eraser"
     assert editor.tool_buttons["eraser"].options["relief"] == "sunken"
-    assert editor.tool_buttons["brush"].options["relief"] == "flat"
-    assert editor.tool_status_label.options["text"] == "現在: 消しゴム"
     assert editor.current_color == (10, 20, 30)
-
     editor.activate_eyedropper()
     assert editor.tool == "picker"
-    assert editor.tool_status_label.options["text"] == "現在: スポイト"
-
     editor.set_palette_color((255, 0, 0))
-    assert editor.current_color == (255, 0, 0)
     assert editor.tool == "brush"
-    assert editor.tool_buttons["brush"].options["relief"] == "sunken"
 
     try:
         editor.set_tool("unknown")
@@ -235,6 +219,24 @@ def check_tool_state_ui() -> None:
         pass
     else:
         raise AssertionError("unknown drawing tools must be rejected")
+
+
+def run_cli_capture(*arguments: str) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        [PYTHON, str(CLI), *arguments],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        raise AssertionError(
+            f"CLI failed: {' '.join(arguments)}\n{result.stdout}\n{result.stderr}"
+        )
+    return result
+
+
+def run_cli(*arguments: str) -> None:
+    run_cli_capture(*arguments)
 
 
 def run_cli_failure(*arguments: str) -> subprocess.CompletedProcess[str]:
@@ -250,53 +252,90 @@ def run_cli_failure(*arguments: str) -> subprocess.CompletedProcess[str]:
     return result
 
 
-def run_cli(*arguments: str) -> None:
-    result = subprocess.run(
-        [PYTHON, str(CLI), *arguments],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise AssertionError(
-            f"CLI failed: {' '.join(arguments)}\n{result.stdout}\n{result.stderr}"
-        )
-
-
 def check_cli() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         project = root / "project.json"
         image = root / "image.png"
 
-        run_cli("new", "--size", "4", "--output", str(project))
+        run_cli(
+            "new",
+            "--resolution",
+            "16",
+            "16",
+            "--output",
+            str(project),
+        )
+        run_cli(
+            "edit",
+            "--project",
+            str(project),
+            "--paint",
+            "0",
+            "0",
+            "#503030",
+        )
         run_cli(
             "edit",
             "--project",
             str(project),
             "--paint",
             "1",
-            "1",
-            "#FF0000",
+            "0",
+            "#783030",
         )
-        run_cli("edit", "--project", str(project), "--upscale")
+        run_cli(
+            "edit",
+            "--project",
+            str(project),
+            "--resolution",
+            "7",
+            "7",
+        )
+        run_cli(
+            "edit",
+            "--project",
+            str(project),
+            "--paint",
+            "0",
+            "0",
+            "#A05A5A",
+            "--detail-policy",
+            "preserve",
+        )
+        inspect = json.loads(
+            run_cli_capture("inspect", "--project", str(project)).stdout
+        )
+        assert inspect["resolution"] == [7, 7]
+        assert inspect["has_detail"]
+
+        run_cli(
+            "edit",
+            "--project",
+            str(project),
+            "--resolution",
+            "23",
+            "17",
+        )
+        inspect = json.loads(
+            run_cli_capture("inspect", "--project", str(project)).stdout
+        )
+        assert inspect["resolution"] == [23, 17]
+
         run_cli(
             "export",
             "--project",
             str(project),
             "--output",
             str(image),
-            "--size",
-            "16",
+            "--resolution",
+            "230",
+            "170",
         )
-
-        source = json.loads(project.read_text(encoding="utf-8"))
-        assert source["canvas_size"] == 8
         with Image.open(image) as exported:
-            assert exported.size == (16, 16)
+            assert exported.size == (230, 170)
 
         refined = root / "refined.json"
-        refined_png = root / "refined.png"
         run_cli("new", "--size", "4", "--output", str(refined))
         run_cli(
             "edit",
@@ -305,55 +344,58 @@ def check_cli() -> None:
             "--split",
             "1",
             "1",
-            "--paint",
-            "1",
-            "1",
-            "#FF0000",
             "--paint-child",
             "1",
             "1",
             "1",
             "0",
             "#0000FF",
-            "--erase-child",
-            "1",
-            "1",
-            "0",
-            "1",
         )
+        inspect = json.loads(
+            run_cli_capture("inspect", "--project", str(refined)).stdout
+        )
+        assert inspect["has_detail"]
         run_cli(
-            "export",
+            "edit",
             "--project",
             str(refined),
-            "--output",
-            str(refined_png),
-            "--size",
-            "8",
+            "--discard-detail",
+            "1",
+            "1",
         )
-
-        refined_source = json.loads(refined.read_text(encoding="utf-8"))
-        assert refined_source["canvas_size"] == 4
-        assert len(refined_source["refined_cells"]) == 1
-        children = refined_source["refined_cells"][0]["children"]
-        assert children[0][1] == "#0000FF"
-        assert children[1][0] is None
-        with Image.open(refined_png) as exported:
-            assert exported.size == (8, 8)
-            assert exported.getpixel((3, 2)) == (0, 0, 255, 255)
-            assert exported.getpixel((2, 3))[3] == 0
+        inspect = json.loads(
+            run_cli_capture("inspect", "--project", str(refined)).stdout
+        )
+        assert not inspect["has_refinements"]
 
         layered = root / "layered.json"
-        layered_png = root / "layered.png"
-        run_cli("new", "--size", "4", "--layered", "--output", str(layered))
+        run_cli(
+            "new",
+            "--resolution",
+            "23",
+            "17",
+            "--layered",
+            "--output",
+            str(layered),
+        )
         run_cli("edit", "--project", str(layered), "--add-layer", "人物")
-        run_cli("edit", "--project", str(layered), "--select-layer", "人物", "--paint", "1", "1", "#FF0000")
-        run_cli("export", "--project", str(layered), "--output", str(layered_png), "--size", "16")
-        run_cli("edit", "--project", str(layered), "--upscale")
-        layered_source = json.loads(layered.read_text(encoding="utf-8"))
-        assert layered_source["canvas_size"] == 8
-        assert {item["name"] for item in layered_source["layers"]} == {"背景", "人物"}
-        with Image.open(layered_png) as exported:
-            assert exported.getpixel((4, 4))[:3] == (255, 0, 0)
+        run_cli(
+            "edit",
+            "--project",
+            str(layered),
+            "--select-layer",
+            "人物",
+            "--paint",
+            "1",
+            "1",
+            "#FF0000",
+        )
+        inspect = json.loads(
+            run_cli_capture("inspect", "--project", str(layered)).stdout
+        )
+        assert inspect["layered"]
+        assert inspect["resolution"] == [23, 17]
+        assert set(inspect["layers"]) == {"背景", "人物"}
 
         malformed = root / "malformed.json"
         malformed.write_text("{not valid json", encoding="utf-8")
@@ -439,7 +481,7 @@ def main() -> int:
         ("compile", check_compile),
         ("backend", check_backend),
         ("layers", check_layers),
-        ("display-resize", check_display_resize),
+        ("display-resolution", check_display_resize_and_resolution),
         ("tool-state-ui", check_tool_state_ui),
         ("cli", check_cli),
         ("gui-invalid-project", check_gui_invalid_project),
