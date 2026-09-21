@@ -37,79 +37,204 @@ class PixelEditor:
         self.canvas = tk.Canvas(self.master, bg="#111820", highlightthickness=1, highlightbackground="#3b4654")
         self.canvas.grid(row=0, column=0, rowspan=5)  # キャンバスをgridの左側に配置
 
-        # ボタンを縦に並べるためのフレーム
-        button_frame = tk.Frame(self.master, bg="#0b0f14")
-        button_frame.grid(row=0, column=1, padx=10, pady=10)  # ボタンを右側に配置
+        # 操作を機能カテゴリごとに分けたサイドバー
+        sidebar = tk.Frame(self.master, bg="#0b0f14")
+        sidebar.grid(row=0, column=1, padx=10, pady=10, sticky="n")
 
-        # 色選択ボタン
-        self.color_button = tk.Button(button_frame, text="色を選ぶ", command=self.choose_color)
-        self.color_button.grid(row=0, column=0, padx=5, pady=5)
+        tool_group = self.create_toolbar_group(sidebar, "描画ツール")
+        tool_grid = tk.Frame(tool_group, bg="#101820")
+        tool_grid.pack(fill="x", padx=6, pady=(0, 6))
 
-        # ドットサイズ設定ボタン
-        self.size_button = tk.Button(button_frame, text="サイズ変更", command=self.change_size)
-        self.size_button.grid(row=1, column=0, padx=5, pady=5)
+        self.brush_button = tk.Button(
+            tool_grid,
+            text="ブラシ",
+            command=lambda: self.set_tool("brush"),
+        )
+        self.fill_button = tk.Button(
+            tool_grid,
+            text="塗りつぶし",
+            command=lambda: self.set_tool("fill"),
+        )
+        self.eraser_button = tk.Button(
+            tool_grid,
+            text="消しゴム",
+            command=lambda: self.set_tool("eraser"),
+        )
+        self.eyedropper_button = tk.Button(
+            tool_grid,
+            text="スポイト",
+            command=lambda: self.set_tool("picker"),
+        )
+        for index, button in enumerate(
+            (
+                self.brush_button,
+                self.fill_button,
+                self.eraser_button,
+                self.eyedropper_button,
+            )
+        ):
+            button.grid(
+                row=index // 2,
+                column=index % 2,
+                padx=2,
+                pady=2,
+                sticky="ew",
+            )
+            tool_grid.grid_columnconfigure(index % 2, weight=1)
 
-        # キャンバスサイズ設定ボタン
-        self.canvas_size_button = tk.Button(button_frame, text="キャンバスサイズ変更", command=self.change_canvas_size)
-        self.canvas_size_button.grid(row=2, column=0, padx=5, pady=5)
+        self.split_button = self.make_toolbar_button(
+            tool_group,
+            "選択セルを4分割",
+            self.split_selected_cell,
+        )
+        self.tool_status_label = tk.Label(
+            tool_group,
+            text="現在: ブラシ",
+            bg="#101820",
+            fg="#a9c7df",
+            anchor="w",
+        )
+        self.tool_status_label.pack(fill="x", padx=8, pady=(2, 6))
+        self.tool_buttons = {
+            "brush": self.brush_button,
+            "fill": self.fill_button,
+            "eraser": self.eraser_button,
+            "picker": self.eyedropper_button,
+        }
 
-        # 保存ボタン
-        self.save_button = tk.Button(button_frame, text="保存", command=self.save_image)
-        self.save_button.grid(row=3, column=0, padx=5, pady=5)
-        self.save_project_button = tk.Button(button_frame, text="プロジェクト保存", command=self.save_project)
-        self.save_project_button.grid(row=16, column=0, padx=5, pady=5)
-        self.load_project_button = tk.Button(button_frame, text="プロジェクト読込", command=self.load_project)
-        self.load_project_button.grid(row=17, column=0, padx=5, pady=5)
-
-        self.layer_list = tk.Listbox(button_frame, height=4, width=18, bg="#111820", fg="#f0f3f6", selectbackground="#3f6685")
-        self.layer_list.grid(row=18, column=0, padx=5, pady=5)
-        self.add_layer_button = tk.Button(button_frame, text="レイヤー追加", command=self.add_layer)
-        self.add_layer_button.grid(row=19, column=0, padx=5, pady=2)
-        self.remove_layer_button = tk.Button(button_frame, text="レイヤー削除", command=self.remove_layer)
-        self.remove_layer_button.grid(row=20, column=0, padx=5, pady=2)
-        self.layer_list.bind("<<ListboxSelect>>", self.select_layer)
-
-        # リセットボタン
-        self.reset_button = tk.Button(button_frame, text="リセット", command=self.reset_canvas)
-        self.reset_button.grid(row=4, column=0, padx=5, pady=5)
-
-        self.upscale_button = tk.Button(button_frame, text="解像度アップ", command=self.upscale_resolution)
-        self.upscale_button.grid(row=5, column=0, padx=5, pady=5)
-
-        self.split_button = tk.Button(button_frame, text="選択セルを4分割", command=self.split_selected_cell)
-        self.split_button.grid(row=6, column=0, padx=5, pady=5)
-
-        self.undo_button = tk.Button(button_frame, text="元に戻す", command=self.undo)
-        self.undo_button.grid(row=7, column=0, padx=5, pady=5)
-        self.redo_button = tk.Button(button_frame, text="やり直す", command=self.redo)
-        self.redo_button.grid(row=8, column=0, padx=5, pady=5)
-        self.eyedropper_button = tk.Button(button_frame, text="スポイト", command=self.activate_eyedropper)
-        self.eyedropper_button.grid(row=9, column=0, padx=5, pady=5)
-        self.eraser_button = tk.Button(button_frame, text="消しゴム", command=self.activate_eraser)
-        self.eraser_button.grid(row=10, column=0, padx=5, pady=5)
-        self.import_button = tk.Button(button_frame, text="画像を読み込む", command=self.import_image)
-        self.import_button.grid(row=11, column=0, padx=5, pady=5)
-        self.fill_button = tk.Button(button_frame, text="塗りつぶし", command=self.activate_fill)
-        self.fill_button.grid(row=12, column=0, padx=5, pady=5)
-        self.zoom_out_button = tk.Button(button_frame, text="表示ズーム−", command=self.zoom_out)
-        self.zoom_out_button.grid(row=14, column=0, padx=5, pady=5)
-        self.zoom_in_button = tk.Button(button_frame, text="表示ズーム＋", command=self.zoom_in)
-        self.zoom_in_button.grid(row=15, column=0, padx=5, pady=5)
-        palette_frame = tk.Frame(button_frame, bg="#0b0f14")
-        palette_frame.grid(row=13, column=0, padx=5, pady=5)
+        color_group = self.create_toolbar_group(sidebar, "色")
+        self.color_button = self.make_toolbar_button(
+            color_group,
+            "色を選ぶ",
+            self.choose_color,
+        )
+        palette_frame = tk.Frame(color_group, bg="#101820")
+        palette_frame.pack(padx=6, pady=(0, 6))
         self.palette_buttons = []
         for index, palette_color in enumerate(self.palette_colors):
-            palette_button = tk.Button(palette_frame, width=2, height=1, bg=self.rgb_to_hex(palette_color), command=lambda color=palette_color: self.set_palette_color(color))
+            palette_button = tk.Button(
+                palette_frame,
+                width=2,
+                height=1,
+                bg=self.rgb_to_hex(palette_color),
+                command=lambda color=palette_color: self.set_palette_color(color),
+                relief="flat",
+            )
             palette_button.grid(row=index // 4, column=index % 4, padx=1, pady=1)
             self.palette_buttons.append(palette_button)
 
-        for button in (
-            self.color_button, self.size_button, self.canvas_size_button,
-            self.save_button, self.save_project_button, self.load_project_button, self.reset_button, self.upscale_button, self.add_layer_button, self.remove_layer_button,
-            self.split_button, self.undo_button, self.redo_button,
-            self.eyedropper_button, self.eraser_button, self.import_button, self.fill_button,
-        ):
-            button.configure(bg="#17212b", fg="#f0f3f6", activebackground="#263747", activeforeground="#ffffff", relief="flat")
+        layer_group = self.create_toolbar_group(sidebar, "レイヤー")
+        self.layer_list = tk.Listbox(
+            layer_group,
+            height=4,
+            width=20,
+            bg="#111820",
+            fg="#f0f3f6",
+            selectbackground="#3f6685",
+            highlightthickness=0,
+        )
+        self.layer_list.pack(fill="x", padx=6, pady=(0, 4))
+        self.layer_list.bind("<<ListboxSelect>>", self.select_layer)
+        layer_buttons = tk.Frame(layer_group, bg="#101820")
+        layer_buttons.pack(fill="x", padx=6, pady=(0, 6))
+        self.add_layer_button = self.make_toolbar_button(
+            layer_buttons,
+            "追加",
+            self.add_layer,
+            use_pack=False,
+        )
+        self.remove_layer_button = self.make_toolbar_button(
+            layer_buttons,
+            "削除",
+            self.remove_layer,
+            use_pack=False,
+        )
+        self.add_layer_button.grid(row=0, column=0, padx=(0, 2), sticky="ew")
+        self.remove_layer_button.grid(row=0, column=1, padx=(2, 0), sticky="ew")
+        layer_buttons.grid_columnconfigure(0, weight=1)
+        layer_buttons.grid_columnconfigure(1, weight=1)
+
+        view_group = self.create_toolbar_group(sidebar, "表示・解像度")
+        self.size_button = self.make_toolbar_button(
+            view_group,
+            "論理解像度を変更",
+            self.change_size,
+        )
+        self.canvas_size_button = self.make_toolbar_button(
+            view_group,
+            "表示サイズを変更",
+            self.change_canvas_size,
+        )
+        self.upscale_button = self.make_toolbar_button(
+            view_group,
+            "解像度アップ",
+            self.upscale_resolution,
+        )
+        zoom_buttons = tk.Frame(view_group, bg="#101820")
+        zoom_buttons.pack(fill="x", padx=6, pady=(0, 6))
+        self.zoom_out_button = self.make_toolbar_button(
+            zoom_buttons,
+            "ズーム−",
+            self.zoom_out,
+            use_pack=False,
+        )
+        self.zoom_in_button = self.make_toolbar_button(
+            zoom_buttons,
+            "ズーム＋",
+            self.zoom_in,
+            use_pack=False,
+        )
+        self.zoom_out_button.grid(row=0, column=0, padx=(0, 2), sticky="ew")
+        self.zoom_in_button.grid(row=0, column=1, padx=(2, 0), sticky="ew")
+        zoom_buttons.grid_columnconfigure(0, weight=1)
+        zoom_buttons.grid_columnconfigure(1, weight=1)
+
+        file_group = self.create_toolbar_group(sidebar, "ファイル・編集")
+        history_buttons = tk.Frame(file_group, bg="#101820")
+        history_buttons.pack(fill="x", padx=6, pady=(0, 4))
+        self.undo_button = self.make_toolbar_button(
+            history_buttons,
+            "元に戻す",
+            self.undo,
+            use_pack=False,
+        )
+        self.redo_button = self.make_toolbar_button(
+            history_buttons,
+            "やり直す",
+            self.redo,
+            use_pack=False,
+        )
+        self.undo_button.grid(row=0, column=0, padx=(0, 2), sticky="ew")
+        self.redo_button.grid(row=0, column=1, padx=(2, 0), sticky="ew")
+        history_buttons.grid_columnconfigure(0, weight=1)
+        history_buttons.grid_columnconfigure(1, weight=1)
+
+        self.import_button = self.make_toolbar_button(
+            file_group,
+            "画像を読み込む",
+            self.import_image,
+        )
+        self.save_button = self.make_toolbar_button(
+            file_group,
+            "PNG保存",
+            self.save_image,
+        )
+        self.save_project_button = self.make_toolbar_button(
+            file_group,
+            "プロジェクト保存",
+            self.save_project,
+        )
+        self.load_project_button = self.make_toolbar_button(
+            file_group,
+            "プロジェクト読込",
+            self.load_project,
+        )
+        self.reset_button = self.make_toolbar_button(
+            file_group,
+            "作品をリセット",
+            self.reset_canvas,
+        )
+        self.refresh_tool_state()
 
         # 初期キャンバスサイズを設定
         self.update_canvas_size()
@@ -122,6 +247,63 @@ class PixelEditor:
         self.canvas.bind("<B1-Motion>", self.paint_pixel)  # クリックしたまま移動した場合にも色を塗る
         self.canvas.bind("<ButtonPress-2>", self.begin_pan)
         self.canvas.bind("<B2-Motion>", self.pan_canvas)
+
+    def create_toolbar_group(self, parent, title):
+        """サイドバー内に機能カテゴリ用のグループを作る"""
+        group = tk.LabelFrame(
+            parent,
+            text=title,
+            bg="#101820",
+            fg="#cbd5df",
+            bd=1,
+            relief="solid",
+            padx=2,
+            pady=4,
+        )
+        group.pack(fill="x", pady=(0, 8))
+        return group
+
+    def make_toolbar_button(self, parent, text, command, use_pack=True):
+        """ツールバー共通スタイルのボタンを作る"""
+        button = tk.Button(
+            parent,
+            text=text,
+            command=command,
+            bg="#17212b",
+            fg="#f0f3f6",
+            activebackground="#263747",
+            activeforeground="#ffffff",
+            relief="flat",
+        )
+        if use_pack:
+            button.pack(fill="x", padx=6, pady=2)
+        return button
+
+    def set_tool(self, tool):
+        """描画ツールを切り替え、選択状態をUIへ反映する"""
+        if tool not in {"brush", "fill", "eraser", "picker"}:
+            raise ValueError(f"unknown tool: {tool}")
+        self.tool = tool
+        self.refresh_tool_state()
+
+    def refresh_tool_state(self):
+        """現在の描画ツールをボタンとステータス表示へ反映する"""
+        names = {
+            "brush": "ブラシ",
+            "fill": "塗りつぶし",
+            "eraser": "消しゴム",
+            "picker": "スポイト",
+        }
+        buttons = getattr(self, "tool_buttons", {})
+        for name, button in buttons.items():
+            selected = name == self.tool
+            button.configure(
+                bg="#3f6685" if selected else "#17212b",
+                relief="sunken" if selected else "flat",
+            )
+        label = getattr(self, "tool_status_label", None)
+        if label is not None:
+            label.configure(text=f"現在: {names[self.tool]}")
 
     def refresh_composite(self):
         self.image = self.backend.composite().resize(
@@ -276,10 +458,10 @@ class PixelEditor:
 
     def set_palette_color(self, color):
         self.current_color = color
-        self.tool = "brush"
+        self.set_tool("brush")
 
     def activate_fill(self):
-        self.tool = "fill"
+        self.set_tool("fill")
 
     def hex_to_rgb(self, hex_color):
         """16進数の色コードをRGBタプルに変換"""
@@ -314,14 +496,14 @@ class PixelEditor:
         child = self._child_coordinate(x, y, image_x, image_y)
         if self.tool == "picker":
             self.current_color = self.backend.sample(x, y, child)[:3]
-            self.tool = "brush"
+            self.set_tool("brush")
             return
 
         self.push_history()
         color = tuple(self.current_color[:3]) + (255,)
         if self.tool == "fill":
             self.backend.fill(x, y, color)
-            self.tool = "brush"
+            self.set_tool("brush")
         else:
             self.backend.paint(
                 x,
@@ -336,12 +518,11 @@ class PixelEditor:
 
     def activate_eyedropper(self):
         """次のクリック位置の色を取得する"""
-        self.tool = "picker"
+        self.set_tool("picker")
 
     def activate_eraser(self):
-        """白色で描く消しゴムを有効にする"""
-        self.current_color = (255, 255, 255)
-        self.tool = "eraser"
+        """透明化する消しゴムを有効にする"""
+        self.set_tool("eraser")
 
     def make_snapshot(self):
         return (
