@@ -1,5 +1,9 @@
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Legacy local virtual-environment layout.
 dot_editor/Lib/
 dot_editor/Include/
 dot_editor/Scripts/
