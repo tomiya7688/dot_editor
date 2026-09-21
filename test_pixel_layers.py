@@ -36,4 +36,23 @@ with TemporaryDirectory() as directory:
         assert exported.size == (8, 8)
         assert exported.getpixel((3, 2)) == (0, 0, 255, 255)
 
+resizable = LayeredPixelCanvas(2)
+resizable.paint(0, 0, (0, 0, 30, 255))
+resizable.add_layer("人物")
+resizable.paint(1, 1, (255, 0, 0, 255))
+assert resizable.resize(4)
+assert resizable.size == 4
+assert {layer.size for layer in resizable.layers.values()} == {4}
+resizable.select_layer("背景")
+assert resizable.sample(0, 0) == (0, 0, 30, 255)
+resizable.select_layer("人物")
+assert resizable.sample(2, 2) == (255, 0, 0, 255)
+resized_source = resizable.to_source()
+resizable_restored = LayeredPixelCanvas.from_source(resized_source)
+assert resizable_restored.to_source() == resized_source
+assert resizable_restored.resize(2)
+assert {layer.size for layer in resizable_restored.layers.values()} == {2}
+resizable_restored.select_layer("人物")
+assert resizable_restored.sample(1, 1) == (255, 0, 0, 255)
+
 print("layer backend ok")
