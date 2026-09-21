@@ -45,25 +45,29 @@ class PixelEditor:
         tool_grid = tk.Frame(tool_group, bg="#101820")
         tool_grid.pack(fill="x", padx=6, pady=(0, 6))
 
-        self.brush_button = tk.Button(
+        self.brush_button = self.make_toolbar_button(
             tool_grid,
-            text="ブラシ",
-            command=lambda: self.set_tool("brush"),
+            "ブラシ",
+            lambda: self.set_tool("brush"),
+            use_pack=False,
         )
-        self.fill_button = tk.Button(
+        self.fill_button = self.make_toolbar_button(
             tool_grid,
-            text="塗りつぶし",
-            command=lambda: self.set_tool("fill"),
+            "塗りつぶし",
+            lambda: self.set_tool("fill"),
+            use_pack=False,
         )
-        self.eraser_button = tk.Button(
+        self.eraser_button = self.make_toolbar_button(
             tool_grid,
-            text="消しゴム",
-            command=lambda: self.set_tool("eraser"),
+            "消しゴム",
+            lambda: self.set_tool("eraser"),
+            use_pack=False,
         )
-        self.eyedropper_button = tk.Button(
+        self.eyedropper_button = self.make_toolbar_button(
             tool_grid,
-            text="スポイト",
-            command=lambda: self.set_tool("picker"),
+            "スポイト",
+            lambda: self.set_tool("picker"),
+            use_pack=False,
         )
         for index, button in enumerate(
             (
