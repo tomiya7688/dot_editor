@@ -47,6 +47,15 @@ def check_backend() -> None:
     assert restored.size == 8
     assert restored.sample(2, 2) == (255, 0, 0, 255)
 
+    refined = PixelCanvas(4)
+    refined.paint(1, 1, (255, 0, 0, 255))
+    assert refined.split_cell(1, 1)
+    assert refined.paint(1, 1, (0, 0, 255, 255), child=(1, 0))
+    restored_refined = PixelCanvas.from_source(refined.to_source())
+    assert restored_refined.is_split(1, 1)
+    assert restored_refined.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+    assert restored_refined.render().getpixel((3, 2)) == (0, 0, 255, 255)
+
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / "export.png"
         canvas.save_png(output, 16)
@@ -64,8 +73,18 @@ def check_layers() -> None:
     layers.select_layer("背景")
     layers.paint(0, 0, (0, 0, 30, 255))
     assert layers.composite().getpixel((1, 1)) == (255, 0, 0, 255)
+    layers.select_layer("人物")
+    assert layers.split_cell(1, 1)
+    assert layers.paint(1, 1, (0, 0, 255, 255), child=(1, 0))
+    composite = layers.composite()
+    assert composite.size == (8, 8)
+    assert composite.getpixel((3, 2)) == (0, 0, 255, 255)
+
     restored = LayeredPixelCanvas.from_source(layers.to_source())
     assert set(restored.layers) == {"背景", "人物"}
+    restored.select_layer("人物")
+    assert restored.is_split(1, 1)
+    assert restored.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
 
 def run_cli(*arguments: str) -> None:
     result = subprocess.run(

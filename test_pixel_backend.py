@@ -22,4 +22,54 @@ with TemporaryDirectory() as directory:
     path = Path(directory) / "export.png"
     canvas.save_png(path, 16)
     assert Image.open(path).size == (16, 16)
+
+refined = PixelCanvas(4)
+assert refined.paint(1, 1, (255, 0, 0, 255))
+assert refined.split_cell(1, 1)
+for child_y in range(2):
+    for child_x in range(2):
+        assert refined.sample(1, 1, (child_x, child_y)) == (255, 0, 0, 255)
+
+assert refined.paint(1, 1, (0, 0, 255, 255), child=(1, 0))
+assert refined.paint(1, 1, (0, 0, 0, 0), erase=True, child=(0, 1))
+assert refined.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+assert refined.sample(1, 1, (0, 1))[3] == 0
+
+native = refined.render()
+assert native.size == (8, 8)
+assert native.getpixel((3, 2)) == (0, 0, 255, 255)
+assert native.getpixel((2, 3))[3] == 0
+
+refined_source = refined.to_source()
+assert refined_source["refined_cells"][0]["x"] == 1
+refined_restored = PixelCanvas.from_source(refined_source)
+assert refined_restored.is_split(1, 1)
+assert refined_restored.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+assert refined_restored.render().tobytes() == native.tobytes()
+
+legacy = PixelCanvas.from_source(
+    {
+        "canvas_size": 2,
+        "pixels": [
+            ["#112233", None],
+            [None, "#445566"],
+        ],
+    }
+)
+assert not legacy.has_refinements
+assert legacy.sample(0, 0) == (17, 34, 51, 255)
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "refined.png"
+    refined_restored.save_png(path)
+    with Image.open(path) as exported:
+        assert exported.size == (8, 8)
+        assert exported.getpixel((3, 2)) == (0, 0, 255, 255)
+        assert exported.getpixel((2, 3))[3] == 0
+
+assert refined_restored.upscale()
+assert refined_restored.size == 8
+assert not refined_restored.has_refinements
+assert refined_restored.sample(3, 2) == (0, 0, 255, 255)
+
 print("pixel backend ok")

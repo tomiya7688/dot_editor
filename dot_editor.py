@@ -24,8 +24,6 @@ class PixelEditor:
 
         # current_colorの初期設定（デフォルトは黒）
         self.current_color = (255, 255, 255)
-        self.refined_cells = set()
-        self.child_pixels = {}
         self.selected_cell = None
         self.tool = "brush"
         self.palette_colors = [(255, 255, 255), (0, 0, 0), (255, 80, 80), (255, 190, 70), (255, 240, 100), (90, 210, 130), (80, 180, 255), (170, 110, 255)]
@@ -186,8 +184,6 @@ class PixelEditor:
         old_image = getattr(self, "image", None)
 
         # 新しい画像と共有バックエンドを作成
-        self.refined_cells.clear()
-        self.child_pixels.clear()
         self.backend = LayeredPixelCanvas(self.num_pixels_x)
         try:
             self.refresh_composite()
@@ -253,8 +249,16 @@ class PixelEditor:
     def pan_canvas(self, event):
         self.canvas.scan_dragto(event.x, event.y, gain=1)
 
+    def _child_coordinate(self, x, y, image_x, image_y):
+        if not self.backend.is_split(x, y):
+            return None
+        half = max(1, self.pixel_size // 2)
+        child_x = min(1, max(0, (image_x - x * self.pixel_size) // half))
+        child_y = min(1, max(0, (image_y - y * self.pixel_size) // half))
+        return int(child_x), int(child_y)
+
     def paint_pixel(self, event):
-        """セルまたは細分化済みの子セルを塗る"""
+        """セルまたは細分化済みの子セルをバックエンド経由で塗る"""
         canvas_x = self.canvas.canvasx(event.x)
         canvas_y = self.canvas.canvasy(event.y)
         image_x = min(self.canvas_width - 1, max(0, int(canvas_x / self.zoom_factor)))
@@ -263,37 +267,28 @@ class PixelEditor:
         y = image_y // self.pixel_size
         if not (0 <= x < self.num_pixels_x and 0 <= y < self.num_pixels_y):
             return
+
+        child = self._child_coordinate(x, y, image_x, image_y)
         if self.tool == "picker":
-            self.current_color = self.image.getpixel((image_x, image_y))
+            self.current_color = self.backend.sample(x, y, child)[:3]
             self.tool = "brush"
             return
-        if isinstance(self.backend, LayeredPixelCanvas) and not self.refined_cells:
-            self.push_history()
-            color = tuple(self.current_color[:3]) + (255,)
-            if self.tool == "fill":
-                self.backend.fill(x, y, color)
-            else:
-                self.backend.paint(x, y, color, erase=self.tool == "eraser")
-            self.selected_cell = (x, y)
-            self.tool = "brush" if self.tool == "fill" else self.tool
-            self.refresh_composite()
-            self.update_canvas()
-            return
+
         self.push_history()
-        self.selected_cell = (x, y)
-        paint_color = (0, 0, 0, 0) if self.tool == "eraser" else self.current_color
-        if (x, y) in self.refined_cells:
-            half = max(1, self.pixel_size // 2)
-            child_x = min(1, max(0, (image_x - x * self.pixel_size) // half))
-            child_y = min(1, max(0, (image_y - y * self.pixel_size) // half))
-            self.child_pixels[(x, y)][child_y][child_x] = paint_color
-            left = x * self.pixel_size + child_x * half
-            top = y * self.pixel_size + child_y * half
-            self.draw.rectangle([left, top, left + half, top + half], fill=paint_color)
+        color = tuple(self.current_color[:3]) + (255,)
+        if self.tool == "fill":
+            self.backend.fill(x, y, color)
+            self.tool = "brush"
         else:
-            self.draw.rectangle([x * self.pixel_size, y * self.pixel_size,
-                                 (x + 1) * self.pixel_size, (y + 1) * self.pixel_size],
-                                fill=paint_color)
+            self.backend.paint(
+                x,
+                y,
+                color,
+                erase=self.tool == "eraser",
+                child=child,
+            )
+        self.selected_cell = (x, y)
+        self.refresh_composite()
         self.update_canvas()
 
     def activate_eyedropper(self):
@@ -306,14 +301,10 @@ class PixelEditor:
         self.tool = "eraser"
 
     def make_snapshot(self):
-        children = {key: [row[:] for row in value] for key, value in self.child_pixels.items()}
         return (
-            self.image.copy(),
             self.backend.to_source(),
             self.num_pixels_x,
             self.num_pixels_y,
-            set(self.refined_cells),
-            children,
         )
 
     def push_history(self):
@@ -324,16 +315,14 @@ class PixelEditor:
         self.future.clear()
 
     def restore_snapshot(self, snapshot):
-        self.image, source, self.num_pixels_x, self.num_pixels_y, refined, children = snapshot
+        source, self.num_pixels_x, self.num_pixels_y = snapshot
         self.backend = LayeredPixelCanvas.from_source(source)
-        self.refined_cells = set(refined)
-        self.child_pixels = {key: [row[:] for row in value] for key, value in children.items()}
         self.pixel_size = self.canvas_width // self.num_pixels_x
         display_width = round(self.canvas_width * self.zoom_factor)
         display_height = round(self.canvas_height * self.zoom_factor)
         self.canvas.config(width=min(self.canvas_width, display_width), height=min(self.canvas_height, display_height))
         self.canvas.configure(scrollregion=(0, 0, display_width, display_height))
-        self.draw = ImageDraw.Draw(self.image)
+        self.refresh_composite()
         self.refresh_layer_list()
         self.create_grid()
         self.update_canvas()
@@ -407,18 +396,18 @@ class PixelEditor:
             else:
                 flat = PixelCanvas.from_source(source)
                 self.backend = LayeredPixelCanvas(flat.size)
-                self.backend.active.image = flat.image
+                self.backend.layers = {"背景": flat}
+                self.backend.active_layer = "背景"
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             return
         self.num_pixels_x = self.backend.size
         self.num_pixels_y = self.backend.size
         self.refresh_composite()
-        self.refined_cells.clear()
-        self.child_pixels.clear()
         self.history.clear()
         self.future.clear()
         self.pixel_size = self.canvas_width // self.num_pixels_x
         self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
+        self.refresh_layer_list()
         self.create_grid()
         self.update_canvas()
 
@@ -437,38 +426,34 @@ class PixelEditor:
         self.update_canvas_size()
 
     def upscale_resolution(self):
-        """ドット数を倍にし、既存の絵を最近傍拡大で引き継ぐ"""
+        """ドット数を倍にし、既存の絵と分割セルを最近傍で引き継ぐ"""
         next_size = self.num_pixels_x * 2
         if next_size > 256:
             return
+        self.push_history()
         if not self.backend.upscale():
+            self.history.pop()
             return
         self.num_pixels_x = self.backend.size
         self.num_pixels_y = self.backend.size
         self.refresh_composite()
         self.pixel_size = self.canvas_width // self.num_pixels_x
-        self.refined_cells.clear()
-        self.child_pixels.clear()
+        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
         self.create_grid()
         self.update_canvas()
 
     def split_selected_cell(self):
-        """選択中の親セルを2x2の子セルへ細分化する"""
+        """選択中の親セルをバックエンド上で2x2の子セルへ細分化する"""
         if self.selected_cell is None:
             return
         x, y = self.selected_cell
-        if (x, y) in self.refined_cells:
+        if self.backend.is_split(x, y):
             return
-        base_color = self.image.getpixel((min(self.canvas_width - 1, x * self.pixel_size + self.pixel_size // 2), min(self.canvas_height - 1, y * self.pixel_size + self.pixel_size // 2)))
         self.push_history()
-        self.refined_cells.add((x, y))
-        self.child_pixels[(x, y)] = [[base_color, base_color], [base_color, base_color]]
-        half = max(1, self.pixel_size // 2)
-        for child_y in range(2):
-            for child_x in range(2):
-                left = x * self.pixel_size + child_x * half
-                top = y * self.pixel_size + child_y * half
-                self.draw.rectangle([left, top, left + half, top + half], fill=base_color)
+        if not self.backend.split_cell(x, y):
+            self.history.pop()
+            return
+        self.refresh_composite()
         self.update_canvas()
 
     def change_size(self):
