@@ -43,9 +43,20 @@ def main() -> int:
     edit_parser = subparsers.add_parser("edit")
     edit_parser.add_argument("--project", type=Path, required=True)
     edit_parser.add_argument("--output", type=Path)
+    edit_parser.add_argument("--split", nargs=2, metavar=("X", "Y"))
     edit_parser.add_argument("--paint", nargs=3, metavar=("X", "Y", "COLOR"))
+    edit_parser.add_argument(
+        "--paint-child",
+        nargs=5,
+        metavar=("X", "Y", "CHILD_X", "CHILD_Y", "COLOR"),
+    )
     edit_parser.add_argument("--fill", nargs=3, metavar=("X", "Y", "COLOR"))
     edit_parser.add_argument("--erase", nargs=2, metavar=("X", "Y"))
+    edit_parser.add_argument(
+        "--erase-child",
+        nargs=4,
+        metavar=("X", "Y", "CHILD_X", "CHILD_Y"),
+    )
     edit_parser.add_argument("--upscale", action="store_true")
     edit_parser.add_argument("--import-image", type=Path)
     edit_parser.add_argument("--add-layer")
@@ -88,17 +99,45 @@ def main() -> int:
         else:
             canvas.import_image(args.import_image)
         changed = True
+
+    if args.split:
+        x, y = (int(value) for value in args.split)
+        changed = canvas.split_cell(x, y) or changed
+
     if args.paint:
         x, y, color = args.paint
         changed = canvas.paint(int(x), int(y), parse_color(color)) or changed
+
+    if args.paint_child:
+        x, y, child_x, child_y, color = args.paint_child
+        changed = canvas.paint(
+            int(x),
+            int(y),
+            parse_color(color),
+            child=(int(child_x), int(child_y)),
+        ) or changed
+
     if args.fill:
         x, y, color = args.fill
         changed = canvas.fill(int(x), int(y), parse_color(color)) > 0 or changed
+
     if args.erase:
         x, y = args.erase
         changed = canvas.paint(int(x), int(y), (0, 0, 0, 0), erase=True) or changed
+
+    if args.erase_child:
+        x, y, child_x, child_y = args.erase_child
+        changed = canvas.paint(
+            int(x),
+            int(y),
+            (0, 0, 0, 0),
+            erase=True,
+            child=(int(child_x), int(child_y)),
+        ) or changed
+
     if args.upscale:
         changed = canvas.upscale() or changed
+
     if not changed:
         parser.error("edit requires an operation")
     save_project(canvas, args.output or args.project)

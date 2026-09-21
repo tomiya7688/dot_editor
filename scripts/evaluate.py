@@ -131,6 +131,52 @@ def check_cli() -> None:
         with Image.open(image) as exported:
             assert exported.size == (16, 16)
 
+        refined = root / "refined.json"
+        refined_png = root / "refined.png"
+        run_cli("new", "--size", "4", "--output", str(refined))
+        run_cli(
+            "edit",
+            "--project",
+            str(refined),
+            "--split",
+            "1",
+            "1",
+            "--paint",
+            "1",
+            "1",
+            "#FF0000",
+            "--paint-child",
+            "1",
+            "1",
+            "1",
+            "0",
+            "#0000FF",
+            "--erase-child",
+            "1",
+            "1",
+            "0",
+            "1",
+        )
+        run_cli(
+            "export",
+            "--project",
+            str(refined),
+            "--output",
+            str(refined_png),
+            "--size",
+            "8",
+        )
+
+        refined_source = json.loads(refined.read_text(encoding="utf-8"))
+        assert refined_source["canvas_size"] == 4
+        assert len(refined_source["refined_cells"]) == 1
+        children = refined_source["refined_cells"][0]["children"]
+        assert children[0][1] == "#0000FF"
+        assert children[1][0] is None
+        with Image.open(refined_png) as exported:
+            assert exported.size == (8, 8)
+            assert exported.getpixel((3, 2)) == (0, 0, 255, 255)
+            assert exported.getpixel((2, 3))[3] == 0
 
         layered = root / "layered.json"
         layered_png = root / "layered.png"
