@@ -67,9 +67,33 @@ with TemporaryDirectory() as directory:
         assert exported.getpixel((3, 2)) == (0, 0, 255, 255)
         assert exported.getpixel((2, 3))[3] == 0
 
-assert refined_restored.upscale()
+assert refined_restored.resize(8)
 assert refined_restored.size == 8
 assert not refined_restored.has_refinements
 assert refined_restored.sample(3, 2) == (0, 0, 255, 255)
+
+resized = PixelCanvas(2)
+resized.paint(0, 0, (255, 0, 0, 255))
+resized.paint(1, 0, (0, 255, 0, 255))
+resized.paint(0, 1, (0, 0, 255, 255))
+resized.paint(1, 1, (255, 255, 0, 255))
+original = resized.to_source()
+assert resized.resize(4)
+assert resized.size == 4
+assert resized.sample(0, 0) == (255, 0, 0, 255)
+assert resized.sample(1, 1) == (255, 0, 0, 255)
+assert resized.sample(2, 0) == (0, 255, 0, 255)
+assert resized.sample(0, 2) == (0, 0, 255, 255)
+assert resized.sample(3, 3) == (255, 255, 0, 255)
+assert PixelCanvas.from_source(resized.to_source()).to_source() == resized.to_source()
+assert resized.resize(2)
+assert resized.to_source() == original
+
+try:
+    resized.resize(3)
+except ValueError:
+    pass
+else:
+    raise AssertionError("unsupported logical size must be rejected")
 
 print("pixel backend ok")

@@ -55,6 +55,9 @@ def check_backend() -> None:
     assert restored_refined.is_split(1, 1)
     assert restored_refined.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
     assert restored_refined.render().getpixel((3, 2)) == (0, 0, 255, 255)
+    assert restored_refined.resize(8)
+    assert not restored_refined.has_refinements
+    assert restored_refined.sample(3, 2) == (0, 0, 255, 255)
 
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory) / "export.png"
@@ -138,6 +141,18 @@ def check_display_resize() -> None:
     assert editor.image.size == (800, 480)
     assert set(editor.backend.layers) == {"背景", "人物"}
     assert editor.backend.is_split(1, 1)
+
+    assert editor.resize_logical_canvas(8)
+    assert editor.backend is backend
+    assert editor.backend.size == 8
+    assert {layer.size for layer in editor.backend.layers.values()} == {8}
+    assert not editor.backend.has_refinements
+    assert editor.backend.sample(3, 2) == (0, 0, 255, 255)
+    assert len(editor.history) == len(history_before) + 1
+    assert editor.future == []
+    resized_source = editor.backend.to_source()
+    restored_resized = LayeredPixelCanvas.from_source(resized_source)
+    assert restored_resized.to_source() == resized_source
 
     editor.reset_canvas_model()
     assert editor.backend is not backend

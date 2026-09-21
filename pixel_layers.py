@@ -81,11 +81,18 @@ class LayeredPixelCanvas:
     def fill(self, x: int, y: int, color: tuple[int, ...], erase: bool = False) -> int:
         return self.active.fill(x, y, color, erase)
 
-    def upscale(self) -> bool:
-        changed = False
+    def resize(self, target: int) -> bool:
+        if target == self.size:
+            return False
+        PixelCanvas._validate_size(target)
         for layer in self.layers.values():
-            changed = layer.upscale() or changed
-        return changed
+            layer.resize(target)
+        return True
+
+    def upscale(self) -> bool:
+        if self.size >= PixelCanvas.SUPPORTED_SIZES[-1]:
+            return False
+        return self.resize(self.size * 2)
 
     def composite(self) -> Image.Image:
         target_size = self.native_size

@@ -215,6 +215,30 @@ class PixelEditor:
         self.refresh_layer_list()
         self.update_canvas_size()
 
+    def resize_logical_canvas(self, size):
+        """既存作品を保持したまま論理解像度を最近傍変換する"""
+        target = int(size)
+        if target not in PixelCanvas.SUPPORTED_SIZES:
+            raise ValueError("unsupported canvas size")
+        if target == self.backend.size:
+            return False
+
+        self.push_history()
+        if not self.backend.resize(target):
+            self.history.pop()
+            return False
+
+        self.num_pixels_x = target
+        self.num_pixels_y = target
+        self.selected_cell = None
+        self.pixel_size = max(1, self.canvas_width // self.num_pixels_x)
+        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
+        self.refresh_composite()
+        self.refresh_layer_list()
+        self.create_grid()
+        self.update_canvas()
+        return True
+
     def create_grid(self):
         """ズーム倍率に合わせてグリッドを描画"""
         self.canvas.delete("all")
@@ -445,21 +469,11 @@ class PixelEditor:
         self.reset_canvas_model()
 
     def upscale_resolution(self):
-        """ドット数を倍にし、既存の絵と分割セルを最近傍で引き継ぐ"""
+        """論理解像度を1段階上げ、既存作品を最近傍で保持する"""
         next_size = self.num_pixels_x * 2
-        if next_size > 256:
+        if next_size not in PixelCanvas.SUPPORTED_SIZES:
             return
-        self.push_history()
-        if not self.backend.upscale():
-            self.history.pop()
-            return
-        self.num_pixels_x = self.backend.size
-        self.num_pixels_y = self.backend.size
-        self.refresh_composite()
-        self.pixel_size = self.canvas_width // self.num_pixels_x
-        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
-        self.create_grid()
-        self.update_canvas()
+        self.resize_logical_canvas(next_size)
 
     def split_selected_cell(self):
         """選択中の親セルをバックエンド上で2x2の子セルへ細分化する"""
@@ -476,16 +490,16 @@ class PixelEditor:
         self.update_canvas()
 
     def change_size(self):
-        """論理解像度を変更する（現時点では明示的な再初期化）"""
+        """既存作品を保持したまま論理解像度を変更する"""
         size = tk.simpledialog.askinteger(
             "サイズ変更",
-            "サイズを選択してください（4, 8, 16, 32 など）",
+            "サイズを選択してください（2, 4, 8, 16, 32, 64, 128, 256）",
             minvalue=2,
             maxvalue=256,
         )
         if size is None or size not in PixelCanvas.SUPPORTED_SIZES:
             return
-        self.reset_canvas_model(size)
+        self.resize_logical_canvas(size)
 
     def change_canvas_size(self):
         """表示キャンバスの大きさだけを変更する"""
