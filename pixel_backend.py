@@ -22,6 +22,7 @@ class PixelCanvas:
     SUPPORTED_SIZES = PRESET_SIZES
     MAX_RESOLUTION = 4096
     MAX_DETAIL_DIMENSION = 8192
+    MAX_DETAIL_PIXELS = 1_048_576
     HISTORY_LIMIT = 50
 
     def __init__(self, size: int | Resolution = 16, height: int | None = None) -> None:
@@ -97,6 +98,13 @@ class PixelCanvas:
         detail_width, detail_height = self._detail_image.size
         target_width = self._aligned_dimension(detail_width, width)
         target_height = self._aligned_dimension(detail_height, height)
+        if target_width * target_height > self.MAX_DETAIL_PIXELS:
+            target_width = max(detail_width, width)
+            target_height = max(detail_height, height)
+        if target_width > self.MAX_DETAIL_DIMENSION or target_height > self.MAX_DETAIL_DIMENSION:
+            raise ValueError("detail resolution exceeds safe maximum")
+        if target_width * target_height > self.MAX_DETAIL_PIXELS:
+            raise ValueError("detail resolution exceeds safe pixel budget")
         if (target_width, target_height) != self._detail_image.size:
             self._detail_image = self._detail_image.resize(
                 (target_width, target_height), Image.Resampling.NEAREST
@@ -645,6 +653,7 @@ class PixelCanvas:
             if (
                 detail_width > cls.MAX_DETAIL_DIMENSION
                 or detail_height > cls.MAX_DETAIL_DIMENSION
+                or detail_width * detail_height > cls.MAX_DETAIL_PIXELS
             ):
                 raise ValueError("detail resolution exceeds maximum")
             canvas._detail_image = cls._image_from_source_pixels(
