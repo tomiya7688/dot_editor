@@ -55,6 +55,22 @@ def check_backend() -> None:
     assert restored_refined.is_split(1, 1)
     assert restored_refined.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
     assert restored_refined.render().getpixel((3, 2)) == (0, 0, 255, 255)
+
+    assert restored_refined.paint(
+        1,
+        1,
+        (0, 255, 0, 255),
+        detail_policy="preserve",
+    )
+    preserved = PixelCanvas.from_source(restored_refined.to_source())
+    assert preserved.sample(1, 1) == (0, 255, 0, 255)
+    assert preserved.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+    assert preserved.discard_detail(1, 1) == 1
+    assert not preserved.is_split(1, 1)
+    assert preserved.undo()
+    assert preserved.is_split(1, 1)
+    assert preserved.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+
     assert restored_refined.resize(8)
     assert not restored_refined.has_refinements
     assert restored_refined.sample(3, 2) == (0, 0, 255, 255)
