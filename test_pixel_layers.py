@@ -55,8 +55,6 @@ assert {layer.size for layer in resizable_restored.layers.values()} == {2}
 resizable_restored.select_layer("人物")
 assert resizable_restored.sample(1, 1) == (255, 0, 0, 255)
 
-valid_layer = PixelCanvas = None
-
 def expect_invalid(source):
     try:
         LayeredPixelCanvas.from_source(source)
