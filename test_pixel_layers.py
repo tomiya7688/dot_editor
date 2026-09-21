@@ -69,6 +69,12 @@ assert detail_layers.paint(
 assert detail_layers.is_split(1, 1)
 assert detail_layers.sample(1, 1) == (0, 255, 0, 255)
 assert detail_layers.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+assert detail_layers.collapse_cell(1, 1)
+assert not detail_layers.is_split(1, 1)
+assert detail_layers.has_detail_at(1, 1)
+assert detail_layers.has_detail
+assert detail_layers.split_cell(1, 1)
+assert detail_layers.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
 assert detail_layers.discard_detail(1, 1) == 1
 assert not detail_layers.is_split(1, 1)
 assert detail_layers.active.undo()
