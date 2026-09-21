@@ -5,7 +5,7 @@ from typing import Any
 
 from PIL import Image
 
-from pixel_backend import PixelCanvas
+from pixel_backend import ChildCoordinate, PixelCanvas
 
 
 class LayeredPixelCanvas:
@@ -22,6 +22,14 @@ class LayeredPixelCanvas:
     @property
     def active(self) -> PixelCanvas:
         return self.layers[self.active_layer]
+
+    @property
+    def has_refinements(self) -> bool:
+        return any(layer.has_refinements for layer in self.layers.values())
+
+    @property
+    def native_size(self) -> int:
+        return self.size * 2 if self.has_refinements else self.size
 
     def add_layer(self, name: str) -> None:
         clean = str(name).strip()
@@ -46,10 +54,31 @@ class LayeredPixelCanvas:
         del self.layers[target]
         self.active_layer = next(iter(self.layers))
 
-    def paint(self, x: int, y: int, color: tuple[int, int, int, int], erase: bool = False) -> bool:
-        return self.active.paint(x, y, color, erase)
+    def is_split(self, x: int, y: int) -> bool:
+        return self.active.is_split(x, y)
 
-    def fill(self, x: int, y: int, color: tuple[int, int, int, int], erase: bool = False) -> int:
+    def split_cell(self, x: int, y: int) -> bool:
+        return self.active.split_cell(x, y)
+
+    def paint(
+        self,
+        x: int,
+        y: int,
+        color: tuple[int, ...],
+        erase: bool = False,
+        child: ChildCoordinate | None = None,
+    ) -> bool:
+        return self.active.paint(x, y, color, erase, child)
+
+    def sample(
+        self,
+        x: int,
+        y: int,
+        child: ChildCoordinate | None = None,
+    ) -> tuple[int, int, int, int]:
+        return self.active.sample(x, y, child)
+
+    def fill(self, x: int, y: int, color: tuple[int, ...], erase: bool = False) -> int:
         return self.active.fill(x, y, color, erase)
 
     def upscale(self) -> bool:
@@ -59,16 +88,17 @@ class LayeredPixelCanvas:
         return changed
 
     def composite(self) -> Image.Image:
-        result = Image.new("RGBA", (self.size, self.size), (0, 0, 0, 0))
+        target_size = self.native_size
+        result = Image.new("RGBA", (target_size, target_size), (0, 0, 0, 0))
         for layer in self.layers.values():
-            result.alpha_composite(layer.image)
+            result.alpha_composite(layer.render(target_size))
         return result
 
     def save_png(self, path: str | Path, export_size: int | None = None) -> None:
         output = self.composite()
         if export_size is not None:
-            if export_size < self.size:
-                raise ValueError("export size cannot be smaller than canvas size")
+            if export_size < output.width:
+                raise ValueError("export size cannot be smaller than native canvas size")
             output = output.resize((export_size, export_size), Image.Resampling.NEAREST)
         output.save(path, "PNG")
 
@@ -90,15 +120,19 @@ class LayeredPixelCanvas:
         first_source = entries[0].get("source") if isinstance(entries[0], dict) else None
         if not isinstance(first_source, dict):
             raise ValueError("invalid layer source")
-        model = cls(first_source["canvas_size"])
+        first_canvas = PixelCanvas.from_source(first_source)
+        model = cls(first_canvas.size)
         model.layers.clear()
-        for entry in entries:
+        for index, entry in enumerate(entries):
             if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
                 raise ValueError("invalid layer entry")
             layer_source = entry.get("source")
             if not isinstance(layer_source, dict):
                 raise ValueError("invalid layer source")
-            model.layers[entry["name"]] = PixelCanvas.from_source(layer_source)
+            layer = first_canvas if index == 0 else PixelCanvas.from_source(layer_source)
+            if layer.size != first_canvas.size:
+                raise ValueError("all layers must use the same canvas size")
+            model.layers[entry["name"]] = layer
         active = source.get("active_layer", next(iter(model.layers)))
         model.select_layer(active if isinstance(active, str) else next(iter(model.layers)))
         return model
