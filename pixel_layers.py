@@ -28,6 +28,10 @@ class LayeredPixelCanvas:
         return any(layer.has_refinements for layer in self.layers.values())
 
     @property
+    def has_detail(self) -> bool:
+        return any(layer.has_detail for layer in self.layers.values())
+
+    @property
     def native_size(self) -> int:
         return self.size * 2 if self.has_refinements else self.size
 
@@ -59,6 +63,12 @@ class LayeredPixelCanvas:
 
     def split_cell(self, x: int, y: int) -> bool:
         return self.active.split_cell(x, y)
+
+    def collapse_cell(self, x: int, y: int, discard_detail: bool = False) -> bool:
+        return self.active.collapse_cell(x, y, discard_detail=discard_detail)
+
+    def has_detail_at(self, x: int, y: int) -> bool:
+        return self.active.has_detail_at(x, y)
 
     def paint(
         self,
