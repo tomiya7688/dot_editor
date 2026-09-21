@@ -5,7 +5,7 @@ from typing import Any
 
 from PIL import Image
 
-from pixel_backend import ChildCoordinate, PixelCanvas
+from pixel_backend import ChildCoordinate, DetailPolicy, PixelCanvas
 
 
 class LayeredPixelCanvas:
@@ -67,8 +67,16 @@ class LayeredPixelCanvas:
         color: tuple[int, ...],
         erase: bool = False,
         child: ChildCoordinate | None = None,
+        detail_policy: DetailPolicy = "preserve",
     ) -> bool:
-        return self.active.paint(x, y, color, erase, child)
+        return self.active.paint(
+            x,
+            y,
+            color,
+            erase=erase,
+            child=child,
+            detail_policy=detail_policy,
+        )
 
     def sample(
         self,
@@ -78,8 +86,24 @@ class LayeredPixelCanvas:
     ) -> tuple[int, int, int, int]:
         return self.active.sample(x, y, child)
 
-    def fill(self, x: int, y: int, color: tuple[int, ...], erase: bool = False) -> int:
-        return self.active.fill(x, y, color, erase)
+    def fill(
+        self,
+        x: int,
+        y: int,
+        color: tuple[int, ...],
+        erase: bool = False,
+        detail_policy: DetailPolicy = "preserve",
+    ) -> int:
+        return self.active.fill(
+            x,
+            y,
+            color,
+            erase=erase,
+            detail_policy=detail_policy,
+        )
+
+    def discard_detail(self, x: int, y: int, width: int = 1, height: int = 1) -> int:
+        return self.active.discard_detail(x, y, width, height)
 
     def resize(self, target: int) -> bool:
         if target == self.size:
