@@ -98,11 +98,27 @@ assert detail_policy.sample(1, 1) == (0, 255, 0, 255)
 assert detail_policy.is_split(1, 1)
 assert detail_policy.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
 
+assert detail_policy.collapse_cell(1, 1)
+assert not detail_policy.is_split(1, 1)
+assert detail_policy.has_detail_at(1, 1)
+assert detail_policy.has_detail
+assert not detail_policy.has_refinements
+assert detail_policy.render().size == (4, 4)
+assert detail_policy.sample(1, 1) == (0, 255, 0, 255)
+assert detail_policy.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+
 preserved_source = detail_policy.to_source()
+assert preserved_source["refined_cells"][0]["expanded"] is False
 preserved_restored = PixelCanvas.from_source(preserved_source)
+assert not preserved_restored.is_split(1, 1)
+assert preserved_restored.has_detail_at(1, 1)
 assert preserved_restored.sample(1, 1) == (0, 255, 0, 255)
 assert preserved_restored.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
+assert preserved_restored.split_cell(1, 1)
+assert preserved_restored.is_split(1, 1)
+assert preserved_restored.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
 
+assert detail_policy.split_cell(1, 1)
 assert detail_policy.paint(
     1,
     1,
