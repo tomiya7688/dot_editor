@@ -158,11 +158,11 @@ else:
     raise AssertionError("invalid detail policy must be rejected")
 
 try:
-    resized.resize(3)
+    resized.resize(0)
 except ValueError:
     pass
 else:
-    raise AssertionError("unsupported logical size must be rejected")
+    raise AssertionError("non-positive logical size must be rejected")
 
 try:
     PixelCanvas.from_source(["not", "an", "object"])  # type: ignore[arg-type]

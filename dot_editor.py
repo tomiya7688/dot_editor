@@ -1,320 +1,150 @@
 import tkinter as tk
-import json
 from pathlib import Path
+from tkinter import filedialog, messagebox, simpledialog
 from tkinter.colorchooser import askcolor
-from PIL import Image, ImageDraw, ImageTk
-import tkinter.simpledialog
-from tkinter import filedialog
+
+from PIL import Image, ImageTk
+
 from pixel_backend import PixelCanvas
+from pixel_cli import load_project as read_project, save_project as write_project
 from pixel_layers import LayeredPixelCanvas
+from resolution_field import resolution
+
 
 class PixelEditor:
     def __init__(self, master):
         self.master = master
         self.master.title("ドット絵エディタ")
         self.master.configure(bg="#0b0f14")
-
-        # 初期設定
-        self.canvas_width = 640  # 初期キャンバスの幅（640px）
-        self.canvas_height = 640  # 初期キャンバスの高さ（640px）
-        self.num_pixels_x = 2  # 初期ドット数（横方向）
-        self.num_pixels_y = 2  # 初期ドット数（縦方向）
-
-        self.pixel_size = self.canvas_width // self.num_pixels_x  # ドットのサイズ（初期設定）
-
-        # current_colorの初期設定（デフォルトは黒）
+        self.canvas_width = self.canvas_height = 640
+        self.num_pixels_x = self.num_pixels_y = 2
         self.current_color = (255, 255, 255)
         self.selected_cell = None
         self.tool = "brush"
-        self.palette_colors = [(255, 255, 255), (0, 0, 0), (255, 80, 80), (255, 190, 70), (255, 240, 100), (90, 210, 130), (80, 180, 255), (170, 110, 255)]
-        self.history = []
-        self.future = []
-        self.backend = LayeredPixelCanvas(self.num_pixels_x)
+        self.palette_colors = [(255, 255, 255), (0, 0, 0), (255, 80, 80), (255, 190, 70),
+                               (255, 240, 100), (90, 210, 130), (80, 180, 255), (170, 110, 255)]
+        self.history, self.future = [], []
+        self.backend = LayeredPixelCanvas(2)
         self.zoom_factor = 1.0
-        self.display_pixel_size = self.pixel_size
-
-        # キャンバスの作成
-        self.canvas = tk.Canvas(self.master, bg="#111820", highlightthickness=1, highlightbackground="#3b4654")
-        self.canvas.grid(row=0, column=0, rowspan=5)  # キャンバスをgridの左側に配置
-
-        # 操作を機能カテゴリごとに分けたサイドバー
-        sidebar = tk.Frame(self.master, bg="#0b0f14")
-        sidebar.grid(row=0, column=1, padx=10, pady=10, sticky="n")
-
-        tool_group = self.create_toolbar_group(sidebar, "描画ツール")
-        tool_grid = tk.Frame(tool_group, bg="#101820")
-        tool_grid.pack(fill="x", padx=6, pady=(0, 6))
-
-        self.brush_button = self.make_toolbar_button(
-            tool_grid,
-            "ブラシ",
-            lambda: self.set_tool("brush"),
-            use_pack=False,
-        )
-        self.fill_button = self.make_toolbar_button(
-            tool_grid,
-            "塗りつぶし",
-            lambda: self.set_tool("fill"),
-            use_pack=False,
-        )
-        self.eraser_button = self.make_toolbar_button(
-            tool_grid,
-            "消しゴム",
-            lambda: self.set_tool("eraser"),
-            use_pack=False,
-        )
-        self.eyedropper_button = self.make_toolbar_button(
-            tool_grid,
-            "スポイト",
-            lambda: self.set_tool("picker"),
-            use_pack=False,
-        )
-        for index, button in enumerate(
-            (
-                self.brush_button,
-                self.fill_button,
-                self.eraser_button,
-                self.eyedropper_button,
-            )
-        ):
-            button.grid(
-                row=index // 2,
-                column=index % 2,
-                padx=2,
-                pady=2,
-                sticky="ew",
-            )
-            tool_grid.grid_columnconfigure(index % 2, weight=1)
-
-        self.split_button = self.make_toolbar_button(
-            tool_group,
-            "選択セルを4分割",
-            self.split_selected_cell,
-        )
-        self.tool_status_label = tk.Label(
-            tool_group,
-            text="現在: ブラシ",
-            bg="#101820",
-            fg="#a9c7df",
-            anchor="w",
-        )
-        self.tool_status_label.pack(fill="x", padx=8, pady=(2, 6))
-        self.tool_buttons = {
-            "brush": self.brush_button,
-            "fill": self.fill_button,
-            "eraser": self.eraser_button,
-            "picker": self.eyedropper_button,
-        }
-
-        color_group = self.create_toolbar_group(sidebar, "色")
-        self.color_button = self.make_toolbar_button(
-            color_group,
-            "色を選ぶ",
-            self.choose_color,
-        )
-        palette_frame = tk.Frame(color_group, bg="#101820")
-        palette_frame.pack(padx=6, pady=(0, 6))
-        self.palette_buttons = []
-        for index, palette_color in enumerate(self.palette_colors):
-            palette_button = tk.Button(
-                palette_frame,
-                width=2,
-                height=1,
-                bg=self.rgb_to_hex(palette_color),
-                command=lambda color=palette_color: self.set_palette_color(color),
-                relief="flat",
-            )
-            palette_button.grid(row=index // 4, column=index % 4, padx=1, pady=1)
-            self.palette_buttons.append(palette_button)
-
-        layer_group = self.create_toolbar_group(sidebar, "レイヤー")
-        self.layer_list = tk.Listbox(
-            layer_group,
-            height=4,
-            width=20,
-            bg="#111820",
-            fg="#f0f3f6",
-            selectbackground="#3f6685",
-            highlightthickness=0,
-        )
-        self.layer_list.pack(fill="x", padx=6, pady=(0, 4))
-        self.layer_list.bind("<<ListboxSelect>>", self.select_layer)
-        layer_buttons = tk.Frame(layer_group, bg="#101820")
-        layer_buttons.pack(fill="x", padx=6, pady=(0, 6))
-        self.add_layer_button = self.make_toolbar_button(
-            layer_buttons,
-            "追加",
-            self.add_layer,
-            use_pack=False,
-        )
-        self.remove_layer_button = self.make_toolbar_button(
-            layer_buttons,
-            "削除",
-            self.remove_layer,
-            use_pack=False,
-        )
-        self.add_layer_button.grid(row=0, column=0, padx=(0, 2), sticky="ew")
-        self.remove_layer_button.grid(row=0, column=1, padx=(2, 0), sticky="ew")
-        layer_buttons.grid_columnconfigure(0, weight=1)
-        layer_buttons.grid_columnconfigure(1, weight=1)
-
-        view_group = self.create_toolbar_group(sidebar, "表示・解像度")
-        self.size_button = self.make_toolbar_button(
-            view_group,
-            "論理解像度を変更",
-            self.change_size,
-        )
-        self.canvas_size_button = self.make_toolbar_button(
-            view_group,
-            "表示サイズを変更",
-            self.change_canvas_size,
-        )
-        self.upscale_button = self.make_toolbar_button(
-            view_group,
-            "解像度アップ",
-            self.upscale_resolution,
-        )
-        zoom_buttons = tk.Frame(view_group, bg="#101820")
-        zoom_buttons.pack(fill="x", padx=6, pady=(0, 6))
-        self.zoom_out_button = self.make_toolbar_button(
-            zoom_buttons,
-            "ズーム−",
-            self.zoom_out,
-            use_pack=False,
-        )
-        self.zoom_in_button = self.make_toolbar_button(
-            zoom_buttons,
-            "ズーム＋",
-            self.zoom_in,
-            use_pack=False,
-        )
-        self.zoom_out_button.grid(row=0, column=0, padx=(0, 2), sticky="ew")
-        self.zoom_in_button.grid(row=0, column=1, padx=(2, 0), sticky="ew")
-        zoom_buttons.grid_columnconfigure(0, weight=1)
-        zoom_buttons.grid_columnconfigure(1, weight=1)
-
-        file_group = self.create_toolbar_group(sidebar, "ファイル・編集")
-        history_buttons = tk.Frame(file_group, bg="#101820")
-        history_buttons.pack(fill="x", padx=6, pady=(0, 4))
-        self.undo_button = self.make_toolbar_button(
-            history_buttons,
-            "元に戻す",
-            self.undo,
-            use_pack=False,
-        )
-        self.redo_button = self.make_toolbar_button(
-            history_buttons,
-            "やり直す",
-            self.redo,
-            use_pack=False,
-        )
-        self.undo_button.grid(row=0, column=0, padx=(0, 2), sticky="ew")
-        self.redo_button.grid(row=0, column=1, padx=(2, 0), sticky="ew")
-        history_buttons.grid_columnconfigure(0, weight=1)
-        history_buttons.grid_columnconfigure(1, weight=1)
-
-        self.import_button = self.make_toolbar_button(
-            file_group,
-            "画像を読み込む",
-            self.import_image,
-        )
-        self.save_button = self.make_toolbar_button(
-            file_group,
-            "PNG保存",
-            self.save_image,
-        )
-        self.save_project_button = self.make_toolbar_button(
-            file_group,
-            "プロジェクト保存",
-            self.save_project,
-        )
-        self.load_project_button = self.make_toolbar_button(
-            file_group,
-            "プロジェクト読込",
-            self.load_project,
-        )
-        self.reset_button = self.make_toolbar_button(
-            file_group,
-            "作品をリセット",
-            self.reset_canvas,
-        )
-        self.refresh_tool_state()
-
-        # 初期キャンバスサイズを設定
+        self.detail_policy = tk.StringVar(master=master, value="preserve")
+        self.canvas = tk.Canvas(master, bg="#111820", highlightthickness=1, highlightbackground="#3b4654")
+        self.canvas.grid(row=0, column=0, sticky="n")
+        self.build_sidebar()
         self.update_canvas_size()
         self.refresh_layer_list()
-
-        # ドット絵を描く
-        self.canvas.bind("<Button-1>", self.paint_pixel)  # 左クリックで色を塗る
+        self.canvas.bind("<Button-1>", self.paint_pixel)
+        self.canvas.bind("<B1-Motion>", self.paint_pixel)
         self.master.bind("<Control-z>", lambda event: self.undo())
         self.master.bind("<Control-y>", lambda event: self.redo())
-        self.canvas.bind("<B1-Motion>", self.paint_pixel)  # クリックしたまま移動した場合にも色を塗る
         self.canvas.bind("<ButtonPress-2>", self.begin_pan)
         self.canvas.bind("<B2-Motion>", self.pan_canvas)
 
+    def build_sidebar(self):
+        # Scrollable so the resolution/detail controls do not hide file actions.
+        frame = tk.Frame(self.master, bg="#0b0f14")
+        frame.grid(row=0, column=1, padx=10, pady=10, sticky="ns")
+        viewport = tk.Canvas(frame, bg="#0b0f14", width=240, height=640, highlightthickness=0)
+        scrollbar = tk.Scrollbar(frame, orient="vertical", command=viewport.yview)
+        viewport.configure(yscrollcommand=scrollbar.set)
+        viewport.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        sidebar = tk.Frame(viewport, bg="#0b0f14")
+        window = viewport.create_window((0, 0), window=sidebar, anchor="nw", width=240)
+        sidebar.bind("<Configure>", lambda event: viewport.configure(scrollregion=viewport.bbox("all")))
+        viewport.bind("<Configure>", lambda event: viewport.itemconfigure(window, width=event.width))
+        tool_group = self.create_toolbar_group(sidebar, "描画ツール")
+        tool_grid = tk.Frame(tool_group, bg="#101820")
+        tool_grid.pack(fill="x", padx=6, pady=(0, 6))
+        self.tool_buttons = {}
+        tools = [("brush", "ブラシ", "brush_button"), ("fill", "塗りつぶし", "fill_button"),
+                 ("eraser", "消しゴム", "eraser_button"), ("picker", "スポイト", "eyedropper_button")]
+        for index, (name, title, attr) in enumerate(tools):
+            button = self.make_toolbar_button(tool_grid, title, lambda name=name: self.set_tool(name), False)
+            button.grid(row=index // 2, column=index % 2, padx=2, pady=2, sticky="ew")
+            tool_grid.grid_columnconfigure(index % 2, weight=1)
+            self.tool_buttons[name] = button
+            setattr(self, attr, button)
+        self.split_button = self.make_toolbar_button(tool_group, "選択セルを4分割", self.split_selected_cell)
+        self.collapse_button = self.make_toolbar_button(tool_group, "選択セルを折りたたむ", self.collapse_selected_cell)
+        self.discard_button = self.make_toolbar_button(tool_group, "選択セルの細部を破棄", self.discard_selected_detail)
+        self.tool_status_label = tk.Label(tool_group, bg="#101820", fg="#a9c7df", anchor="w")
+        self.tool_status_label.pack(fill="x", padx=8, pady=(2, 6))
+        color_group = self.create_toolbar_group(sidebar, "色")
+        self.color_button = self.make_toolbar_button(color_group, "色を選ぶ", self.choose_color)
+        palette = tk.Frame(color_group, bg="#101820")
+        palette.pack(padx=6, pady=(0, 6))
+        self.palette_buttons = []
+        for index, color in enumerate(self.palette_colors):
+            button = tk.Button(palette, width=2, height=1, bg=self.rgb_to_hex(color), relief="flat",
+                               command=lambda color=color: self.set_palette_color(color))
+            button.grid(row=index // 4, column=index % 4, padx=1, pady=1)
+            self.palette_buttons.append(button)
+        layer_group = self.create_toolbar_group(sidebar, "レイヤー")
+        self.layer_list = tk.Listbox(layer_group, height=4, width=20, bg="#111820", fg="#f0f3f6",
+                                    selectbackground="#3f6685", highlightthickness=0, exportselection=False)
+        self.layer_list.pack(fill="x", padx=6, pady=(0, 4))
+        self.layer_list.bind("<<ListboxSelect>>", self.select_layer)
+        self.add_layer_button = self.make_toolbar_button(layer_group, "追加", self.add_layer)
+        self.remove_layer_button = self.make_toolbar_button(layer_group, "削除", self.remove_layer)
+        view_group = self.create_toolbar_group(sidebar, "表示・解像度")
+        self.resolution_label = tk.Label(view_group, bg="#101820", fg="#a9c7df", anchor="w")
+        self.resolution_label.pack(fill="x", padx=8)
+        for value, title in (("preserve", "細部を保持（既定）"), ("discard", "細部を破棄して編集")):
+            tk.Radiobutton(view_group, text=title, variable=self.detail_policy, value=value,
+                           bg="#101820", fg="#f0f3f6", selectcolor="#17212b", anchor="w").pack(fill="x")
+        self.size_button = self.make_toolbar_button(view_group, "論理解像度を変更", self.change_size)
+        self.canvas_size_button = self.make_toolbar_button(view_group, "表示サイズを変更", self.change_canvas_size)
+        self.upscale_button = self.make_toolbar_button(view_group, "解像度アップ", self.upscale_resolution)
+        self.zoom_out_button = self.make_toolbar_button(view_group, "ズーム−", self.zoom_out)
+        self.zoom_in_button = self.make_toolbar_button(view_group, "ズーム＋", self.zoom_in)
+        file_group = self.create_toolbar_group(sidebar, "ファイル・編集")
+        buttons = [("undo_button", "元に戻す", self.undo), ("redo_button", "やり直す", self.redo),
+                   ("import_button", "画像を読み込む", self.import_image), ("save_button", "PNG保存", self.save_image),
+                   ("save_project_button", "プロジェクト保存", self.save_project),
+                   ("load_project_button", "プロジェクト読込", self.load_project),
+                   ("reset_button", "作品をリセット", self.reset_canvas)]
+        for attr, title, command in buttons:
+            setattr(self, attr, self.make_toolbar_button(file_group, title, command))
+        self.refresh_tool_state()
+
     def create_toolbar_group(self, parent, title):
-        """サイドバー内に機能カテゴリ用のグループを作る"""
-        group = tk.LabelFrame(
-            parent,
-            text=title,
-            bg="#101820",
-            fg="#cbd5df",
-            bd=1,
-            relief="solid",
-            padx=2,
-            pady=4,
-        )
+        group = tk.LabelFrame(parent, text=title, bg="#101820", fg="#cbd5df", bd=1,
+                              relief="solid", padx=2, pady=4)
         group.pack(fill="x", pady=(0, 8))
         return group
 
     def make_toolbar_button(self, parent, text, command, use_pack=True):
-        """ツールバー共通スタイルのボタンを作る"""
-        button = tk.Button(
-            parent,
-            text=text,
-            command=command,
-            bg="#17212b",
-            fg="#f0f3f6",
-            activebackground="#263747",
-            activeforeground="#ffffff",
-            relief="flat",
-        )
+        button = tk.Button(parent, text=text, command=command, bg="#17212b", fg="#f0f3f6",
+                           activebackground="#263747", activeforeground="#ffffff", relief="flat")
         if use_pack:
             button.pack(fill="x", padx=6, pady=2)
         return button
 
     def set_tool(self, tool):
-        """描画ツールを切り替え、選択状態をUIへ反映する"""
         if tool not in {"brush", "fill", "eraser", "picker"}:
             raise ValueError(f"unknown tool: {tool}")
         self.tool = tool
         self.refresh_tool_state()
 
     def refresh_tool_state(self):
-        """現在の描画ツールをボタンとステータス表示へ反映する"""
-        names = {
-            "brush": "ブラシ",
-            "fill": "塗りつぶし",
-            "eraser": "消しゴム",
-            "picker": "スポイト",
-        }
-        buttons = getattr(self, "tool_buttons", {})
-        for name, button in buttons.items():
+        names = {"brush": "ブラシ", "fill": "塗りつぶし", "eraser": "消しゴム", "picker": "スポイト"}
+        for name, button in getattr(self, "tool_buttons", {}).items():
             selected = name == self.tool
-            button.configure(
-                bg="#3f6685" if selected else "#17212b",
-                relief="sunken" if selected else "flat",
-            )
+            button.configure(bg="#3f6685" if selected else "#17212b", relief="sunken" if selected else "flat")
         label = getattr(self, "tool_status_label", None)
         if label is not None:
             label.configure(text=f"現在: {names[self.tool]}")
 
+    def current_detail_policy(self):
+        variable = getattr(self, "detail_policy", None)
+        return variable.get() if variable is not None else "preserve"
+
+    def report_error(self, error):
+        if hasattr(self, "master"):
+            messagebox.showerror("操作できません", str(error), parent=self.master)
+
     def refresh_composite(self):
-        self.image = self.backend.composite().resize(
-            (self.canvas_width, self.canvas_height),
-            Image.Resampling.NEAREST,
-        )
-        self.draw = ImageDraw.Draw(self.image)
+        self.image = self.backend.composite().resize((self.canvas_width, self.canvas_height), Image.Resampling.NEAREST)
 
     def refresh_layer_list(self):
         if not hasattr(self, "layer_list"):
@@ -326,124 +156,110 @@ class PixelEditor:
         if self.backend.active_layer in names:
             self.layer_list.selection_set(names.index(self.backend.active_layer))
 
+    def _finish_edit(self, before):
+        self.history.append(before)
+        del self.history[:-100]
+        self.future.clear()
+        self.num_pixels_x, self.num_pixels_y = self.backend.resolution
+        self.refresh_layer_list()
+        self.update_canvas_size()
+
+    def perform_edit(self, command, *args, **kwargs):
+        before = self.make_snapshot()
+        try:
+            changed = command(*args, **kwargs)
+        except (ValueError, IndexError, KeyError, OSError) as error:
+            self.report_error(error)
+            return False
+        if changed:
+            self._finish_edit(before)
+        return bool(changed)
+
     def add_layer(self):
-        name = tk.simpledialog.askstring("レイヤー追加", "レイヤー名")
+        name = simpledialog.askstring("レイヤー追加", "レイヤー名")
         if not name:
             return
+        before = self.make_snapshot()
         try:
             self.backend.add_layer(name)
-        except ValueError:
+        except ValueError as error:
+            self.report_error(error)
             return
-        self.refresh_layer_list()
-        self.refresh_composite()
-        self.update_canvas()
+        self._finish_edit(before)
 
     def remove_layer(self):
+        before = self.make_snapshot()
         try:
             self.backend.remove_layer()
-        except (KeyError, ValueError):
+        except (KeyError, ValueError) as error:
+            self.report_error(error)
             return
-        self.refresh_layer_list()
-        self.refresh_composite()
-        self.update_canvas()
+        self._finish_edit(before)
 
     def select_layer(self, _event=None):
         selection = self.layer_list.curselection()
-        if not selection:
-            return
-        self.backend.select_layer(self.layer_list.get(selection[0]))
-        self.refresh_composite()
-        self.update_canvas()
+        if selection:
+            self.backend.select_layer(self.layer_list.get(selection[0]))
+            self.refresh_composite()
+            self.create_grid()
+            self.update_canvas()
 
     def update_canvas_size(self):
-        """表示キャンバス寸法を、作品データを保持したまま反映する"""
-        self.pixel_size = max(1, self.canvas_width // self.num_pixels_x)
-        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
-
-        display_width = round(self.canvas_width * self.zoom_factor)
-        display_height = round(self.canvas_height * self.zoom_factor)
-        self.canvas.config(
-            width=min(self.canvas_width, display_width),
-            height=min(self.canvas_height, display_height),
-        )
-        self.canvas.configure(scrollregion=(0, 0, display_width, display_height))
-
-        try:
-            self.refresh_composite()
-        except ValueError:
-            print("無効な表示サイズが設定されました。")
-            return
-
+        """Only update display geometry; never reset the document or its history."""
+        self.pixel_size = self.canvas_width / self.num_pixels_x
+        self.pixel_size_y = self.canvas_height / self.num_pixels_y
+        self.display_pixel_size = self.pixel_size * self.zoom_factor
+        width = max(1, round(self.canvas_width * self.zoom_factor))
+        height = max(1, round(self.canvas_height * self.zoom_factor))
+        self.canvas.config(width=min(self.canvas_width, width), height=min(self.canvas_height, height))
+        self.canvas.configure(scrollregion=(0, 0, width, height))
+        label = getattr(self, "resolution_label", None)
+        if label is not None:
+            label.configure(text=f"解像度: {self.num_pixels_x} × {self.num_pixels_y}")
+        self.refresh_composite()
         self.create_grid()
         self.update_canvas()
 
     def set_display_size(self, width, height):
-        """表示領域だけを変更し、backend・レイヤー・履歴を保持する"""
-        width = int(width)
-        height = int(height)
-        if width <= 0 or height <= 0:
-            raise ValueError("display size must be positive")
-        self.canvas_width = width
-        self.canvas_height = height
+        if type(width) is not int or type(height) is not int or width <= 0 or height <= 0:
+            raise ValueError("display size must be positive integers")
+        self.canvas_width, self.canvas_height = width, height
         self.update_canvas_size()
 
-    def reset_canvas_model(self, size=None):
-        """明示的なリセット操作として新しい作品データを作る"""
-        target = self.num_pixels_x if size is None else int(size)
-        if target not in PixelCanvas.SUPPORTED_SIZES:
-            raise ValueError("unsupported canvas size")
-        self.num_pixels_x = target
-        self.num_pixels_y = target
-        self.backend = LayeredPixelCanvas(target)
+    def reset_canvas_model(self, size=None, height=None):
+        shape = self.backend.resolution if size is None else resolution(size, height)
+        self.backend = LayeredPixelCanvas(*shape)
+        self.num_pixels_x, self.num_pixels_y = shape
         self.selected_cell = None
         self.history.clear()
         self.future.clear()
         self.refresh_layer_list()
         self.update_canvas_size()
 
-    def resize_logical_canvas(self, size):
-        """既存作品を保持したまま論理解像度を最近傍変換する"""
-        target = int(size)
-        if target not in PixelCanvas.SUPPORTED_SIZES:
-            raise ValueError("unsupported canvas size")
-        if target == self.backend.size:
-            return False
-
-        self.push_history()
-        if not self.backend.resize(target):
-            self.history.pop()
-            return False
-
-        self.num_pixels_x = target
-        self.num_pixels_y = target
-        self.selected_cell = None
-        self.pixel_size = max(1, self.canvas_width // self.num_pixels_x)
-        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
-        self.refresh_composite()
-        self.refresh_layer_list()
-        self.create_grid()
-        self.update_canvas()
-        return True
+    def resize_logical_canvas(self, size, height=None, detail_policy="preserve"):
+        target = resolution(size, height)
+        changed = self.perform_edit(self.backend.set_resolution, *target, detail_policy=detail_policy)
+        if changed:
+            self.selected_cell = None
+        return changed
 
     def create_grid(self):
-        """ズーム倍率に合わせてグリッドを描画"""
-        self.canvas.delete("all")
-        width = round(self.canvas_width * self.zoom_factor)
-        height = round(self.canvas_height * self.zoom_factor)
-        for x in range(0, width + 1, self.display_pixel_size):
-            self.canvas.create_line(x, 0, x, height, fill="#303945")
-        for y in range(0, height + 1, self.display_pixel_size):
-            self.canvas.create_line(0, y, width, y, fill="#303945")
+        self.canvas.delete("grid")
+        width = max(1, round(self.canvas_width * self.zoom_factor))
+        height = max(1, round(self.canvas_height * self.zoom_factor))
+        # Skip subpixel-spaced lines; pointer mapping still uses exact ratios.
+        if width / self.num_pixels_x >= 2:
+            for x in range(self.num_pixels_x + 1):
+                px = x * width / self.num_pixels_x
+                self.canvas.create_line(px, 0, px, height, fill="#303945", tags="grid")
+        if height / self.num_pixels_y >= 2:
+            for y in range(self.num_pixels_y + 1):
+                py = y * height / self.num_pixels_y
+                self.canvas.create_line(0, py, width, py, fill="#303945", tags="grid")
 
     def set_zoom(self, factor):
         self.zoom_factor = max(0.5, min(4.0, float(factor)))
-        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
-        self.canvas.config(
-            width=round(self.canvas_width * self.zoom_factor),
-            height=round(self.canvas_height * self.zoom_factor),
-        )
-        self.create_grid()
-        self.update_canvas()
+        self.update_canvas_size()
 
     def zoom_in(self):
         self.set_zoom(self.zoom_factor * 1.25)
@@ -452,13 +268,12 @@ class PixelEditor:
         self.set_zoom(self.zoom_factor / 1.25)
 
     def choose_color(self):
-        """カラーパレットを開いて色を選択"""
-        color = askcolor()[1]  # askcolorはRGBタプルを返す
+        color = askcolor()[1]
         if color:
             self.current_color = self.hex_to_rgb(color)
 
     def rgb_to_hex(self, color):
-        return "#%02x%02x%02x" % tuple(color)
+        return "#%02x%02x%02x" % tuple(color[:3])
 
     def set_palette_color(self, color):
         self.current_color = color
@@ -468,8 +283,7 @@ class PixelEditor:
         self.set_tool("fill")
 
     def hex_to_rgb(self, hex_color):
-        """16進数の色コードをRGBタプルに変換"""
-        hex_color = hex_color.lstrip('#')
+        hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
 
     def begin_pan(self, event):
@@ -481,230 +295,168 @@ class PixelEditor:
     def _child_coordinate(self, x, y, image_x, image_y):
         if not self.backend.is_split(x, y):
             return None
-        half = max(1, self.pixel_size // 2)
-        child_x = min(1, max(0, (image_x - x * self.pixel_size) // half))
-        child_y = min(1, max(0, (image_y - y * self.pixel_size) // half))
-        return int(child_x), int(child_y)
+        cx = int(2 * (image_x * self.num_pixels_x / self.canvas_width - x))
+        cy = int(2 * (image_y * self.num_pixels_y / self.canvas_height - y))
+        return min(1, max(0, cx)), min(1, max(0, cy))
 
     def paint_pixel(self, event):
-        """セルまたは細分化済みの子セルをバックエンド経由で塗る"""
-        canvas_x = self.canvas.canvasx(event.x)
-        canvas_y = self.canvas.canvasy(event.y)
-        image_x = min(self.canvas_width - 1, max(0, int(canvas_x / self.zoom_factor)))
-        image_y = min(self.canvas_height - 1, max(0, int(canvas_y / self.zoom_factor)))
-        x = image_x // self.pixel_size
-        y = image_y // self.pixel_size
-        if not (0 <= x < self.num_pixels_x and 0 <= y < self.num_pixels_y):
+        image_x = self.canvas.canvasx(event.x) / self.zoom_factor
+        image_y = self.canvas.canvasy(event.y) / self.zoom_factor
+        if not (0 <= image_x < self.canvas_width and 0 <= image_y < self.canvas_height):
             return
-
+        x = int(image_x * self.num_pixels_x / self.canvas_width)
+        y = int(image_y * self.num_pixels_y / self.canvas_height)
+        self.selected_cell = (x, y)
         child = self._child_coordinate(x, y, image_x, image_y)
         if self.tool == "picker":
             self.current_color = self.backend.sample(x, y, child)[:3]
             self.set_tool("brush")
             return
-
-        self.push_history()
         color = tuple(self.current_color[:3]) + (255,)
+        policy = self.current_detail_policy()
         if self.tool == "fill":
-            self.backend.fill(x, y, color)
+            self.perform_edit(self.backend.fill, x, y, color, detail_policy=policy)
             self.set_tool("brush")
         else:
-            self.backend.paint(
-                x,
-                y,
-                color,
-                erase=self.tool == "eraser",
-                child=child,
-            )
-        self.selected_cell = (x, y)
-        self.refresh_composite()
-        self.update_canvas()
+            self.perform_edit(self.backend.paint, x, y, color, child=child,
+                              erase=self.tool == "eraser", detail_policy=policy)
 
     def activate_eyedropper(self):
-        """次のクリック位置の色を取得する"""
         self.set_tool("picker")
 
     def activate_eraser(self):
-        """透明化する消しゴムを有効にする"""
         self.set_tool("eraser")
 
     def make_snapshot(self):
-        return (
-            self.backend.to_source(),
-            self.num_pixels_x,
-            self.num_pixels_y,
-        )
+        return self.backend.to_source(), self.num_pixels_x, self.num_pixels_y
 
     def push_history(self):
-        """共有バックエンドと表示状態を履歴へ保存する"""
         self.history.append(self.make_snapshot())
-        if len(self.history) > 100:
-            self.history.pop(0)
+        del self.history[:-100]
         self.future.clear()
 
     def restore_snapshot(self, snapshot):
         source, self.num_pixels_x, self.num_pixels_y = snapshot
         self.backend = LayeredPixelCanvas.from_source(source)
-        self.pixel_size = self.canvas_width // self.num_pixels_x
-        display_width = round(self.canvas_width * self.zoom_factor)
-        display_height = round(self.canvas_height * self.zoom_factor)
-        self.canvas.config(width=min(self.canvas_width, display_width), height=min(self.canvas_height, display_height))
-        self.canvas.configure(scrollregion=(0, 0, display_width, display_height))
-        self.refresh_composite()
+        self.selected_cell = None
         self.refresh_layer_list()
-        self.create_grid()
-        self.update_canvas()
+        self.update_canvas_size()
 
     def undo(self):
-        if not self.history:
-            return
-        self.future.append(self.make_snapshot())
-        self.restore_snapshot(self.history.pop())
+        if self.history:
+            self.future.append(self.make_snapshot())
+            self.restore_snapshot(self.history.pop())
 
     def redo(self):
-        if not self.future:
-            return
-        self.history.append(self.make_snapshot())
-        self.restore_snapshot(self.future.pop())
+        if self.future:
+            self.history.append(self.make_snapshot())
+            self.restore_snapshot(self.future.pop())
 
     def update_canvas(self):
-        """キャンバスへ最近傍ズーム表示する"""
-        display_size = (
-            round(self.canvas_width * self.zoom_factor),
-            round(self.canvas_height * self.zoom_factor),
-        )
-        display_image = self.image.resize(display_size, Image.Resampling.NEAREST)
-        self.photo = ImageTk.PhotoImage(display_image)
-        self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
+        shape = max(1, round(self.canvas_width * self.zoom_factor)), max(1, round(self.canvas_height * self.zoom_factor))
+        self.photo = ImageTk.PhotoImage(self.image.resize(shape, Image.Resampling.NEAREST))
+        self.canvas.delete("artwork")
+        self.canvas.create_image(0, 0, anchor="nw", image=self.photo, tags="artwork")
+        self.canvas.tag_lower("artwork")
         self.canvas.image = self.photo
 
     def import_image(self):
-        """画像をキャンバス内へ最近傍で収めて読み込む"""
-        file_path = filedialog.askopenfilename(filetypes=[("画像ファイル", "*.png;*.jpg;*.jpeg;*.bmp"), ("すべて", "*.*")])
-        if not file_path:
+        path = filedialog.askopenfilename(filetypes=[("画像ファイル", "*.png;*.jpg;*.jpeg;*.bmp"), ("すべて", "*.*")])
+        if not path:
             return
+        before = self.make_snapshot()
         try:
-            source = Image.open(file_path).convert("RGBA")
-        except (OSError, ValueError):
+            self.backend.active.import_image(path)
+        except (OSError, ValueError) as error:
+            self.report_error(error)
             return
-        self.push_history()
-        fitted = Image.new("RGBA", (self.canvas_width, self.canvas_height), (0, 0, 0, 0))
-        ratio = min(self.canvas_width / source.width, self.canvas_height / source.height)
-        size = (max(1, round(source.width * ratio)), max(1, round(source.height * ratio)))
-        resized = source.resize(size, Image.Resampling.NEAREST)
-        fitted.alpha_composite(resized, ((self.canvas_width - size[0]) // 2, (self.canvas_height - size[1]) // 2))
-        self.backend.active.import_image(source)
-        self.refresh_composite()
-        self.update_canvas()
+        self._finish_edit(before)
 
     def save_project(self):
-        """バックエンド互換のJSONプロジェクトを保存する"""
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".json",
-            filetypes=[("JSON project", "*.json"), ("All files", "*.*")],
-        )
-        if not file_path:
-            return
-        Path(file_path).write_text(
-            json.dumps(self.backend.to_source(), ensure_ascii=False, indent=2) + "\\n",
-            encoding="utf-8",
-        )
+        path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON project", "*.json")])
+        if path:
+            try:
+                write_project(self.backend, Path(path))
+            except (OSError, ValueError) as error:
+                self.report_error(error)
 
     def load_project(self):
-        """バックエンド互換のJSONプロジェクトを読み込む"""
-        file_path = filedialog.askopenfilename(
-            filetypes=[("JSON project", "*.json"), ("All files", "*.*")]
-        )
-        if not file_path:
+        path = filedialog.askopenfilename(filetypes=[("JSON project", "*.json"), ("All files", "*.*")])
+        if not path:
             return
         try:
-            source = json.loads(Path(file_path).read_text(encoding="utf-8"))
-            if "layers" in source:
-                self.backend = LayeredPixelCanvas.from_source(source)
-            else:
-                flat = PixelCanvas.from_source(source)
-                self.backend = LayeredPixelCanvas(flat.size)
-                self.backend.layers = {"背景": flat}
-                self.backend.active_layer = "背景"
-        except (OSError, UnicodeError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+            loaded = read_project(Path(path))
+            if isinstance(loaded, PixelCanvas):
+                layered = LayeredPixelCanvas(*loaded.resolution)
+                layered.layers = {"背景": loaded}
+                loaded = layered
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError) as error:
+            self.report_error(error)
             return
-        self.num_pixels_x = self.backend.size
-        self.num_pixels_y = self.backend.size
-        self.refresh_composite()
+        self.backend = loaded
+        self.num_pixels_x, self.num_pixels_y = loaded.resolution
+        self.selected_cell = None
         self.history.clear()
         self.future.clear()
-        self.pixel_size = self.canvas_width // self.num_pixels_x
-        self.display_pixel_size = max(1, round(self.pixel_size * self.zoom_factor))
         self.refresh_layer_list()
-        self.create_grid()
-        self.update_canvas()
+        self.update_canvas_size()
 
     def save_image(self):
-        """ドット絵を画像として保存"""
-        # エクスプローラーを開き、保存先を選ばせる
-        file_path = filedialog.asksaveasfilename(defaultextension=".png",
-                                                 filetypes=[("PNG files", "*.png"),
-                                                          ("JPEG files", "*.jpg"),
-                                                          ("All files", "*.*")])
-        if file_path:
-            self.backend.save_png(file_path)
+        path = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("PNG files", "*.png")])
+        if path:
+            try:
+                self.backend.save_png(path)
+            except (OSError, ValueError) as error:
+                self.report_error(error)
 
     def reset_canvas(self):
-        """作品データを明示的に初期化する"""
         self.reset_canvas_model()
 
     def upscale_resolution(self):
-        """論理解像度を1段階上げ、既存作品を最近傍で保持する"""
-        next_size = self.num_pixels_x * 2
-        if next_size not in PixelCanvas.SUPPORTED_SIZES:
-            return
-        self.resize_logical_canvas(next_size)
+        try:
+            self.resize_logical_canvas(self.backend.width * 2, self.backend.height * 2,
+                                       detail_policy=self.current_detail_policy())
+        except ValueError as error:
+            self.report_error(error)
 
     def split_selected_cell(self):
-        """選択中の親セルをバックエンド上で2x2の子セルへ細分化する"""
-        if self.selected_cell is None:
-            return
-        x, y = self.selected_cell
-        if self.backend.is_split(x, y):
-            return
-        self.push_history()
-        if not self.backend.split_cell(x, y):
-            self.history.pop()
-            return
-        self.refresh_composite()
-        self.update_canvas()
+        if self.selected_cell is not None:
+            self.perform_edit(self.backend.split_cell, *self.selected_cell)
+
+    def collapse_selected_cell(self):
+        if self.selected_cell is not None:
+            self.perform_edit(self.backend.collapse_cell, *self.selected_cell,
+                              discard_detail=self.current_detail_policy() == "discard")
+
+    def discard_selected_detail(self):
+        if self.selected_cell is not None:
+            self.perform_edit(self.backend.discard_detail, *self.selected_cell)
 
     def change_size(self):
-        """既存作品を保持したまま論理解像度を変更する"""
-        size = tk.simpledialog.askinteger(
-            "サイズ変更",
-            "サイズを選択してください（2, 4, 8, 16, 32, 64, 128, 256）",
-            minvalue=2,
-            maxvalue=256,
-        )
-        if size is None or size not in PixelCanvas.SUPPORTED_SIZES:
-            return
-        self.resize_logical_canvas(size)
-
-    def change_canvas_size(self):
-        """表示キャンバスの大きさだけを変更する"""
-        width = tk.simpledialog.askinteger(
-            "キャンバス幅",
-            "キャンバスの横幅（ピクセル）を指定",
-            minvalue=100,
-            maxvalue=5000,
-        )
+        width = simpledialog.askinteger("論理解像度", "横のセル数", initialvalue=self.backend.width,
+                                        minvalue=1, maxvalue=PixelCanvas.MAX_DIMENSION)
         if width is None:
             return
-        height = tk.simpledialog.askinteger(
-            "キャンバス高さ",
-            "キャンバスの縦幅（ピクセル）を指定",
-            minvalue=100,
-            maxvalue=5000,
-        )
+        height = simpledialog.askinteger("論理解像度", "縦のセル数", initialvalue=self.backend.height,
+                                         minvalue=1, maxvalue=PixelCanvas.MAX_DIMENSION)
         if height is None:
             return
-        self.set_display_size(width, height)
+        policy = self.current_detail_policy()
+        if policy == "discard" and not messagebox.askyesno("細部を破棄", "全レイヤーの細部を新しい解像度に統合しますか？"):
+            return
+        try:
+            self.resize_logical_canvas(width, height, policy)
+        except ValueError as error:
+            self.report_error(error)
+
+    def change_canvas_size(self):
+        width = simpledialog.askinteger("キャンバス幅", "表示の横幅（ピクセル）", minvalue=100, maxvalue=5000)
+        if width is None:
+            return
+        height = simpledialog.askinteger("キャンバス高さ", "表示の縦幅（ピクセル）", minvalue=100, maxvalue=5000)
+        if height is not None:
+            self.set_display_size(width, height)
+
 
 if __name__ == "__main__":
     root = tk.Tk()

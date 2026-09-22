@@ -1,13 +1,12 @@
 # Hyper Dot Editor
 
-Hyper Dot Editor は、GUI と CLI から同じバックエンドを使ってドット絵を編集できるピクセルアートエディタです。バックエンドは複数のゲーム向け開発者ツールから共通利用できることを前提にし、レイヤー、2x2 のセル分割、JSONプロジェクト保存、PNG書き出しを扱います。
+Hyper Dot Editor は、GUI と CLI から同じバックエンドを使ってドット絵を編集できるピクセルアートエディタです。バックエンドは複数のゲーム向け開発者ツールから共通利用できることを前提にし、レイヤー、セル分割、任意解像度の非破壊切替、JSONプロジェクト保存、PNG書き出しを扱います。
 
 ## 必要環境
 
 - Python 3.10〜3.14（CIで全バージョンを必須検証）
 - Pillow（`requirements.txt` で管理）
-
-GitHub Actions では Python 3.10 / 3.11 / 3.12 / 3.13 / 3.14 の全バージョンを検証しています。
+- GUIとGUI関連テストにはTkinter。バックエンドとCLIだけの利用にはGUI起動は不要です。
 
 ## セットアップ
 
@@ -19,13 +18,7 @@ GitHub Actions では Python 3.10 / 3.11 / 3.12 / 3.13 / 3.14 の全バージョ
 powershell -ExecutionPolicy Bypass -File scripts/setup_environment.ps1
 ```
 
-このスクリプトは `.venv` を作成し、依存関係をインストールしてから `python scripts/evaluate.py` 相当の評価を実行します。個人PC固有のPythonパスは不要です。
-
-既に依存関係をインストール済みなら:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/setup_environment.ps1 -SkipInstall
-```
+`.venv` を作成し、依存関係をインストールしてから評価を実行します。個人PC固有のPythonパスは不要です。依存関係のインストールを省く場合は `-SkipInstall` を付けてください。
 
 ### macOS / Linux
 
@@ -44,98 +37,84 @@ Windowsで手動セットアップする場合は、仮想環境の有効化を 
 python dot_editor.py
 ```
 
-GUIでは通常描画、消しゴム、スポイト、塗りつぶし、レイヤー、セル分割、論理解像度変更、表示サイズ変更、JSONプロジェクト保存/読込、PNG保存を利用できます。
+ブラシ、消しゴム、スポイト、塗りつぶし、レイヤー、セル分割、折りたたみ、細部破棄、任意の縦横解像度、表示サイズ、JSON保存/読込、PNG保存を利用できます。描画・解像度変更時の細部ポリシーは「保持」が既定です。操作が画面に収まらない場合は右サイドバーをスクロールしてください。
 
 ## CLIを使う
 
-### 新規プロジェクト
-
-```bash
-python pixel_cli.py new --size 16 --output project.json
-```
-
-レイヤープロジェクトとして作る場合:
+### 新規プロジェクトと基本編集
 
 ```bash
 python pixel_cli.py new --size 16 --layered --output project.json
-```
-
-### 編集
-
-1セルを赤で塗る例:
-
-```bash
 python pixel_cli.py edit --project project.json --paint 1 1 "#FF0000"
-```
-
-レイヤーを追加して選択する例:
-
-```bash
 python pixel_cli.py edit --project project.json --add-layer "人物"
 python pixel_cli.py edit --project project.json --select-layer "人物" --paint 2 2 "#00AAFF"
 ```
 
-### セル分割
+`--size` は任意の正の整数で正方形を作ります。`--layered` を省くと単一レイヤーのプロジェクトになります。非正方形は次のように指定します。
 
-親セル `(1, 1)` を2x2に分割し、右上の子セルを青で塗る例:
+```bash
+python pixel_cli.py new --resolution 23 17 --output rectangular.json
+```
+
+### 非破壊の解像度切替
+
+```bash
+python pixel_cli.py edit --project project.json --resolution 7 7
+python pixel_cli.py edit --project project.json --resolution 23 17
+python pixel_cli.py edit --project project.json --resolution 16 16
+python pixel_cli.py inspect --project project.json
+```
+
+解像度を変えただけでは細部を破棄しません。無編集の往復では元の情報が復元します。`--detail-policy discard` を解像度変更と組み合わせた場合だけ、全体を新しい粗さへ統合します。
+
+### セル分割と保持・破棄
 
 ```bash
 python pixel_cli.py edit --project project.json --split 1 1
 python pixel_cli.py edit --project project.json --paint-child 1 1 1 0 "#0000FF"
-```
-
-子セルを透明化する場合:
-
-```bash
-python pixel_cli.py edit --project project.json --erase-child 1 1 0 1
-```
-
-### 細部の保持・破棄と状態確認
-
-```bash
 python pixel_cli.py edit --project project.json --collapse 1 1
 python pixel_cli.py inspect --project project.json --sample 1 1 --child 1 0
 python pixel_cli.py edit --project project.json --split 1 1
-python pixel_cli.py edit --project project.json --paint 1 1 "#00FF00" --detail-policy discard
-python pixel_cli.py edit --project project.json --discard-detail 0 0 2 2
+python pixel_cli.py edit --project project.json --erase-child 1 1 0 1
+python pixel_cli.py edit --project project.json --paint 1 1 "#00FF00" --detail-policy preserve
+python pixel_cli.py edit --project project.json --discard-detail 1 1
 ```
 
-`--collapse` は細部を保持して親セル表示へ戻します。`--split` で保持済みの子セルを再展開できます。親セルの `paint` / `erase` / `fill` と `collapse` は `--detail-policy preserve|discard` に対応し、既定値は `preserve` です。
-
-`inspect` は解像度・レイヤー・展開中/保持中の細部をJSONで返す読み取り専用操作です。詳細な意味、領域操作、終了コード、同時指定時の順序は [CUI細部操作](docs/CUI_detail_operations.md) を参照してください。
+`preserve` での通常の粗い描画は、細部の元データを残して色の差分を重ねます。明示的な分割セルの親だけを編集する場合は、既存の親/子独立の挙動を維持します。置換して細部を削除する場合は `discard` を指定してください。詳しくは [CUI操作仕様](docs/CUI_detail_operations.md) と [非破壊解像度の仕様](docs/Non_destructive_resolution.md) を参照してください。
 
 ### PNGへ書き出す
+
+現在の表示を拡大する従来の書き出し:
 
 ```bash
 python pixel_cli.py export --project project.json --output pixel_art.png --size 256
 ```
 
-`--size` は書き出すPNGの辺長です。分割セルがある場合は内部の詳細解像度より小さい値にはできません。
+保持中の細部から、指定した出力解像度へ直接投影する書き出し:
 
-## JSONプロジェクトとPNGの違い
+```bash
+python pixel_cli.py export --project project.json --output detail.png --resolution 23 17
+```
 
-- **JSONプロジェクト**: 編集を続けるためのデータです。論理解像度、各ピクセル、レイヤー、選択レイヤー、セル分割情報を保持します。
-- **PNG**: 共有・表示用の完成画像です。レイヤーやセル分割などの編集情報は画像へ合成されます。
+後者はプロジェクトの現在解像度を変更しません。JSONはレイヤー・保持中の細部・局所分割状態を残して編集を続けるための形式、PNGは合成済み画像です。
 
-編集を続ける場合はJSONを保存し、成果物として画像が必要なときにPNGへexportしてください。
+## 保存形式と安全上限
+
+新規保存はversion 2で、現在解像度と保持データを別々に保存します。旧JSONは読み込めますが、新JSONを旧版エディタで編集し直すことはサポートしません。Undo/Redoの操作スタックはセッション内のみで、JSONへ保存しません。
+
+解像度は1辺1〜4096、1ラスタ最大4,194,304画素です。保持パッチ等にも安全上限があります。上限超過時は無断で情報を捨てずにエラーにします。詳細は[データモデル・制限](docs/Non_destructive_resolution.md)を参照してください。
 
 ## ビルド・評価
 
-変更後の最低条件は次です。
-
 ```bash
 python scripts/evaluate.py
-```
-
-バックエンド・CUI回帰テストを個別に実行する場合:
-
-```bash
 python test_pixel_backend.py
 python test_pixel_layers.py
 python test_pixel_cli.py
+python test_resolution.py
 ```
 
-GitHub Actions でも push / pull request ごとに同じ評価とテストを実行します。評価処理はGUIウィンドウを起動しません。
+push / pull request ごとに Python 3.10 / 3.11 / 3.12 / 3.13 / 3.14 の全ジョブで評価・回帰テストを実行します。通常の自動評価はGUIウィンドウを起動しません。
 
 ## 開発資料
 

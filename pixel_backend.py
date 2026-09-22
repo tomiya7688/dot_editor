@@ -1,305 +1,385 @@
 from __future__ import annotations
 
 from collections import deque
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Literal
 
 from PIL import Image
 
+from resolution_field import (
+    MAX_DIMENSION, MAX_PIXELS, ResolutionField, Box, cell_box, intersection,
+    resolution, encoded_color, decoded_color, image_source, source_image,
+)
+
 Color = tuple[int, int, int, int]
 ChildCoordinate = tuple[int, int]
-RefinedCells = dict[tuple[int, int], list[list[Color]]]
 DetailPolicy = Literal["preserve", "discard"]
-CanvasState = tuple[Image.Image, RefinedCells, set[tuple[int, int]]]
+RefinedCells = dict[tuple[int, int], list[list[Color]]]
+SplitKey = tuple[int, int, int, int]  # width, height, parent x, parent y
+SplitState = tuple[Color, bool]  # retained parent value, expanded at this grid
+CanvasState = tuple[tuple[int, int], ResolutionField, dict[SplitKey, SplitState]]
 
 
 class PixelCanvas:
-    """GUI-independent pixel canvas shared by editors and tools."""
+    """GUI-independent canvas with an independent, non-destructive spatial field.
 
-    SUPPORTED_SIZES = (2, 4, 8, 16, 32, 64, 128, 256)
+    ``size`` remains a width alias for square-canvas clients. New code should
+    use ``resolution`` or ``width``/``height``. ``image`` is a read-only projected
+    copy; mutate the document through paint/fill/import_image instead.
+    """
+
+    SUPPORTED_SIZES = (2, 4, 8, 16, 32, 64, 128, 256)  # presets, not a whitelist
+    MAX_DIMENSION = MAX_DIMENSION
+    MAX_PIXELS = MAX_PIXELS
     HISTORY_LIMIT = 50
+    MAX_SPLITS = 4096
 
-    def __init__(self, size: int = 16) -> None:
-        self._validate_size(size)
-        self.size = size
-        self.image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        self._refined_cells: RefinedCells = {}
-        self._expanded_cells: set[tuple[int, int]] = set()
+    def __init__(self, size: int = 16, height: int | None = None) -> None:
+        self._resolution = resolution(size, height)
+        self._field = ResolutionField()
+        self._splits: dict[SplitKey, SplitState] = {}
         self._history: list[CanvasState] = []
         self._future: list[CanvasState] = []
+        self._view_cache: Image.Image | None = None
 
     @classmethod
     def _validate_size(cls, size: int) -> None:
-        if size not in cls.SUPPORTED_SIZES:
-            raise ValueError(f"unsupported canvas size: {size}")
+        resolution(size)
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        return self._resolution
+
+    @property
+    def width(self) -> int:
+        return self._resolution[0]
+
+    @property
+    def height(self) -> int:
+        return self._resolution[1]
+
+    @property
+    def size(self) -> int:
+        return self.width
+
+    def _key(self, x: int, y: int) -> SplitKey:
+        return self.width, self.height, x, y
+
+    @staticmethod
+    def _key_box(key: SplitKey) -> Box:
+        width, height, x, y = key
+        return cell_box(x, y, width, height)
+
+    def _box(self, x: int, y: int, child: ChildCoordinate | None = None) -> Box:
+        if child is None:
+            return cell_box(x, y, self.width, self.height)
+        cx, cy = self._validate_child(child)
+        return cell_box(2 * x + cx, 2 * y + cy, 2 * self.width, 2 * self.height)
+
+    @staticmethod
+    def _center(box: Box) -> tuple[Fraction, Fraction]:
+        return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
 
     @staticmethod
     def _normalize_color(color: tuple[int, ...]) -> Color:
-        values = tuple(int(component) for component in color)
+        values = tuple(color)
         if len(values) == 3:
             values += (255,)
-        if len(values) != 4 or any(component < 0 or component > 255 for component in values):
-            raise ValueError("color must contain 3 or 4 components in the range 0..255")
-        return values  # type: ignore[return-value]
-
-    @staticmethod
-    def _copy_refined_cells(source: RefinedCells) -> RefinedCells:
-        return {
-            key: [[tuple(color) for color in row] for row in rows]
-            for key, rows in source.items()
-        }
-
-    def _state(self) -> CanvasState:
-        return (
-            self.image.copy(),
-            self._copy_refined_cells(self._refined_cells),
-            set(self._expanded_cells),
-        )
-
-    def _restore_state(self, state: CanvasState) -> None:
-        image, refined, expanded = state
-        self.image = image.copy()
-        self.size = self.image.width
-        self._refined_cells = self._copy_refined_cells(refined)
-        self._expanded_cells = set(expanded)
-
-    def _snapshot(self) -> None:
-        self._history.append(self._state())
-        if len(self._history) > self.HISTORY_LIMIT:
-            del self._history[0]
-        self._future.clear()
-
-    def _in_bounds(self, x: int, y: int) -> bool:
-        return 0 <= x < self.size and 0 <= y < self.size
-
-    @staticmethod
-    def _validate_child(child: ChildCoordinate) -> ChildCoordinate:
-        child_x, child_y = child
-        if child_x not in (0, 1) or child_y not in (0, 1):
-            raise IndexError("child coordinate must be 0 or 1")
-        return child_x, child_y
-
-    @property
-    def has_refinements(self) -> bool:
-        """Whether any cells are currently expanded for 2x2 editing."""
-        return bool(self._expanded_cells)
-
-    @property
-    def has_detail(self) -> bool:
-        """Whether preserved child detail exists, including collapsed cells."""
-        return bool(self._refined_cells)
-
-    @property
-    def native_size(self) -> int:
-        return self.size * 2 if self.has_refinements else self.size
-
-    def is_split(self, x: int, y: int) -> bool:
-        return (x, y) in self._expanded_cells
-
-    def has_detail_at(self, x: int, y: int) -> bool:
-        return (x, y) in self._refined_cells
-
-    def split_cell(self, x: int, y: int) -> bool:
-        if not self._in_bounds(x, y) or self.is_split(x, y):
-            return False
-        self._snapshot()
-        if not self.has_detail_at(x, y):
-            base = self.image.getpixel((x, y))
-            self._refined_cells[(x, y)] = [
-                [base, base],
-                [base, base],
-            ]
-        self._expanded_cells.add((x, y))
-        return True
-
-    def collapse_cell(self, x: int, y: int, discard_detail: bool = False) -> bool:
-        """Collapse a split cell while preserving child detail by default."""
-        if not self._in_bounds(x, y):
-            return False
-        point = (x, y)
-        has_expanded = point in self._expanded_cells
-        has_detail = point in self._refined_cells
-        if not has_expanded and not (discard_detail and has_detail):
-            return False
-        self._snapshot()
-        self._expanded_cells.discard(point)
-        if discard_detail:
-            self._refined_cells.pop(point, None)
-        return True
-
-    def new(self, size: int | None = None) -> None:
-        target = self.size if size is None else size
-        self._validate_size(target)
-        self._snapshot()
-        self.size = target
-        self.image = Image.new("RGBA", (target, target), (0, 0, 0, 0))
-        self._refined_cells.clear()
-        self._expanded_cells.clear()
+        if len(values) != 4 or any(type(v) is not int or not 0 <= v <= 255 for v in values):
+            raise ValueError("color must contain 3 or 4 integers in the range 0..255")
+        return values
 
     @staticmethod
     def _validate_detail_policy(detail_policy: str) -> DetailPolicy:
         if detail_policy not in ("preserve", "discard"):
             raise ValueError("detail_policy must be 'preserve' or 'discard'")
-        return detail_policy  # type: ignore[return-value]
+        return detail_policy
 
-    def paint(
-        self,
-        x: int,
-        y: int,
-        color: tuple[int, ...],
-        erase: bool = False,
-        child: ChildCoordinate | None = None,
-        detail_policy: DetailPolicy = "preserve",
-    ) -> bool:
-        if not self._in_bounds(x, y):
-            return False
-        replacement = (0, 0, 0, 0) if erase else self._normalize_color(color)
-        policy = self._validate_detail_policy(detail_policy)
+    @staticmethod
+    def _validate_child(child: ChildCoordinate) -> ChildCoordinate:
+        if len(child) != 2 or any(type(v) is not int or v not in (0, 1) for v in child):
+            raise IndexError("child coordinate must be 0 or 1")
+        return tuple(child)
 
-        if child is not None:
-            child_x, child_y = self._validate_child(child)
-            if not self.is_split(x, y):
-                raise ValueError("child painting requires a split cell")
-            if self._refined_cells[(x, y)][child_y][child_x] == replacement:
-                return False
-            self._snapshot()
-            self._refined_cells[(x, y)][child_y][child_x] = replacement
-            return True
+    def _in_bounds(self, x: int, y: int) -> bool:
+        return type(x) is int and type(y) is int and 0 <= x < self.width and 0 <= y < self.height
 
-        current = self.image.getpixel((x, y))
-        has_detail = self.has_detail_at(x, y)
-        if current == replacement and not (has_detail and policy == "discard"):
-            return False
+    def _state(self) -> CanvasState:
+        return self.resolution, self._field, dict(self._splits)
 
+    def _restore_state(self, state: CanvasState) -> None:
+        self._resolution, self._field, splits = state
+        self._splits = dict(splits)
+        self._view_cache = None
+
+    def _snapshot(self) -> None:
+        self._history.append(self._state())
+        del self._history[:-self.HISTORY_LIMIT]
+        self._future.clear()
+
+    def _commit(self, field: ResolutionField, splits: dict[SplitKey, SplitState]) -> None:
         self._snapshot()
-        self.image.putpixel((x, y), replacement)
-        if has_detail and policy == "discard":
-            self._refined_cells.pop((x, y), None)
-            self._expanded_cells.discard((x, y))
+        self._field = field
+        self._splits = splits
+        self._view_cache = None
+
+    @property
+    def _expanded_cells(self) -> set[tuple[int, int]]:
+        return {(x, y) for (w, h, x, y), (_, expanded) in self._splits.items()
+                if (w, h) == self.resolution and expanded}
+
+    @property
+    def _refined_cells(self) -> RefinedCells:
+        return {(x, y): [[self._field.sample(*self._center(self._box(x, y, (cx, cy))))
+                          for cx in range(2)] for cy in range(2)]
+                for w, h, x, y in self._splits if (w, h) == self.resolution}
+
+    @property
+    def has_refinements(self) -> bool:
+        return bool(self._expanded_cells)
+
+    @property
+    def has_detail(self) -> bool:
+        rw, rh = self._field.retained_resolution
+        return bool(self._splits) or rw > self.width or rh > self.height or any(
+            (v * (self.width if i % 2 == 0 else self.height)).denominator != 1
+            for tile in self._field.tiles for i, v in enumerate(tile[0])
+        )
+
+    @property
+    def retained_resolution(self) -> tuple[int, int]:
+        return self._field.retained_resolution
+
+    @property
+    def retained_patch_count(self) -> int:
+        return len(self._field.tiles)
+
+    def detail_cells(self) -> list[dict[str, Any]]:
+        return [{"x": x, "y": y, "expanded": expanded}
+                for (w, h, x, y), (_, expanded) in sorted(self._splits.items())
+                if (w, h) == self.resolution]
+
+    @property
+    def native_resolution(self) -> tuple[int, int]:
+        return (2 * self.width, 2 * self.height) if self.has_refinements else self.resolution
+
+    @property
+    def native_size(self) -> int:
+        return self.native_resolution[0]
+
+    def is_split(self, x: int, y: int) -> bool:
+        return self._splits.get(self._key(x, y), (None, False))[1]
+
+    def has_detail_at(self, x: int, y: int) -> bool:
+        return self._in_bounds(x, y) and (
+            self._key(x, y) in self._splits or self._field.has_detail(self._box(x, y)))
+
+    def _projection(self, width: int, height: int) -> Image.Image:
+        output = self._field.render(width, height)
+        for (w, h, x, y), (base, _) in self._splits.items():
+            if (w, h) == (width, height):
+                output.putpixel((x, y), base)
+        return output
+
+    @property
+    def image(self) -> Image.Image:
+        if self._view_cache is None:
+            self._view_cache = self._projection(*self.resolution)
+        return self._view_cache.copy()
+
+    def split_cell(self, x: int, y: int) -> bool:
+        if not self._in_bounds(x, y) or self.is_split(x, y):
+            return False
+        resolution(2 * self.width, 2 * self.height)
+        key = self._key(x, y)
+        if key not in self._splits and len(self._splits) >= self.MAX_SPLITS:
+            raise ValueError("too many retained split cells")
+        splits = dict(self._splits)
+        base = splits[key][0] if key in splits else self.sample(x, y)
+        splits[key] = (base, True)
+        self._commit(self._field, splits)
         return True
 
-    def sample(
-        self,
-        x: int,
-        y: int,
-        child: ChildCoordinate | None = None,
-    ) -> Color:
+    def collapse_cell(self, x: int, y: int, discard_detail: bool = False) -> bool:
+        if not self._in_bounds(x, y):
+            return False
+        if discard_detail:
+            return self.discard_detail(x, y) > 0
+        key = self._key(x, y)
+        if not self.is_split(x, y):
+            return False
+        splits = dict(self._splits)
+        splits[key] = (splits[key][0], False)
+        self._commit(self._field, splits)
+        return True
+
+    def new(self, size: int | None = None, height: int | None = None) -> None:
+        target = self.resolution if size is None else resolution(size, height)
+        self._snapshot()
+        self._resolution = target
+        self._field = ResolutionField()
+        self._splits.clear()
+        self._view_cache = None
+
+    def _edited(
+        self, field: ResolutionField, splits: dict[SplitKey, SplitState],
+        x: int, y: int, replacement: Color, child: ChildCoordinate | None,
+        policy: DetailPolicy,
+    ) -> tuple[ResolutionField, dict[SplitKey, SplitState]]:
+        box = self._box(x, y, child)
+        key = self._key(x, y)
+        # Preserve the legacy explicit-parent/child override contract. Children
+        # remain independently editable; a parent-only write changes its base.
+        if child is None and key in splits and policy == "preserve":
+            splits[key] = (replacement, splits[key][1])
+            return field, splits
+        if policy == "preserve" and field.has_detail(box):
+            reference = field.sample_raw(*self._center(box))
+            delta = tuple(new - old for new, old in zip(replacement, reference))
+            field = field.shift(box, delta)
+            # Keep parent values at other stored grids consistent with the tint.
+            for split_key, (base, expanded) in list(splits.items()):
+                center = self._center(self._key_box(split_key))
+                if box[0] <= center[0] < box[2] and box[1] <= center[1] < box[3]:
+                    splits[split_key] = (tuple(max(0, min(255, v + d)) for v, d in zip(base, delta)), expanded)
+        else:
+            field = field.replace(box, replacement)
+            if policy == "discard":
+                for split_key in list(splits):
+                    split_box = self._key_box(split_key)
+                    overlap = intersection(split_box, box)
+                    if overlap == split_box:
+                        del splits[split_key]
+                    elif overlap is not None:
+                        # Partially intersecting metadata must not expose an old
+                        # base at a discarded sample position. Exterior child
+                        # samples remain in the exact clipped spatial field.
+                        center = self._center(split_box)
+                        if box[0] <= center[0] < box[2] and box[1] <= center[1] < box[3]:
+                            splits[split_key] = (replacement, splits[split_key][1])
+        return field, splits
+
+    def paint(self, x: int, y: int, color: tuple[int, ...], erase: bool = False,
+              child: ChildCoordinate | None = None, detail_policy: DetailPolicy = "preserve") -> bool:
+        policy = self._validate_detail_policy(detail_policy)
+        replacement = (0, 0, 0, 0) if erase else self._normalize_color(color)
+        if not self._in_bounds(x, y):
+            return False
+        if child is not None:
+            self._validate_child(child)
+            if not self.is_split(x, y):
+                raise ValueError("child painting requires a split cell")
+        current = self.sample(x, y, child)
+        has_detail = self.has_detail_at(x, y) if child is None else self._field.has_detail(self._box(x, y, child))
+        if current == replacement and not (policy == "discard" and has_detail):
+            return False
+        field, splits = self._edited(self._field, dict(self._splits), x, y, replacement, child, policy)
+        self._commit(field, splits)
+        return True
+
+    def sample(self, x: int, y: int, child: ChildCoordinate | None = None) -> Color:
         if not self._in_bounds(x, y):
             raise IndexError("pixel coordinate out of range")
-        if child is None:
-            return self.image.getpixel((x, y))
-        child_x, child_y = self._validate_child(child)
-        if not self.has_detail_at(x, y):
-            raise ValueError("child sampling requires preserved child detail")
-        return self._refined_cells[(x, y)][child_y][child_x]
+        if child is None and self._key(x, y) in self._splits:
+            return self._splits[self._key(x, y)][0]
+        if child is not None:
+            self._validate_child(child)
+            if not self.has_detail_at(x, y):
+                raise ValueError("child sampling requires preserved child detail")
+        return self._field.sample(*self._center(self._box(x, y, child)))
 
-    def fill(
-        self,
-        x: int,
-        y: int,
-        color: tuple[int, ...],
-        erase: bool = False,
-        detail_policy: DetailPolicy = "preserve",
-    ) -> int:
+    def fill(self, x: int, y: int, color: tuple[int, ...], erase: bool = False,
+             detail_policy: DetailPolicy = "preserve") -> int:
+        policy = self._validate_detail_policy(detail_policy)
+        replacement = (0, 0, 0, 0) if erase else self._normalize_color(color)
         if not self._in_bounds(x, y):
             return 0
-        replacement = (0, 0, 0, 0) if erase else self._normalize_color(color)
-        policy = self._validate_detail_policy(detail_policy)
-        original = self.image.getpixel((x, y))
+        view = self.image
+        original = view.getpixel((x, y))
         if original == replacement and policy == "preserve":
             return 0
-        points: list[tuple[int, int]] = []
+        points = []
         pending = deque([(x, y)])
         visited = {(x, y)}
         while pending:
             px, py = pending.popleft()
-            if self.image.getpixel((px, py)) != original:
+            if view.getpixel((px, py)) != original:
                 continue
-            points.append((px, py))
+            if original != replacement or self.has_detail_at(px, py):
+                points.append((px, py))
             for nx, ny in ((px - 1, py), (px + 1, py), (px, py - 1), (px, py + 1)):
                 if self._in_bounds(nx, ny) and (nx, ny) not in visited:
                     visited.add((nx, ny))
                     pending.append((nx, ny))
-        # Discard is a change even when the parent color already matches.
-        # Do not create history entries for unchanged cells without detail.
-        if original == replacement:
-            points = [point for point in points if self.has_detail_at(*point)]
         if not points:
             return 0
-        self._snapshot()
-        for point in points:
-            self.image.putpixel(point, replacement)
-            if policy == "discard":
-                self._refined_cells.pop(point, None)
-                self._expanded_cells.discard(point)
+        if len(points) == self.width * self.height and (policy == "discard" or not self.has_detail):
+            self._commit(ResolutionField.from_image(Image.new("RGBA", (1, 1), replacement)), {})
+            return len(points)
+        field, splits = self._field, dict(self._splits)
+        for px, py in points:
+            field, splits = self._edited(field, splits, px, py, replacement, None, policy)
+        self._commit(field, splits)
         return len(points)
 
     def discard_detail(self, x: int, y: int, width: int = 1, height: int = 1) -> int:
-        """Discard refined child data only inside the requested parent-cell region."""
-        if width <= 0 or height <= 0:
-            raise ValueError("detail discard region must have positive width and height")
-        if not self._in_bounds(x, y):
-            raise IndexError("detail discard region starts outside the canvas")
-        end_x = min(self.size, x + width)
-        end_y = min(self.size, y + height)
-        targets = [
-            (px, py)
-            for py in range(y, end_y)
-            for px in range(x, end_x)
-            if (px, py) in self._refined_cells
-        ]
+        if (type(width) is not int or type(height) is not int or width <= 0 or height <= 0):
+            raise ValueError("detail discard region must have positive integer width and height")
+        if not self._in_bounds(x, y) or x + width > self.width or y + height > self.height:
+            raise IndexError("detail discard region must fit inside the canvas")
+        targets = [(px, py, self.sample(px, py)) for py in range(y, y + height)
+                   for px in range(x, x + width) if self.has_detail_at(px, py)]
         if not targets:
             return 0
-        self._snapshot()
-        for point in targets:
-            del self._refined_cells[point]
-            self._expanded_cells.discard(point)
+        field, splits = self._field, dict(self._splits)
+        for px, py, color in targets:
+            field, splits = self._edited(field, splits, px, py, color, None, "discard")
+        self._commit(field, splits)
         return len(targets)
 
     def import_image(self, source: str | Path | Image.Image) -> None:
-        loaded = Image.open(source).convert("RGBA") if not isinstance(source, Image.Image) else source.convert("RGBA")
-        ratio = min(1.0, self.size / loaded.width, self.size / loaded.height)
-        target_size = (max(1, round(loaded.width * ratio)), max(1, round(loaded.height * ratio)))
-        fitted = Image.new("RGBA", (self.size, self.size), (0, 0, 0, 0))
-        resized = loaded.resize(target_size, Image.Resampling.NEAREST)
-        fitted.alpha_composite(resized, ((self.size - target_size[0]) // 2, (self.size - target_size[1]) // 2))
-        self._snapshot()
-        self.image = fitted
-        self._refined_cells.clear()
-        self._expanded_cells.clear()
+        if isinstance(source, Image.Image):
+            loaded = source.convert("RGBA")
+        else:
+            with Image.open(source) as opened:
+                loaded = opened.convert("RGBA")
+        ratio = min(1.0, self.width / loaded.width, self.height / loaded.height)
+        target = max(1, round(loaded.width * ratio)), max(1, round(loaded.height * ratio))
+        fitted = Image.new("RGBA", self.resolution)
+        resized = loaded.resize(target, Image.Resampling.NEAREST)
+        fitted.paste(resized, ((self.width - target[0]) // 2, (self.height - target[1]) // 2))
+        self._commit(ResolutionField.from_image(fitted), {})
 
-    def _native_image(self) -> Image.Image:
-        if not self.has_refinements:
-            return self.image.copy()
-        output = self.image.resize((self.size * 2, self.size * 2), Image.Resampling.NEAREST)
-        for x, y in sorted(self._expanded_cells):
-            children = self._refined_cells[(x, y)]
-            for child_y, row in enumerate(children):
-                for child_x, color in enumerate(row):
-                    output.putpixel((x * 2 + child_x, y * 2 + child_y), color)
-        return output
-
-    def resize(self, target: int) -> bool:
-        """Resize the logical canvas with nearest-neighbour sampling.
-
-        Split-cell detail is rendered first, then normalized into regular
-        pixels at the target logical resolution.
-        """
-        self._validate_size(target)
-        if target == self.size:
+    def set_resolution(self, width: int, height: int | None = None,
+                       detail_policy: DetailPolicy = "preserve") -> bool:
+        target = resolution(width, height)
+        policy = self._validate_detail_policy(detail_policy)
+        if target == self.resolution and policy == "preserve":
             return False
-        source = self._native_image()
+        field = self._field
+        if policy == "discard":
+            # An explicit global discard bakes only the requested coarse view.
+            field = ResolutionField.from_image(self._projection(*target))
         self._snapshot()
-        self.image = source.resize((target, target), Image.Resampling.NEAREST)
-        self.size = target
-        self._refined_cells.clear()
-        self._expanded_cells.clear()
+        self._resolution = target
+        self._field = field
+        if policy == "discard":
+            self._splits.clear()
+        self._view_cache = None
         return True
 
+    def resize(self, target: int, height: int | None = None,
+               detail_policy: DetailPolicy = "preserve") -> bool:
+        """Compatibility alias: resolution changes now preserve detail by default."""
+        return self.set_resolution(target, height, detail_policy)
+
     def upscale(self) -> bool:
-        if self.size >= self.SUPPORTED_SIZES[-1]:
+        try:
+            target = resolution(self.width * 2, self.height * 2)
+        except ValueError:
             return False
-        return self.resize(self.size * 2)
+        return self.set_resolution(*target)
 
     def undo(self) -> bool:
         if not self._history:
@@ -312,108 +392,137 @@ class PixelCanvas:
         if not self._future:
             return False
         self._history.append(self._state())
+        del self._history[:-self.HISTORY_LIMIT]
         self._restore_state(self._future.pop())
         return True
 
-    def render(self, display_size: int | None = None) -> Image.Image:
-        """Return a nearest-neighbour view without changing the logical canvas."""
+    def _native_image(self) -> Image.Image:
+        view = self.image
+        if not self.has_refinements:
+            return view
+        output = view.resize(self.native_resolution, Image.Resampling.NEAREST)
+        for x, y in self._expanded_cells:
+            for cy in range(2):
+                for cx in range(2):
+                    output.putpixel((2 * x + cx, 2 * y + cy), self.sample(x, y, (cx, cy)))
+        return output
+
+    def render(self, display_size: int | tuple[int, int] | None = None) -> Image.Image:
+        """Nearest-neighbour display of the current logical view, including splits."""
         output = self._native_image()
         if display_size is None:
             return output
-        if display_size <= 0:
-            raise ValueError("display size must be positive")
-        return output.resize((display_size, display_size), Image.Resampling.NEAREST)
+        target = resolution(*display_size) if isinstance(display_size, tuple) else resolution(display_size)
+        return output.resize(target, Image.Resampling.NEAREST)
 
-    def save_png(self, path: str | Path, export_size: int | None = None) -> None:
-        output = self._native_image()
-        if export_size is not None:
-            if export_size < output.width:
-                raise ValueError("export size cannot be smaller than native canvas size")
-            output = output.resize((export_size, export_size), Image.Resampling.NEAREST)
+    def render_resolution(self, width: int, height: int | None = None) -> Image.Image:
+        """Project retained detail directly at an explicit output resolution."""
+        return self._field.render(*resolution(width, height))
+
+    def save_png(self, path: str | Path, export_size: int | None = None,
+                 *, output_resolution: tuple[int, int] | None = None) -> None:
+        if export_size is not None and output_resolution is not None:
+            raise ValueError("choose export size or output resolution, not both")
+        if output_resolution is not None:
+            output = self.render_resolution(*output_resolution)
+        else:
+            output = self._native_image()
+            if export_size is not None:
+                target = resolution(export_size)
+                if export_size < max(output.size):
+                    raise ValueError("export size cannot be smaller than native canvas size")
+                output = output.resize(target, Image.Resampling.NEAREST)
         output.save(path, "PNG")
 
-    @staticmethod
-    def _color_to_source(color: Color) -> str | None:
-        red, green, blue, alpha = color
-        return None if alpha == 0 else f"#{red:02X}{green:02X}{blue:02X}"
-
-    @staticmethod
-    def _color_from_source(value: object) -> Color:
-        if value is None:
-            return (0, 0, 0, 0)
-        if not isinstance(value, str) or len(value) != 7 or value[0] != "#":
-            raise ValueError("pixel colors must use #RRGGBB")
-        try:
-            color = tuple(int(value[index:index + 2], 16) for index in (1, 3, 5))
-        except ValueError as error:
-            raise ValueError("pixel colors must use #RRGGBB") from error
-        return (*color, 255)
+    _color_to_source = staticmethod(encoded_color)
+    _color_from_source = staticmethod(decoded_color)
 
     def to_source(self) -> dict[str, Any]:
-        pixels: list[list[str | None]] = []
-        for y in range(self.size):
-            row: list[str | None] = []
-            for x in range(self.size):
-                row.append(self._color_to_source(self.image.getpixel((x, y))))
-            pixels.append(row)
-
-        source: dict[str, Any] = {"canvas_size": self.size, "pixels": pixels}
-        if self._refined_cells:
+        source: dict[str, Any] = {
+            "version": 2, "canvas_size": self.width, "resolution": list(self.resolution),
+            "pixels": image_source(self.image),
+            "retained_field": self._field.to_source(),
+            "retained_splits": [
+                {"resolution": [w, h], "x": x, "y": y,
+                 "base": encoded_color(base), "expanded": expanded}
+                for (w, h, x, y), (base, expanded) in sorted(self._splits.items())
+            ],
+        }
+        cells = self._refined_cells
+        if cells:
             source["refined_cells"] = [
-                {
-                    "x": x,
-                    "y": y,
-                    "expanded": (x, y) in self._expanded_cells,
-                    "children": [
-                        [self._color_to_source(color) for color in row]
-                        for row in children
-                    ],
-                }
-                for (x, y), children in sorted(self._refined_cells.items())
+                {"x": x, "y": y, "expanded": self.is_split(x, y),
+                 "children": [[encoded_color(c) for c in row] for row in children]}
+                for (x, y), children in sorted(cells.items())
             ]
         return source
 
     @classmethod
-    def from_source(cls, source: dict[str, Any]) -> "PixelCanvas":
+    def from_source(cls, source: dict[str, Any]) -> PixelCanvas:
         if not isinstance(source, dict):
             raise ValueError("pixel project must be a JSON object")
-        size = source.get("canvas_size")
-        pixels = source.get("pixels")
-        if not isinstance(size, int) or not isinstance(pixels, list):
-            raise ValueError("invalid pixel source")
-        canvas = cls(size)
-        if len(pixels) != size or any(not isinstance(row, list) or len(row) != size for row in pixels):
-            raise ValueError("pixel source dimensions do not match canvas size")
-        for y, row in enumerate(pixels):
-            for x, value in enumerate(row):
-                canvas.image.putpixel((x, y), cls._color_from_source(value))
-
-        refined = source.get("refined_cells", [])
-        if not isinstance(refined, list):
-            raise ValueError("refined_cells must be a list")
-        for entry in refined:
+        version = source.get("version", 1)
+        if type(version) is not int or version not in (1, 2):
+            raise ValueError("unsupported pixel project version")
+        if version == 1:
+            size = source.get("canvas_size")
+            model = cls(size)
+            image = source_image(source.get("pixels"), size, size)
+            field = ResolutionField.from_image(image)
+            cells = source.get("refined_cells", [])
+            if not isinstance(cells, list) or len(cells) > cls.MAX_SPLITS:
+                raise ValueError("invalid refined_cells")
+            for cell in cells:
+                if not isinstance(cell, dict):
+                    raise ValueError("invalid refined cell")
+                x, y = cell.get("x"), cell.get("y")
+                if not model._in_bounds(x, y) or model._key(x, y) in model._splits:
+                    raise ValueError("invalid or duplicate refined cell coordinate")
+                expanded = cell.get("expanded", True)
+                if type(expanded) is not bool:
+                    raise ValueError("refined cell expanded must be a boolean")
+                children = source_image(cell.get("children"), 2, 2)
+                if expanded:
+                    resolution(2 * size, 2 * size)
+                model._splits[model._key(x, y)] = (image.getpixel((x, y)), expanded)
+                for cy in range(2):
+                    for cx in range(2):
+                        field = field.replace(model._box(x, y, (cx, cy)), children.getpixel((cx, cy)))
+            model._field = field
+            return model
+        shape = source.get("resolution")
+        if not isinstance(shape, list) or len(shape) != 2:
+            raise ValueError("invalid project resolution")
+        model = cls(*resolution(*shape))
+        if type(source.get("canvas_size")) is not int or source["canvas_size"] != model.width:
+            raise ValueError("canvas_size does not match resolution width")
+        model._field = ResolutionField.from_source(source.get("retained_field"))
+        splits = source.get("retained_splits")
+        if not isinstance(splits, list) or len(splits) > cls.MAX_SPLITS:
+            raise ValueError("invalid retained split list")
+        for entry in splits:
             if not isinstance(entry, dict):
-                raise ValueError("invalid refined cell")
-            x = entry.get("x")
-            y = entry.get("y")
-            children = entry.get("children")
-            expanded = entry.get("expanded", True)
-            if not isinstance(x, int) or not isinstance(y, int) or not canvas._in_bounds(x, y):
-                raise ValueError("refined cell coordinate out of range")
-            if (x, y) in canvas._refined_cells:
-                raise ValueError("duplicate refined cell")
-            if not isinstance(expanded, bool):
-                raise ValueError("refined cell expanded must be a boolean")
-            if (
-                not isinstance(children, list)
-                or len(children) != 2
-                or any(not isinstance(row, list) or len(row) != 2 for row in children)
-            ):
-                raise ValueError("refined cell children must be a 2x2 array")
-            canvas._refined_cells[(x, y)] = [
-                [cls._color_from_source(value) for value in row]
-                for row in children
-            ]
+                raise ValueError("invalid retained split")
+            dims = entry.get("resolution")
+            if not isinstance(dims, list) or len(dims) != 2:
+                raise ValueError("invalid split resolution")
+            w, h = resolution(*dims)
+            x, y = entry.get("x"), entry.get("y")
+            if type(x) is not int or type(y) is not int or not (0 <= x < w and 0 <= y < h):
+                raise ValueError("invalid retained split coordinate")
+            expanded = entry.get("expanded")
+            if type(expanded) is not bool:
+                raise ValueError("invalid retained split expansion state")
             if expanded:
-                canvas._expanded_cells.add((x, y))
-        return canvas
+                resolution(2 * w, 2 * h)
+            key = (w, h, x, y)
+            if key in model._splits:
+                raise ValueError("duplicate retained split")
+            model._splits[key] = (decoded_color(entry.get("base")), expanded)
+        preview = source_image(source.get("pixels"), *model.resolution)
+        if preview.tobytes() != model.image.tobytes():
+            raise ValueError("project pixels disagree with retained field")
+        expected = model.to_source().get("refined_cells", [])
+        if source.get("refined_cells", []) != expected:
+            raise ValueError("project refined_cells disagree with retained field")
+        return model
