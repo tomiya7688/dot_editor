@@ -44,3 +44,6 @@ jobs:
         run: |
           python test_pixel_backend.py
           python test_pixel_layers.py
+
+      - name: Run non-interactive CLI regression tests
+        run: python test_pixel_cli.py

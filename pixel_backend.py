@@ -206,7 +206,7 @@ class PixelCanvas:
         replacement = (0, 0, 0, 0) if erase else self._normalize_color(color)
         policy = self._validate_detail_policy(detail_policy)
         original = self.image.getpixel((x, y))
-        if original == replacement:
+        if original == replacement and policy == "preserve":
             return 0
         points: list[tuple[int, int]] = []
         pending = deque([(x, y)])
@@ -220,6 +220,10 @@ class PixelCanvas:
                 if self._in_bounds(nx, ny) and (nx, ny) not in visited:
                     visited.add((nx, ny))
                     pending.append((nx, ny))
+        # Discard is a change even when the parent color already matches.
+        # Do not create history entries for unchanged cells without detail.
+        if original == replacement:
+            points = [point for point in points if self.has_detail_at(*point)]
         if not points:
             return 0
         self._snapshot()

@@ -90,6 +90,20 @@ python pixel_cli.py edit --project project.json --paint-child 1 1 1 0 "#0000FF"
 python pixel_cli.py edit --project project.json --erase-child 1 1 0 1
 ```
 
+### 細部の保持・破棄と状態確認
+
+```bash
+python pixel_cli.py edit --project project.json --collapse 1 1
+python pixel_cli.py inspect --project project.json --sample 1 1 --child 1 0
+python pixel_cli.py edit --project project.json --split 1 1
+python pixel_cli.py edit --project project.json --paint 1 1 "#00FF00" --detail-policy discard
+python pixel_cli.py edit --project project.json --discard-detail 0 0 2 2
+```
+
+`--collapse` は細部を保持して親セル表示へ戻します。`--split` で保持済みの子セルを再展開できます。親セルの `paint` / `erase` / `fill` と `collapse` は `--detail-policy preserve|discard` に対応し、既定値は `preserve` です。
+
+`inspect` は解像度・レイヤー・展開中/保持中の細部をJSONで返す読み取り専用操作です。詳細な意味、領域操作、終了コード、同時指定時の順序は [CUI細部操作](docs/CUI_detail_operations.md) を参照してください。
+
 ### PNGへ書き出す
 
 ```bash
@@ -113,11 +127,12 @@ python pixel_cli.py export --project project.json --output pixel_art.png --size 
 python scripts/evaluate.py
 ```
 
-バックエンド回帰テストを個別に実行する場合:
+バックエンド・CUI回帰テストを個別に実行する場合:
 
 ```bash
 python test_pixel_backend.py
 python test_pixel_layers.py
+python test_pixel_cli.py
 ```
 
 GitHub Actions でも push / pull request ごとに同じ評価とテストを実行します。評価処理はGUIウィンドウを起動しません。
