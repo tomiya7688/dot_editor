@@ -172,8 +172,26 @@ class PixelCanvas:
         return self._splits.get(self._key(x, y), (None, False))[1]
 
     def has_detail_at(self, x: int, y: int) -> bool:
-        return self._in_bounds(x, y) and (
-            self._key(x, y) in self._splits or self._field.has_detail(self._box(x, y)))
+        if not self._in_bounds(x, y):
+            return False
+        box = self._box(x, y)
+        if self._key(x, y) in self._splits or self._field.has_detail(box):
+            return True
+        # A split at another grid can retain a parent override even when the
+        # raster field is uniform. Include metadata that discard would remove
+        # or change, otherwise same-color edits can resurrect the old parent.
+        for key, (base, _) in self._splits.items():
+            split_box = self._key_box(key)
+            overlap = intersection(split_box, box)
+            if overlap is None:
+                continue
+            if overlap == split_box:
+                return True
+            center = self._center(split_box)
+            if (box[0] <= center[0] < box[2] and box[1] <= center[1] < box[3]
+                    and base != self._field.sample(*center)):
+                return True
+        return False
 
     def _projection(self, width: int, height: int) -> Image.Image:
         output = self._field.render(width, height)
@@ -240,6 +258,10 @@ class PixelCanvas:
             field = field.shift(box, delta)
             # Keep parent values at other stored grids consistent with the tint.
             for split_key, (base, expanded) in list(splits.items()):
+                # A child write must not alter its independently saved parent.
+                # The parent's center lies on the bottom-right child's edge.
+                if child is not None and split_key == key:
+                    continue
                 center = self._center(self._key_box(split_key))
                 if box[0] <= center[0] < box[2] and box[1] <= center[1] < box[3]:
                     splits[split_key] = (tuple(max(0, min(255, v + d)) for v, d in zip(base, delta)), expanded)
@@ -247,6 +269,8 @@ class PixelCanvas:
             field = field.replace(box, replacement)
             if policy == "discard":
                 for split_key in list(splits):
+                    if child is not None and split_key == key:
+                        continue
                     split_box = self._key_box(split_key)
                     overlap = intersection(split_box, box)
                     if overlap == split_box:

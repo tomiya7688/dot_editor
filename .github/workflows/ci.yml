@@ -50,3 +50,6 @@ jobs:
 
       - name: Run non-destructive resolution regression tests
         run: python test_resolution.py
+
+      - name: Run refinement isolation and persistence regression tests
+        run: python test_refinement.py
