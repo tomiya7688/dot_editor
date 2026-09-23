@@ -6,7 +6,7 @@ from tkinter.colorchooser import askcolor
 from PIL import Image, ImageTk
 
 from pixel_backend import PixelCanvas
-from pixel_cli import load_project as read_project, save_project as write_project
+from pixel_commands import PixelCommandAPI
 from pixel_layers import LayeredPixelCanvas
 from resolution_field import resolution
 
@@ -139,6 +139,11 @@ class PixelEditor:
         variable = getattr(self, "detail_policy", None)
         return variable.get() if variable is not None else "preserve"
 
+    @property
+    def commands(self):
+        """Return the shared command surface for the current backend."""
+        return PixelCommandAPI(self.backend)
+
     def report_error(self, error):
         if hasattr(self, "master"):
             messagebox.showerror("操作できません", str(error), parent=self.master)
@@ -181,25 +186,27 @@ class PixelEditor:
             return
         before = self.make_snapshot()
         try:
-            self.backend.add_layer(name)
+            changed = self.commands.add_layer(name)
         except ValueError as error:
             self.report_error(error)
             return
-        self._finish_edit(before)
+        if changed:
+            self._finish_edit(before)
 
     def remove_layer(self):
         before = self.make_snapshot()
         try:
-            self.backend.remove_layer()
+            changed = self.commands.remove_layer()
         except (KeyError, ValueError) as error:
             self.report_error(error)
             return
-        self._finish_edit(before)
+        if changed:
+            self._finish_edit(before)
 
     def select_layer(self, _event=None):
         selection = self.layer_list.curselection()
         if selection:
-            self.backend.select_layer(self.layer_list.get(selection[0]))
+            self.commands.select_layer(self.layer_list.get(selection[0]))
             self.refresh_composite()
             self.create_grid()
             self.update_canvas()
@@ -228,7 +235,7 @@ class PixelEditor:
 
     def reset_canvas_model(self, size=None, height=None):
         shape = self.backend.resolution if size is None else resolution(size, height)
-        self.backend = LayeredPixelCanvas(*shape)
+        self.backend = PixelCommandAPI.new(*shape, layered=True).canvas
         self.num_pixels_x, self.num_pixels_y = shape
         self.selected_cell = None
         self.history.clear()
@@ -238,7 +245,7 @@ class PixelEditor:
 
     def resize_logical_canvas(self, size, height=None, detail_policy="preserve"):
         target = resolution(size, height)
-        changed = self.perform_edit(self.backend.set_resolution, *target, detail_policy=detail_policy)
+        changed = self.perform_edit(self.commands.set_resolution, *target, detail_policy=detail_policy)
         if changed:
             self.selected_cell = None
         return changed
@@ -293,7 +300,7 @@ class PixelEditor:
         self.canvas.scan_dragto(event.x, event.y, gain=1)
 
     def _child_coordinate(self, x, y, image_x, image_y):
-        if not self.backend.is_split(x, y):
+        if not self.commands.is_split(x, y):
             return None
         cx = int(2 * (image_x * self.num_pixels_x / self.canvas_width - x))
         cy = int(2 * (image_y * self.num_pixels_y / self.canvas_height - y))
@@ -309,17 +316,21 @@ class PixelEditor:
         self.selected_cell = (x, y)
         child = self._child_coordinate(x, y, image_x, image_y)
         if self.tool == "picker":
-            self.current_color = self.backend.sample(x, y, child)[:3]
+            self.current_color = self.commands.sample(x, y, child=child)[:3]
             self.set_tool("brush")
             return
         color = tuple(self.current_color[:3]) + (255,)
         policy = self.current_detail_policy()
         if self.tool == "fill":
-            self.perform_edit(self.backend.fill, x, y, color, detail_policy=policy)
+            self.perform_edit(self.commands.fill, x, y, color, detail_policy=policy)
             self.set_tool("brush")
         else:
-            self.perform_edit(self.backend.paint, x, y, color, child=child,
-                              erase=self.tool == "eraser", detail_policy=policy)
+            command = self.commands.erase if self.tool == "eraser" else self.commands.paint
+            self.perform_edit(command, x, y, **(
+                {"child": child, "detail_policy": policy}
+                if self.tool == "eraser"
+                else {"color": color, "child": child, "detail_policy": policy}
+            ))
 
     def activate_eyedropper(self):
         self.set_tool("picker")
@@ -364,19 +375,13 @@ class PixelEditor:
         path = filedialog.askopenfilename(filetypes=[("画像ファイル", "*.png;*.jpg;*.jpeg;*.bmp"), ("すべて", "*.*")])
         if not path:
             return
-        before = self.make_snapshot()
-        try:
-            self.backend.active.import_image(path)
-        except (OSError, ValueError) as error:
-            self.report_error(error)
-            return
-        self._finish_edit(before)
+        self.perform_edit(self.commands.import_image, path)
 
     def save_project(self):
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON project", "*.json")])
         if path:
             try:
-                write_project(self.backend, Path(path))
+                self.commands.save(Path(path))
             except (OSError, ValueError) as error:
                 self.report_error(error)
 
@@ -385,7 +390,7 @@ class PixelEditor:
         if not path:
             return
         try:
-            loaded = read_project(Path(path))
+            loaded = PixelCommandAPI.load(Path(path)).canvas
             if isinstance(loaded, PixelCanvas):
                 layered = LayeredPixelCanvas(*loaded.resolution)
                 layered.layers = {"背景": loaded}
@@ -405,7 +410,7 @@ class PixelEditor:
         path = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("PNG files", "*.png")])
         if path:
             try:
-                self.backend.save_png(path)
+                self.commands.export_png(path)
             except (OSError, ValueError) as error:
                 self.report_error(error)
 
@@ -414,23 +419,28 @@ class PixelEditor:
 
     def upscale_resolution(self):
         try:
-            self.resize_logical_canvas(self.backend.width * 2, self.backend.height * 2,
-                                       detail_policy=self.current_detail_policy())
+            changed = self.perform_edit(
+                self.commands.upscale, detail_policy=self.current_detail_policy()
+            )
+            if changed:
+                self.selected_cell = None
         except ValueError as error:
             self.report_error(error)
 
     def split_selected_cell(self):
         if self.selected_cell is not None:
-            self.perform_edit(self.backend.split_cell, *self.selected_cell)
+            self.perform_edit(self.commands.split, *self.selected_cell)
 
     def collapse_selected_cell(self):
         if self.selected_cell is not None:
-            self.perform_edit(self.backend.collapse_cell, *self.selected_cell,
-                              discard_detail=self.current_detail_policy() == "discard")
+            self.perform_edit(
+                self.commands.collapse, *self.selected_cell,
+                detail_policy=self.current_detail_policy(),
+            )
 
     def discard_selected_detail(self):
         if self.selected_cell is not None:
-            self.perform_edit(self.backend.discard_detail, *self.selected_cell)
+            self.perform_edit(self.commands.discard_detail, *self.selected_cell)
 
     def change_size(self):
         width = simpledialog.askinteger("論理解像度", "横のセル数", initialvalue=self.backend.width,

@@ -53,3 +53,6 @@ jobs:
 
       - name: Run refinement isolation and persistence regression tests
         run: python test_refinement.py
+
+      - name: Run shared command API regression tests
+        run: python test_commands.py
