@@ -29,6 +29,28 @@ assert restored_layers.composite().tobytes() == composite.tobytes()
 restored_layers.select_layer("背景")
 assert restored_layers.composite().getpixel((3, 2)) == (0, 0, 255, 255)
 
+ordered = LayeredPixelCanvas(2)
+ordered.paint(0, 0, (255, 0, 0, 255))
+ordered.add_layer("人物")
+ordered.paint(0, 0, (0, 0, 255, 255))
+assert ordered.composite().getpixel((0, 0)) == (0, 0, 255, 255)
+ordered.select_layer("背景")
+assert ordered.move_layer("up")
+assert list(ordered.layers) == ["人物", "背景"]
+assert ordered.composite().getpixel((0, 0)) == (255, 0, 0, 255)
+assert ordered.undo()
+assert list(ordered.layers) == ["背景", "人物"]
+assert ordered.composite().getpixel((0, 0)) == (0, 0, 255, 255)
+assert ordered.redo()
+assert list(ordered.layers) == ["人物", "背景"]
+assert not ordered.move_layer("up")
+try:
+    ordered.move_layer("sideways")
+except ValueError:
+    pass
+else:
+    raise AssertionError("invalid layer direction must be rejected")
+
 with TemporaryDirectory() as directory:
     path = Path(directory) / "layered-refined.png"
     restored_layers.save_png(path)

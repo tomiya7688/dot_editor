@@ -82,3 +82,12 @@ python test_commands.py
 - 領域分割が非正方形解像度と分割数上限を編集前に検証すること。
 
 CIではPython 3.10 / 3.11 / 3.12 / 3.13 / 3.14の全環境で実行します。
+
+## Layer order
+
+Layer order is also available through the shared API. The last layer in the project list is topmost:
+
+    commands.move_layer("up")
+    commands.move_layer("down", name="背景")
+
+The name is optional and defaults to the active layer. A move past either end returns false without changing the project. Successful moves are part of document undo/redo.

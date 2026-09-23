@@ -99,6 +99,19 @@ class PixelCliTests(unittest.TestCase):
             self.assertEqual(image.tobytes(), expected.render().tobytes())
         self.assertEqual(load_project(copied).to_source(), expected.to_source())
 
+    def test_layer_order_can_be_changed_and_exported(self) -> None:
+        self.new(layered=True)
+        self.edit("--paint", 0, 0, "#FF0000")
+        self.edit("--add-layer", "人物", "--paint", 0, 0, "#0000FF")
+        before = load_project(self.project)
+        self.assertEqual(before.composite().getpixel((0, 0)), BLUE)
+
+        self.edit("--select-layer", "背景", "--move-layer", "up")
+        after = load_project(self.project)
+        self.assertEqual(list(after.layers), ["人物", "背景"])
+        self.assertEqual(after.composite().getpixel((0, 0)), RED)
+        self.assertEqual(after.active_layer, "背景")
+
     def test_parent_edit_preserves_detail_by_default(self) -> None:
         self.refined()
         self.edit("--collapse", 1, 1)

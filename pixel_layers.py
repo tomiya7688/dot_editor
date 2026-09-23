@@ -118,6 +118,25 @@ class LayeredPixelCanvas:
             self.active_layer = next(iter(self.layers))
         self._record(before)
 
+    def move_layer(self, direction: str, name: str | None = None) -> bool:
+        """Move one layer in compositing order; the last item is topmost."""
+        if direction not in ("up", "down"):
+            raise ValueError("direction must be 'up' or 'down'")
+        target = self.active_layer if name is None else name
+        if target not in self.layers:
+            raise KeyError(target)
+        entries = list(self.layers.items())
+        index = next(i for i, (layer_name, _) in enumerate(entries) if layer_name == target)
+        destination = index + (1 if direction == "up" else -1)
+        if destination < 0 or destination >= len(entries):
+            return False
+        before = self._state()
+        entry = entries.pop(index)
+        entries.insert(destination, entry)
+        self.layers = dict(entries)
+        self._record(before)
+        return True
+
     def is_split(self, x: int, y: int) -> bool:
         return self.active.is_split(x, y)
 

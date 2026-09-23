@@ -86,6 +86,12 @@ class PixelEditor:
         self.layer_list.bind("<<ListboxSelect>>", self.select_layer)
         self.add_layer_button = self.make_toolbar_button(layer_group, "追加", self.add_layer)
         self.remove_layer_button = self.make_toolbar_button(layer_group, "削除", self.remove_layer)
+        self.move_layer_up_button = self.make_toolbar_button(
+            layer_group, "上へ", lambda: self.move_layer("up")
+        )
+        self.move_layer_down_button = self.make_toolbar_button(
+            layer_group, "下へ", lambda: self.move_layer("down")
+        )
         view_group = self.create_toolbar_group(sidebar, "表示・解像度")
         self.resolution_label = tk.Label(view_group, bg="#101820", fg="#a9c7df", anchor="w")
         self.resolution_label.pack(fill="x", padx=8)
@@ -202,6 +208,9 @@ class PixelEditor:
             return
         if changed:
             self._finish_edit(before)
+
+    def move_layer(self, direction):
+        self.perform_edit(self.commands.move_layer, direction)
 
     def select_layer(self, _event=None):
         selection = self.layer_list.curselection()

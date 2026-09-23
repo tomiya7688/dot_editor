@@ -113,3 +113,12 @@ python test_resolution.py
 ```
 
 CIはPython 3.10 / 3.11 / 3.12 / 3.13 / 3.14で実行します。追加の解像度回帰は、非対話CUIだけの作成→低解像度→非正方形→局所破棄→復元→保存・再読込→PNG一致まで確認します。
+
+## レイヤー順の変更
+
+アクティブレイヤーを上下へ1段移動できます。合成ではリストの最後が最前面です。
+
+    python pixel_cli.py edit --project art.json --select-layer "背景" --move-layer up
+    python pixel_cli.py edit --project art.json --move-layer down
+
+端を越える移動は変更なしになります。順序変更はプロジェクトJSONへ保存され、共有モデルのUndo/Redo対象です。

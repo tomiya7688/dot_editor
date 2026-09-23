@@ -273,6 +273,11 @@ class PixelCommandAPI:
         self.canvas.remove_layer(name)
         return True
 
+    def move_layer(self, direction: str, name: str | None = None) -> bool:
+        if not isinstance(self.canvas, LayeredPixelCanvas):
+            raise ValueError("layer operations require a layered project")
+        return self.canvas.move_layer(direction, name)
+
     def inspect(self) -> dict[str, Any]:
         entries = (
             self.canvas.layers.items()
@@ -368,6 +373,7 @@ class PixelCommandAPI:
             "add_layer": self.add_layer,
             "select_layer": self.select_layer,
             "remove_layer": self.remove_layer,
+            "move_layer": self.move_layer,
             "inspect": self.inspect,
             "inspect_sample": self.inspect_sample,
             "save": self.save,
