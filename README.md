@@ -39,6 +39,22 @@ python dot_editor.py
 
 ブラシ、消しゴム、スポイト、塗りつぶし、レイヤー、セル分割、折りたたみ、細部破棄、任意の縦横解像度、表示サイズ、JSON保存/読込、PNG保存を利用できます。描画・解像度変更時の細部ポリシーは「保持」が既定です。操作が画面に収まらない場合は右サイドバーをスクロールしてください。
 
+## Python Command API
+
+ゲーム開発者ツール、Automation、AIなどから直接利用する場合は `PixelCommandAPI` を使います。GUIとCLIも同じCommand APIを経由します。
+
+```python
+from pixel_commands import PixelCommandAPI
+
+commands = PixelCommandAPI.new(16, layered=True)
+commands.paint(4, 3, (255, 0, 0, 255))
+commands.set_resolution(23, 17)
+commands.save("project.json")
+commands.export_png("pixel_art.png", output_resolution=(256, 256))
+```
+
+文字列ベースの呼び出しには `commands.execute("paint", ...)` も利用できます。詳細は [共通Command API](docs/Command_API.md) を参照してください。
+
 ## CLIを使う
 
 ### 新規プロジェクトと基本編集
@@ -112,6 +128,8 @@ python test_pixel_backend.py
 python test_pixel_layers.py
 python test_pixel_cli.py
 python test_resolution.py
+python test_refinement.py
+python test_commands.py
 ```
 
 push / pull request ごとに Python 3.10 / 3.11 / 3.12 / 3.13 / 3.14 の全ジョブで評価・回帰テストを実行します。通常の自動評価はGUIウィンドウを起動しません。
@@ -122,6 +140,9 @@ push / pull request ごとに Python 3.10 / 3.11 / 3.12 / 3.13 / 3.14 の全ジ�
 - [開発予定](docs/開発予定.md)
 - [コーディングルール](docs/コーディングルール.md)
 - [提案書](docs/提案.md)
+- [共通Command API](docs/Command_API.md)
+- [セル分割回帰仕様](docs/Refinement_regressions.md)
+- [非破壊解像度の仕様](docs/Non_destructive_resolution.md)
 
 ## ライセンス
 
