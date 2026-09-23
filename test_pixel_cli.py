@@ -112,6 +112,23 @@ class PixelCliTests(unittest.TestCase):
         self.assertEqual(after.composite().getpixel((0, 0)), RED)
         self.assertEqual(after.active_layer, "背景")
 
+    def test_layer_visibility_persists_and_affects_export(self) -> None:
+        self.new(layered=True)
+        self.edit("--paint", 0, 0, "#FF0000")
+        self.edit("--add-layer", "人物", "--paint", 0, 0, "#0000FF")
+        self.edit("--layer-visibility", "hide")
+
+        hidden = load_project(self.project)
+        self.assertFalse(hidden.is_layer_visible("人物"))
+        self.assertEqual(hidden.composite().getpixel((0, 0)), RED)
+        report = self.report()
+        self.assertFalse(report["layers"][1]["visible"])
+
+        self.edit("--layer-visibility", "show")
+        restored = load_project(self.project)
+        self.assertTrue(restored.is_layer_visible("人物"))
+        self.assertEqual(restored.composite().getpixel((0, 0)), BLUE)
+
     def test_parent_edit_preserves_detail_by_default(self) -> None:
         self.refined()
         self.edit("--collapse", 1, 1)

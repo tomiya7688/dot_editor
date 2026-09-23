@@ -51,6 +51,42 @@ except ValueError:
 else:
     raise AssertionError("invalid layer direction must be rejected")
 
+visibility = LayeredPixelCanvas(2)
+visibility.paint(0, 0, (255, 0, 0, 255))
+visibility.add_layer("人物")
+visibility.paint(0, 0, (0, 0, 255, 255))
+assert visibility.is_layer_visible()
+assert visibility.composite().getpixel((0, 0)) == (0, 0, 255, 255)
+assert visibility.set_layer_visibility(False)
+assert not visibility.is_layer_visible()
+assert visibility.composite().getpixel((0, 0)) == (255, 0, 0, 255)
+assert visibility.render_resolution(4, 4).getpixel((0, 0)) == (255, 0, 0, 255)
+assert visibility.undo()
+assert visibility.is_layer_visible()
+assert visibility.redo()
+source_with_hidden_layer = visibility.to_source()
+assert source_with_hidden_layer["layers"][1]["visible"] is False
+visibility_copy = LayeredPixelCanvas.from_source(source_with_hidden_layer)
+assert not visibility_copy.is_layer_visible("人物")
+assert visibility_copy.composite().tobytes() == visibility.composite().tobytes()
+assert not visibility.set_layer_visibility(False)
+try:
+    visibility.set_layer_visibility(1)
+except ValueError:
+    pass
+else:
+    raise AssertionError("non-boolean layer visibility must be rejected")
+
+legacy_visibility = LayeredPixelCanvas.from_source({
+    "canvas_size": 2,
+    "active_layer": "背景",
+    "layers": [{"name": "背景", "source": {
+        "canvas_size": 2,
+        "pixels": [[None, None], [None, None]],
+    }}],
+})
+assert legacy_visibility.is_layer_visible("背景")
+
 with TemporaryDirectory() as directory:
     path = Path(directory) / "layered-refined.png"
     restored_layers.save_png(path)

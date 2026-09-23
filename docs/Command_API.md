@@ -91,3 +91,12 @@ Layer order is also available through the shared API. The last layer in the proj
     commands.move_layer("down", name="背景")
 
 The name is optional and defaults to the active layer. A move past either end returns false without changing the project. Successful moves are part of document undo/redo.
+
+## Layer visibility
+
+Visibility is stored per layer. Old projects that omit the field load every layer as visible.
+
+    commands.set_layer_visibility(False)
+    commands.set_layer_visibility(True, name="背景")
+
+The name defaults to the active layer. Hidden layers remain editable; visibility affects compositing and PNG export. A real change is saved in the project and participates in undo/redo.

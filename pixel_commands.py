@@ -278,6 +278,11 @@ class PixelCommandAPI:
             raise ValueError("layer operations require a layered project")
         return self.canvas.move_layer(direction, name)
 
+    def set_layer_visibility(self, visible: bool, name: str | None = None) -> bool:
+        if not isinstance(self.canvas, LayeredPixelCanvas):
+            raise ValueError("layer operations require a layered project")
+        return self.canvas.set_layer_visibility(visible, name)
+
     def inspect(self) -> dict[str, Any]:
         entries = (
             self.canvas.layers.items()
@@ -290,6 +295,11 @@ class PixelCommandAPI:
             expanded = sum(bool(cell["expanded"]) for cell in cells)
             layers.append({
                 "name": name,
+                "visible": (
+                    self.canvas.layer_visibility.get(name, True)
+                    if isinstance(self.canvas, LayeredPixelCanvas)
+                    else True
+                ),
                 "retained_detail_cells": len(cells),
                 "expanded_cells": expanded,
                 "collapsed_detail_cells": len(cells) - expanded,
@@ -374,6 +384,7 @@ class PixelCommandAPI:
             "select_layer": self.select_layer,
             "remove_layer": self.remove_layer,
             "move_layer": self.move_layer,
+            "set_layer_visibility": self.set_layer_visibility,
             "inspect": self.inspect,
             "inspect_sample": self.inspect_sample,
             "save": self.save,

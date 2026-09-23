@@ -92,6 +92,9 @@ class PixelEditor:
         self.move_layer_down_button = self.make_toolbar_button(
             layer_group, "下へ", lambda: self.move_layer("down")
         )
+        self.layer_visibility_button = self.make_toolbar_button(
+            layer_group, "表示切替", self.toggle_layer_visibility
+        )
         view_group = self.create_toolbar_group(sidebar, "表示・解像度")
         self.resolution_label = tk.Label(view_group, bg="#101820", fg="#a9c7df", anchor="w")
         self.resolution_label.pack(fill="x", padx=8)
@@ -162,8 +165,10 @@ class PixelEditor:
             return
         self.layer_list.delete(0, tk.END)
         names = list(self.backend.layers)
+        self._layer_names = names
         for name in names:
-            self.layer_list.insert(tk.END, name)
+            marker = "表示" if self.backend.layer_visibility.get(name, True) else "非表示"
+            self.layer_list.insert(tk.END, f"[{marker}] {name}")
         if self.backend.active_layer in names:
             self.layer_list.selection_set(names.index(self.backend.active_layer))
 
@@ -212,10 +217,14 @@ class PixelEditor:
     def move_layer(self, direction):
         self.perform_edit(self.commands.move_layer, direction)
 
+    def toggle_layer_visibility(self):
+        current = self.backend.is_layer_visible()
+        self.perform_edit(self.commands.set_layer_visibility, not current)
+
     def select_layer(self, _event=None):
         selection = self.layer_list.curselection()
         if selection:
-            self.commands.select_layer(self.layer_list.get(selection[0]))
+            self.commands.select_layer(self._layer_names[selection[0]])
             self.refresh_composite()
             self.create_grid()
             self.update_canvas()

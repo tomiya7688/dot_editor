@@ -8,7 +8,7 @@ from PIL import Image
 from pixel_backend import CanvasState, ChildCoordinate, DetailPolicy, PixelCanvas
 from resolution_field import resolution
 
-LayerState = tuple[list[tuple[str, CanvasState]], str]
+LayerState = tuple[list[tuple[str, CanvasState, bool]], str]
 
 
 class LayeredPixelCanvas:
@@ -19,6 +19,7 @@ class LayeredPixelCanvas:
 
     def __init__(self, size: int = 16, height: int | None = None) -> None:
         self.layers: dict[str, PixelCanvas] = {"背景": PixelCanvas(size, height)}
+        self.layer_visibility: dict[str, bool] = {"背景": True}
         self.active_layer = "背景"
         self._history: list[LayerState] = []
         self._future: list[LayerState] = []
@@ -65,7 +66,11 @@ class LayeredPixelCanvas:
         return self.native_resolution[0]
 
     def _state(self) -> LayerState:
-        return [(name, layer._state()) for name, layer in self.layers.items()], self.active_layer
+        entries = [
+            (name, layer._state(), self.layer_visibility.get(name, True))
+            for name, layer in self.layers.items()
+        ]
+        return entries, self.active_layer
 
     def _record(self, state: LayerState) -> None:
         self._history.append(state)
@@ -75,10 +80,12 @@ class LayeredPixelCanvas:
     def _restore(self, state: LayerState) -> None:
         entries, active = state
         self.layers = {}
-        for name, canvas_state in entries:
+        self.layer_visibility = {}
+        for name, canvas_state, visible in entries:
             canvas = PixelCanvas(*canvas_state[0])
             canvas._restore_state(canvas_state)
             self.layers[name] = canvas
+            self.layer_visibility[name] = visible
         self.active_layer = active
 
     def _edit_active(self, operation: str, *args: Any, **kwargs: Any) -> Any:
@@ -98,6 +105,7 @@ class LayeredPixelCanvas:
             raise ValueError("too many layers")
         before = self._state()
         self.layers[clean] = PixelCanvas(*self.resolution)
+        self.layer_visibility[clean] = True
         self.active_layer = clean
         self._record(before)
 
@@ -114,9 +122,29 @@ class LayeredPixelCanvas:
             raise ValueError("at least one layer is required")
         before = self._state()
         del self.layers[target]
+        self.layer_visibility.pop(target, None)
         if target == self.active_layer:
             self.active_layer = next(iter(self.layers))
         self._record(before)
+
+    def is_layer_visible(self, name: str | None = None) -> bool:
+        target = self.active_layer if name is None else name
+        if target not in self.layers:
+            raise KeyError(target)
+        return self.layer_visibility.get(target, True)
+
+    def set_layer_visibility(self, visible: bool, name: str | None = None) -> bool:
+        if type(visible) is not bool:
+            raise ValueError("layer visibility must be a boolean")
+        target = self.active_layer if name is None else name
+        if target not in self.layers:
+            raise KeyError(target)
+        if self.layer_visibility.get(target, True) == visible:
+            return False
+        before = self._state()
+        self.layer_visibility[target] = visible
+        self._record(before)
+        return True
 
     def move_layer(self, direction: str, name: str | None = None) -> bool:
         """Move one layer in compositing order; the last item is topmost."""
@@ -211,15 +239,17 @@ class LayeredPixelCanvas:
     def composite(self) -> Image.Image:
         target = self.native_resolution
         result = Image.new("RGBA", target)
-        for layer in self.layers.values():
-            result.alpha_composite(layer.render(target))
+        for name, layer in self.layers.items():
+            if self.layer_visibility.get(name, True):
+                result.alpha_composite(layer.render(target))
         return result
 
     def render_resolution(self, width: int, height: int | None = None) -> Image.Image:
         target = resolution(width, height)
         result = Image.new("RGBA", target)
-        for layer in self.layers.values():
-            result.alpha_composite(layer.render_resolution(*target))
+        for name, layer in self.layers.items():
+            if self.layer_visibility.get(name, True):
+                result.alpha_composite(layer.render_resolution(*target))
         return result
 
     def save_png(self, path: str | Path, export_size: int | None = None,
@@ -241,8 +271,14 @@ class LayeredPixelCanvas:
         return {
             "version": 2, "canvas_size": self.width, "resolution": list(self.resolution),
             "active_layer": self.active_layer,
-            "layers": [{"name": name, "source": canvas.to_source()}
-                       for name, canvas in self.layers.items()],
+            "layers": [
+                {
+                    "name": name,
+                    "visible": self.layer_visibility.get(name, True),
+                    "source": canvas.to_source(),
+                }
+                for name, canvas in self.layers.items()
+            ],
         }
 
     @classmethod
@@ -256,6 +292,7 @@ class LayeredPixelCanvas:
         if not isinstance(entries, list) or not (1 <= len(entries) <= cls.MAX_LAYERS):
             raise ValueError("layer source must contain 1..256 layers")
         layers: dict[str, PixelCanvas] = {}
+        visibility: dict[str, bool] = {}
         expected = None
         for entry in entries:
             if not isinstance(entry, dict):
@@ -265,12 +302,16 @@ class LayeredPixelCanvas:
                 raise ValueError("layer name must not be empty")
             if name in layers:
                 raise ValueError(f"duplicate layer name: {name}")
+            visible = entry.get("visible", True)
+            if type(visible) is not bool:
+                raise ValueError("layer visible must be a boolean")
             layer = PixelCanvas.from_source(entry.get("source"))
             if expected is None:
                 expected = layer.resolution
             elif layer.resolution != expected:
                 raise ValueError("all layers must use the same canvas size and resolution")
             layers[name] = layer
+            visibility[name] = visible
         declared = source.get("canvas_size")
         if declared is not None and (type(declared) is not int or declared != expected[0]):
             raise ValueError("layered canvas_size does not match layer size")
@@ -282,5 +323,7 @@ class LayeredPixelCanvas:
         if not isinstance(active, str) or active not in layers:
             raise ValueError("active_layer must reference an existing layer")
         model = cls(*expected)
-        model.layers, model.active_layer = layers, active
+        model.layers = layers
+        model.layer_visibility = visibility
+        model.active_layer = active
         return model

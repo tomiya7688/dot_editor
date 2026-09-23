@@ -122,3 +122,12 @@ CIはPython 3.10 / 3.11 / 3.12 / 3.13 / 3.14で実行します。追加の解像
     python pixel_cli.py edit --project art.json --move-layer down
 
 端を越える移動は変更なしになります。順序変更はプロジェクトJSONへ保存され、共有モデルのUndo/Redo対象です。
+
+## レイヤー表示切替
+
+アクティブレイヤーを表示・非表示にできます。非表示のレイヤーも編集可能で、合成画像とPNG書出しからだけ除外されます。旧プロジェクトで表示属性がないレイヤーは表示状態として読み込みます。
+
+    python pixel_cli.py edit --project art.json --layer-visibility hide
+    python pixel_cli.py edit --project art.json --layer-visibility show
+
+inspectのlayers各要素にはvisibleが含まれます。表示状態の変更はプロジェクトに保存され、Undo/Redo対象です。
