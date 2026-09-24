@@ -100,3 +100,12 @@ Visibility is stored per layer. Old projects that omit the field load every laye
     commands.set_layer_visibility(True, name="背景")
 
 The name defaults to the active layer. Hidden layers remain editable; visibility affects compositing and PNG export. A real change is saved in the project and participates in undo/redo.
+
+## Layer rename
+
+Rename the active layer or a named layer while preserving its artwork, visibility, position, and active selection.
+
+    commands.rename_layer("人物")
+    commands.rename_layer("背景", name="Base")
+
+Names are trimmed. Empty and duplicate names raise ValueError. Renaming to the current name is a no-op. Rename is included in project undo/redo.

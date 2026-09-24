@@ -273,6 +273,11 @@ class PixelCommandAPI:
         self.canvas.remove_layer(name)
         return True
 
+    def rename_layer(self, new_name: str, name: str | None = None) -> bool:
+        if not isinstance(self.canvas, LayeredPixelCanvas):
+            raise ValueError("layer operations require a layered project")
+        return self.canvas.rename_layer(new_name, name)
+
     def move_layer(self, direction: str, name: str | None = None) -> bool:
         if not isinstance(self.canvas, LayeredPixelCanvas):
             raise ValueError("layer operations require a layered project")
@@ -383,6 +388,7 @@ class PixelCommandAPI:
             "add_layer": self.add_layer,
             "select_layer": self.select_layer,
             "remove_layer": self.remove_layer,
+            "rename_layer": self.rename_layer,
             "move_layer": self.move_layer,
             "set_layer_visibility": self.set_layer_visibility,
             "inspect": self.inspect,

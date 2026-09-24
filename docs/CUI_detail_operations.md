@@ -131,3 +131,11 @@ CIはPython 3.10 / 3.11 / 3.12 / 3.13 / 3.14で実行します。追加の解像
     python pixel_cli.py edit --project art.json --layer-visibility show
 
 inspectのlayers各要素にはvisibleが含まれます。表示状態の変更はプロジェクトに保存され、Undo/Redo対象です。
+
+## レイヤー名称変更
+
+アクティブレイヤーの名称を変更します。絵、表示状態、重ね順、選択状態は維持します。前後の空白は除去され、空名・重複名はエラー、同名への変更は無操作です。
+
+    python pixel_cli.py edit --project art.json --rename-layer "登場人物"
+
+名称変更はプロジェクトに保存され、Undo/Redo対象です。

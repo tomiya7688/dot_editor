@@ -146,6 +146,31 @@ class LayeredPixelCanvas:
         self._record(before)
         return True
 
+    def rename_layer(self, new_name: str, name: str | None = None) -> bool:
+        target = self.active_layer if name is None else name
+        if target not in self.layers:
+            raise KeyError(target)
+        if not isinstance(new_name, str) or not new_name.strip():
+            raise ValueError("layer name must not be empty")
+        clean = new_name.strip()
+        if clean == target:
+            return False
+        if clean in self.layers:
+            raise ValueError(f"layer already exists: {clean}")
+        before = self._state()
+        self.layers = {
+            clean if layer_name == target else layer_name: layer
+            for layer_name, layer in self.layers.items()
+        }
+        self.layer_visibility = {
+            clean if layer_name == target else layer_name: visible
+            for layer_name, visible in self.layer_visibility.items()
+        }
+        if target == self.active_layer:
+            self.active_layer = clean
+        self._record(before)
+        return True
+
     def move_layer(self, direction: str, name: str | None = None) -> bool:
         """Move one layer in compositing order; the last item is topmost."""
         if direction not in ("up", "down"):

@@ -88,6 +88,9 @@ class CommandApiTests(unittest.TestCase):
         self.assertFalse(api.canvas.is_layer_visible())
         self.assertFalse(api.execute("set_layer_visibility", visible=False))
         self.assertFalse(api.inspect()["layers"][0]["visible"])
+        self.assertTrue(api.execute("rename_layer", new_name="キャラ"))
+        self.assertEqual(api.canvas.active_layer, "キャラ")
+        self.assertEqual(list(api.canvas.layers), ["キャラ", "背景"])
         with self.assertRaisesRegex(ValueError, "unknown command"):
             api.execute("not-a-command")
 
@@ -125,6 +128,7 @@ class CommandApiTests(unittest.TestCase):
             lambda: api.remove_layer(),
             lambda: api.move_layer("up"),
             lambda: api.set_layer_visibility(False),
+            lambda: api.rename_layer("新規"),
             lambda: api.sample(0, 0, layer="背景"),
         ):
             with self.subTest(operation=operation):

@@ -112,6 +112,21 @@ class PixelCliTests(unittest.TestCase):
         self.assertEqual(after.composite().getpixel((0, 0)), RED)
         self.assertEqual(after.active_layer, "背景")
 
+    def test_layer_rename_persists_and_preserves_visibility_and_order(self) -> None:
+        self.new(layered=True)
+        self.edit("--paint", 0, 0, "#FF0000")
+        self.edit("--add-layer", "人物", "--paint", 0, 0, "#0000FF")
+        self.edit("--layer-visibility", "hide")
+        self.edit("--rename-layer", "登場人物")
+
+        renamed = load_project(self.project)
+        self.assertEqual(list(renamed.layers), ["背景", "登場人物"])
+        self.assertEqual(renamed.active_layer, "登場人物")
+        self.assertFalse(renamed.is_layer_visible("登場人物"))
+        self.assertEqual(renamed.layers["登場人物"].sample(0, 0), BLUE)
+        self.assertEqual(self.report()["layers"][1]["name"], "登場人物")
+        self.assertFalse(self.report()["layers"][1]["visible"])
+
     def test_layer_visibility_persists_and_affects_export(self) -> None:
         self.new(layered=True)
         self.edit("--paint", 0, 0, "#FF0000")

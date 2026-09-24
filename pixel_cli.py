@@ -44,7 +44,7 @@ def edit_project(canvas: Canvas, args: argparse.Namespace) -> bool:
         args.resolution, args.import_image, args.split, args.split_region,
         args.paint, args.paint_child, args.fill, args.erase, args.erase_child,
         args.collapse, args.discard_detail, args.add_layer, args.select_layer,
-        args.move_layer, args.layer_visibility,
+        args.rename_layer, args.move_layer, args.layer_visibility,
     )
     if not (
         any(value is not None for value in operations)
@@ -60,6 +60,8 @@ def edit_project(canvas: Canvas, args: argparse.Namespace) -> bool:
         changed = api.add_layer(args.add_layer) or changed
     if args.select_layer is not None:
         changed = api.select_layer(args.select_layer) or changed
+    if args.rename_layer is not None:
+        changed = api.rename_layer(args.rename_layer) or changed
     if args.move_layer is not None:
         changed = api.move_layer(args.move_layer) or changed
     if args.layer_visibility is not None:
@@ -183,6 +185,10 @@ def build_parser() -> argparse.ArgumentParser:
     edit_parser.add_argument("--import-image", type=Path)
     edit_parser.add_argument("--add-layer")
     edit_parser.add_argument("--select-layer")
+    edit_parser.add_argument(
+        "--rename-layer",
+        help="rename the active layer",
+    )
     edit_parser.add_argument(
         "--move-layer", choices=("up", "down"),
         help="move the active layer one position in compositing order",

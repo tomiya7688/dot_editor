@@ -70,6 +70,23 @@ visibility_copy = LayeredPixelCanvas.from_source(source_with_hidden_layer)
 assert not visibility_copy.is_layer_visible("人物")
 assert visibility_copy.composite().tobytes() == visibility.composite().tobytes()
 assert not visibility.set_layer_visibility(False)
+assert visibility.rename_layer("人物レイヤー")
+assert visibility.active_layer == "人物レイヤー"
+assert visibility.is_layer_visible("人物レイヤー") is False
+assert list(visibility.layers) == ["背景", "人物レイヤー"]
+assert visibility.undo()
+assert "人物" in visibility.layers
+assert visibility.redo()
+assert "人物レイヤー" in visibility.layers
+for invalid_name in ("", "   ", "背景"):
+    before_rename = visibility.to_source()
+    try:
+        visibility.rename_layer(invalid_name)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid or duplicate layer name must be rejected")
+    assert visibility.to_source() == before_rename
 try:
     visibility.set_layer_visibility(1)
 except ValueError:

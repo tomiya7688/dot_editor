@@ -95,6 +95,9 @@ class PixelEditor:
         self.layer_visibility_button = self.make_toolbar_button(
             layer_group, "表示切替", self.toggle_layer_visibility
         )
+        self.rename_layer_button = self.make_toolbar_button(
+            layer_group, "名称変更", self.rename_layer
+        )
         view_group = self.create_toolbar_group(sidebar, "表示・解像度")
         self.resolution_label = tk.Label(view_group, bg="#101820", fg="#a9c7df", anchor="w")
         self.resolution_label.pack(fill="x", padx=8)
@@ -213,6 +216,14 @@ class PixelEditor:
             return
         if changed:
             self._finish_edit(before)
+
+    def rename_layer(self):
+        current = self.backend.active_layer
+        new_name = simpledialog.askstring(
+            "レイヤー名称変更", "新しいレイヤー名", initialvalue=current, parent=self.master
+        )
+        if new_name is not None:
+            self.perform_edit(self.commands.rename_layer, new_name)
 
     def move_layer(self, direction):
         self.perform_edit(self.commands.move_layer, direction)
