@@ -175,6 +175,12 @@ class CommandApiTests(unittest.TestCase):
         editor.update_canvas = lambda: None
         return editor
 
+    def test_canvas_image_is_centered_only_when_it_fits(self) -> None:
+        from dot_editor import PixelEditor
+
+        self.assertEqual(PixelEditor.image_origin(1000, 800, 640, 480), (180, 160))
+        self.assertEqual(PixelEditor.image_origin(500, 300, 640, 480), (0, 0))
+
     def test_gui_handlers_route_through_command_api(self) -> None:
         from pixel_commands import PixelCommandAPI as Commands
         editor = self.fake_editor()

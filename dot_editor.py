@@ -16,6 +16,10 @@ class PixelEditor:
         self.master = master
         self.master.title("ドット絵エディタ")
         self.master.configure(bg="#0b0f14")
+        self.master.geometry("1040x740")
+        self.master.minsize(900, 640)
+        self.master.grid_columnconfigure(0, weight=1)
+        self.master.grid_rowconfigure(0, weight=1)
         self.canvas_width = self.canvas_height = 640
         self.num_pixels_x = self.num_pixels_y = 2
         self.current_color = (255, 255, 255)
@@ -28,7 +32,9 @@ class PixelEditor:
         self.zoom_factor = 1.0
         self.detail_policy = tk.StringVar(master=master, value="preserve")
         self.canvas = tk.Canvas(master, bg="#111820", highlightthickness=1, highlightbackground="#3b4654")
-        self.canvas.grid(row=0, column=0, sticky="n")
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.canvas.bind("<Configure>", self.on_canvas_configure, add="+")
+        self.canvas.bind("<Control-MouseWheel>", self.zoom_with_wheel)
         self.build_sidebar()
         self.update_canvas_size()
         self.refresh_layer_list()
@@ -240,6 +246,56 @@ class PixelEditor:
             self.create_grid()
             self.update_canvas()
 
+    @staticmethod
+    def image_origin(viewport_width, viewport_height, image_width, image_height):
+        """Center an image when it fits; keep its origin at zero when it overflows."""
+        return (
+            max(0, (viewport_width - image_width) // 2),
+            max(0, (viewport_height - image_height) // 2),
+        )
+
+    def viewport_size(self):
+        requested = (
+            max(1, min(self.canvas_width, round(self.canvas_width * self.zoom_factor))),
+            max(1, min(self.canvas_height, round(self.canvas_height * self.zoom_factor))),
+        )
+        measure = getattr(self.canvas, "winfo_width", None)
+        try:
+            width = int(measure()) if callable(measure) else 0
+        except (TypeError, ValueError):
+            width = 0
+        measure = getattr(self.canvas, "winfo_height", None)
+        try:
+            height = int(measure()) if callable(measure) else 0
+        except (TypeError, ValueError):
+            height = 0
+        return (
+            width if width and width > 1 else requested[0],
+            height if height and height > 1 else requested[1],
+        )
+
+    def on_canvas_configure(self, _event=None):
+        if not hasattr(self, "image"):
+            return
+        viewport_width, viewport_height = self.viewport_size()
+        content_width = max(1, round(self.canvas_width * self.zoom_factor))
+        content_height = max(1, round(self.canvas_height * self.zoom_factor))
+        self.canvas.configure(
+            scrollregion=(
+                0, 0, max(viewport_width, content_width),
+                max(viewport_height, content_height),
+            )
+        )
+        self.create_grid()
+        self.update_canvas()
+
+    def zoom_with_wheel(self, event):
+        if event.delta > 0:
+            self.zoom_in()
+        elif event.delta < 0:
+            self.zoom_out()
+        return "break"
+
     def update_canvas_size(self):
         """Only update display geometry; never reset the document or its history."""
         self.pixel_size = self.canvas_width / self.num_pixels_x
@@ -248,10 +304,18 @@ class PixelEditor:
         width = max(1, round(self.canvas_width * self.zoom_factor))
         height = max(1, round(self.canvas_height * self.zoom_factor))
         self.canvas.config(width=min(self.canvas_width, width), height=min(self.canvas_height, height))
-        self.canvas.configure(scrollregion=(0, 0, width, height))
+        viewport_width, viewport_height = self.viewport_size()
+        self.canvas.configure(
+            scrollregion=(
+                0, 0, max(viewport_width, width), max(viewport_height, height)
+            )
+        )
         label = getattr(self, "resolution_label", None)
         if label is not None:
-            label.configure(text=f"解像度: {self.num_pixels_x} × {self.num_pixels_y}")
+            label.configure(
+                text=f"解像度: {self.num_pixels_x} × {self.num_pixels_y}"
+                f"　表示: {round(self.zoom_factor * 100)}%"
+            )
         self.refresh_composite()
         self.create_grid()
         self.update_canvas()
@@ -284,14 +348,24 @@ class PixelEditor:
         width = max(1, round(self.canvas_width * self.zoom_factor))
         height = max(1, round(self.canvas_height * self.zoom_factor))
         # Skip subpixel-spaced lines; pointer mapping still uses exact ratios.
+        viewport_width, viewport_height = self.viewport_size()
+        origin_x, origin_y = self.image_origin(
+            viewport_width, viewport_height, width, height
+        )
         if width / self.num_pixels_x >= 2:
             for x in range(self.num_pixels_x + 1):
-                px = x * width / self.num_pixels_x
-                self.canvas.create_line(px, 0, px, height, fill="#303945", tags="grid")
+                px = origin_x + x * width / self.num_pixels_x
+                self.canvas.create_line(
+                    px, origin_y, px, origin_y + height,
+                    fill="#303945", tags="grid",
+                )
         if height / self.num_pixels_y >= 2:
             for y in range(self.num_pixels_y + 1):
-                py = y * height / self.num_pixels_y
-                self.canvas.create_line(0, py, width, py, fill="#303945", tags="grid")
+                py = origin_y + y * height / self.num_pixels_y
+                self.canvas.create_line(
+                    origin_x, py, origin_x + width, py,
+                    fill="#303945", tags="grid",
+                )
 
     def set_zoom(self, factor):
         self.zoom_factor = max(0.5, min(4.0, float(factor)))
@@ -336,8 +410,16 @@ class PixelEditor:
         return min(1, max(0, cx)), min(1, max(0, cy))
 
     def paint_pixel(self, event):
-        image_x = self.canvas.canvasx(event.x) / self.zoom_factor
-        image_y = self.canvas.canvasy(event.y) / self.zoom_factor
+        viewport_width, viewport_height = self.viewport_size()
+        shape = (
+            round(self.canvas_width * self.zoom_factor),
+            round(self.canvas_height * self.zoom_factor),
+        )
+        origin_x, origin_y = self.image_origin(
+            viewport_width, viewport_height, *shape
+        )
+        image_x = (self.canvas.canvasx(event.x) - origin_x) / self.zoom_factor
+        image_y = (self.canvas.canvasy(event.y) - origin_y) / self.zoom_factor
         if not (0 <= image_x < self.canvas_width and 0 <= image_y < self.canvas_height):
             return
         x = int(image_x * self.num_pixels_x / self.canvas_width)
@@ -395,8 +477,10 @@ class PixelEditor:
     def update_canvas(self):
         shape = max(1, round(self.canvas_width * self.zoom_factor)), max(1, round(self.canvas_height * self.zoom_factor))
         self.photo = ImageTk.PhotoImage(self.image.resize(shape, Image.Resampling.NEAREST))
+        viewport_width, viewport_height = self.viewport_size()
+        origin = self.image_origin(viewport_width, viewport_height, *shape)
         self.canvas.delete("artwork")
-        self.canvas.create_image(0, 0, anchor="nw", image=self.photo, tags="artwork")
+        self.canvas.create_image(*origin, anchor="nw", image=self.photo, tags="artwork")
         self.canvas.tag_lower("artwork")
         self.canvas.image = self.photo
 
