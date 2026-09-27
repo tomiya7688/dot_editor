@@ -19,7 +19,7 @@ Issue #3 のセル分割モデルを、Issue #6 の任意解像度と組み合�
 ## 回帰テスト
 
 ```bash
-python test_refinement.py
+python -m unittest discover -s tests -p test_refinement.py
 ```
 
 22件のテストで次を確認します。4子セルと2ポリシーの組み合わせは各テスト内のsubTestでも検証します。

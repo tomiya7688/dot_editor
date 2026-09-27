@@ -20,7 +20,7 @@ from pixel_cli import load_project, save_project
 from pixel_layers import LayeredPixelCanvas
 from resolution_field import ResolutionField, cell_box
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1] / "src"
 
 
 class ResolutionTests(unittest.TestCase):

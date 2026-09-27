@@ -35,7 +35,7 @@ if (-not $SkipInstall) {
         throw "Failed to upgrade pip."
     }
 
-    & $Python -m pip install -r (Join-Path $Root "requirements.txt")
+    & $Python -m pip install -e $Root
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to install project dependencies."
     }

@@ -35,29 +35,34 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install -e .
 
       - name: Run evaluation
         run: python scripts/evaluate.py
 
-      - name: Run backend tests
-        run: |
-          python test_pixel_backend.py
-          python test_pixel_layers.py
+      - name: Run all regression tests
+        run: python -m unittest discover -s tests
 
-      - name: Run non-interactive CLI regression tests
-        run: |
-          python test_pixel_cli.py
-          python test_palette.py
-
-      - name: Check generated class documentation
-        run: python -m unittest test_class_diagram
-
-      - name: Run non-destructive resolution regression tests
-        run: python test_resolution.py
-
-      - name: Run refinement isolation and persistence regression tests
-        run: python test_refinement.py
-
-      - name: Run shared command API regression tests
-        run: python test_commands.py
+  windows-build:
+    runs-on: windows-latest
+    needs: evaluate
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Prepare environment
+        shell: pwsh
+        run: python -m venv .venv
+      - name: Build and smoke-test distribution
+        shell: pwsh
+        run: ./scripts/build_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HyperDotEditor-windows-x64
+          path: |
+            dist/HyperDotEditor-windows-x64.zip
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error

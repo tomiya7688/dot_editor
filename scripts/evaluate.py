@@ -10,21 +10,23 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SOURCE = ROOT / "src"
+if str(SOURCE) not in sys.path:
+    sys.path.insert(0, str(SOURCE))
 PYTHON = sys.executable
-DOT_EDITOR = ROOT / "dot_editor.py"
-BACKEND = ROOT / "pixel_backend.py"
-CLI = ROOT / "pixel_cli.py"
+DOT_EDITOR = SOURCE / "dot_editor.py"
+BACKEND = SOURCE / "pixel_backend.py"
+CLI = SOURCE / "pixel_cli.py"
 
 
 def check_compile() -> None:
     sources = [
         path
-        for path in ROOT.glob("*.py")
+        for path in SOURCE.glob("*.py")
         if path.name != "__init__.py"
     ]
     sources += list((ROOT / "scripts").glob("*.py"))
+    sources += list((ROOT / "tests").glob("*.py"))
     for path in sources:
         py_compile.compile(str(path), doraise=True)
 

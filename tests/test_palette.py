@@ -17,7 +17,7 @@ from PIL import Image
 from pixel_cli import run_palette
 from pixel_commands import PixelCommandAPI, save_project
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1] / "src"
 RED = (255, 0, 0, 255)
 BLUE = (0, 0, 255, 255)
 

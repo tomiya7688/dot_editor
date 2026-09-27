@@ -1,0 +1,3 @@
+[submodule "tools/tomiya_code_atlas"]
+	path = tools/tomiya_code_atlas
+	url = https://github.com/tomiya7688/tomiya_code_atlas.git

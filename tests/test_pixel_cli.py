@@ -16,7 +16,7 @@ from pixel_backend import PixelCanvas
 from pixel_cli import load_project, save_project
 from pixel_layers import LayeredPixelCanvas
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1] / "src"
 RED = (255, 0, 0, 255)
 BLUE = (0, 0, 255, 255)
 GREEN = (0, 255, 0, 255)

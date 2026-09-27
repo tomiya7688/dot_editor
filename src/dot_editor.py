@@ -581,7 +581,22 @@ class PixelEditor:
             self.set_display_size(width, height)
 
 
-if __name__ == "__main__":
+def main():
+    import sys
+
+    if sys.argv[1:] == ["--smoke-test"]:
+        # Exercise bundled Tcl and the backend without creating a GUI window.
+        interpreter = tk.Tcl()
+        assert interpreter.eval("expr {2 + 2}") == "4"
+        model = LayeredPixelCanvas(2)
+        model.paint(0, 0, (255, 0, 0, 255))
+        assert model.sample(0, 0) == (255, 0, 0, 255)
+        return 0
     root = tk.Tk()
     editor = PixelEditor(root)
     root.mainloop()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

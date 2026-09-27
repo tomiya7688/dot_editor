@@ -381,7 +381,7 @@ class RefinementTests(unittest.TestCase):
         return editor
 
     def cli(self, *arguments):
-        root = Path(__file__).resolve().parent
+        root = Path(__file__).resolve().parents[1] / "src"
         result = subprocess.run(
             [sys.executable, str(root / "pixel_cli.py"), *map(str, arguments)],
             stdin=subprocess.DEVNULL, capture_output=True, text=True,

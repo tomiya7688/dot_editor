@@ -2,6 +2,11 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+build/
+dist/
+*.egg-info/
+.venv-atlas/
+docs/atlas/
 
 # Legacy local virtual-environment layout.
 dot_editor/Lib/

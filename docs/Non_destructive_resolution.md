@@ -77,10 +77,10 @@ GUIには縦横別の解像度入力、保持・破棄の選択、選択セル�
 
 ```bash
 python scripts/evaluate.py
-python test_pixel_backend.py
-python test_pixel_layers.py
-python test_pixel_cli.py
-python test_resolution.py
+python -m unittest discover -s tests -p test_pixel_backend.py
+python -m unittest discover -s tests -p test_pixel_layers.py
+python -m unittest discover -s tests -p test_pixel_cli.py
+python -m unittest discover -s tests -p test_resolution.py
 ```
 
 CIでPython 3.10 / 3.11 / 3.12 / 3.13 / 3.14を検証します。`test_resolution.py` は任意解像度の往復、保持・破棄、局所性、飽和前の色情報、Undo、保存・再読込、既存JSON、非対話CUI、GUIの座標変換・保存・履歴を確認します。

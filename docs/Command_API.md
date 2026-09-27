@@ -69,7 +69,7 @@ GUIにだけ存在する編集データはありません。表示サイズ、�
 ## 回帰検証
 
 ```bash
-python test_commands.py
+python -m unittest discover -s tests -p test_commands.py
 ```
 
 主な検証内容:
