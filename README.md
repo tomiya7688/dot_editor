@@ -55,6 +55,20 @@ commands.export_png("pixel_art.png", output_resolution=(256, 256))
 
 文字列ベースの呼び出しには `commands.execute("paint", ...)` も利用できます。詳細は [共通Command API](docs/Command_API.md) を参照してください。
 
+## 開発者向けクラス図
+
+ソースから[クラス図](docs/Class_diagram.generated.md)を更新できます。標準ライブラリのみを使い、アプリのimportやGUI起動は行いません。
+
+```bash
+python scripts/generate_class_diagram.py
+python scripts/generate_class_diagram.py --check
+python -m unittest test_class_diagram
+```
+
+`--check` はファイルを変更せず、未生成・古い図の場合に終了コード1を返します。CIでも検査します。
+対象はルート直下のアプリ用Pythonファイルです。公開メソッド・プロパティ、直接の継承、名前参照を表示します。
+破線は静的な名前参照で、実行順序や所有関係を表しません。シーケンス図は未対応です。
+
 ## CLIを使う
 
 ### 一度起動して続けて編集する

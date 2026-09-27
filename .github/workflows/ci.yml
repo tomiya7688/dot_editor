@@ -50,6 +50,9 @@ jobs:
           python test_pixel_cli.py
           python test_palette.py
 
+      - name: Check generated class documentation
+        run: python -m unittest test_class_diagram
+
       - name: Run non-destructive resolution regression tests
         run: python test_resolution.py
 
