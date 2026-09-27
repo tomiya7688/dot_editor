@@ -22,11 +22,45 @@ def canvas_from_source(source: object) -> Canvas:
     return PixelCanvas.from_source(source)
 
 
+def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON instead of silently using the last value."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-standard JSON constant: {value}")
+
+
+def validate_json_depth(source: object) -> None:
+    """Apply the same 128-container limit across Python JSON implementations."""
+    pending = [(source, 1)]
+    while pending:
+        value, depth = pending.pop()
+        if not isinstance(value, (dict, list)):
+            continue
+        if depth > 128:
+            raise ValueError("JSON nesting is too deep (maximum 128 containers)")
+        children = value.values() if isinstance(value, dict) else value
+        pending.extend((child, depth + 1) for child in children)
+
+
 def load_project(path: str | Path) -> Canvas:
     target = Path(path)
     try:
-        source = json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        source = json.loads(
+            target.read_text(encoding="utf-8"),
+            object_pairs_hook=unique_json_object,
+            parse_constant=reject_json_constant,
+        )
+        validate_json_depth(source)
+    except RecursionError as error:
+        raise ValueError("failed to read project: JSON nesting is too deep") from error
+    except (OSError, UnicodeError, ValueError) as error:
         raise ValueError(f"failed to read project: {error}") from error
     return canvas_from_source(source)
 

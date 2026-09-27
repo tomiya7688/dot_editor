@@ -160,6 +160,9 @@ python -m pixel_cli export --project project.json --output detail.png --resoluti
 
 ## 保存形式と安全上限
 
+JSONの重複キー、非標準数値（NaN・Infinity）、128階層を超えるオブジェクト・配列の入れ子は読込エラーとして拒否します。
+読込失敗時は編集中の作品を置き換えません。
+
 新規保存はversion 2で、現在解像度と保持データを別々に保存します。旧JSONは読み込めますが、新JSONを旧版エディタで編集し直すことはサポートしません。Undo/Redoの操作スタックはセッション内のみで、JSONへ保存しません。
 
 解像度は1辺1〜4096、1ラスタ最大4,194,304画素です。保持パッチ等にも安全上限があります。上限超過時は無断で情報を捨てずにエラーにします。詳細は[データモデル・制限](docs/Non_destructive_resolution.md)を参照してください。
