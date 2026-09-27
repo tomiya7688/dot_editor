@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
+import shlex
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -122,20 +125,25 @@ def edit_project(canvas: Canvas, args: argparse.Namespace) -> bool:
     return changed
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(*, session: bool = False) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PixelCanvas command line editor")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    new_parser = subparsers.add_parser("new")
-    new_shape = new_parser.add_mutually_exclusive_group()
-    new_shape.add_argument(
-        "--size", type=int, help="square logical resolution (default: 16)"
-    )
-    new_shape.add_argument(
-        "--resolution", nargs=2, type=int, metavar=("WIDTH", "HEIGHT")
-    )
-    new_parser.add_argument("--layered", action="store_true")
-    new_parser.add_argument("--output", type=Path, required=True)
+    if not session:
+        new_parser = subparsers.add_parser("new")
+        new_shape = new_parser.add_mutually_exclusive_group()
+        new_shape.add_argument(
+            "--size", type=int, help="square logical resolution (default: 16)"
+        )
+        new_shape.add_argument(
+            "--resolution", nargs=2, type=int, metavar=("WIDTH", "HEIGHT")
+        )
+        new_parser.add_argument("--layered", action="store_true")
+        new_parser.add_argument("--output", type=Path, required=True)
+        palette_parser = subparsers.add_parser(
+            "palette", help="keep a project open for interactive editing"
+        )
+        palette_parser.add_argument("--project", type=Path, required=True)
 
     edit_parser = subparsers.add_parser(
         "edit",
@@ -145,8 +153,9 @@ def build_parser() -> argparse.ArgumentParser:
             "Use separate invocations for another order."
         ),
     )
-    edit_parser.add_argument("--project", type=Path, required=True)
-    edit_parser.add_argument("--output", type=Path)
+    if not session:
+        edit_parser.add_argument("--project", type=Path, required=True)
+        edit_parser.add_argument("--output", type=Path)
     edit_shape = edit_parser.add_mutually_exclusive_group()
     edit_shape.add_argument(
         "--resolution", nargs=2, type=int, metavar=("WIDTH", "HEIGHT")
@@ -202,7 +211,8 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser = subparsers.add_parser(
         "inspect", help="read-only project state as JSON"
     )
-    inspect_parser.add_argument("--project", type=Path, required=True)
+    if not session:
+        inspect_parser.add_argument("--project", type=Path, required=True)
     inspect_parser.add_argument(
         "--sample", nargs=2, type=int, metavar=("X", "Y")
     )
@@ -215,7 +225,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     export_parser = subparsers.add_parser("export")
-    export_parser.add_argument("--project", type=Path, required=True)
+    if not session:
+        export_parser.add_argument("--project", type=Path, required=True)
     export_parser.add_argument("--output", type=Path, required=True)
     export_shape = export_parser.add_mutually_exclusive_group()
     export_shape.add_argument(
@@ -226,6 +237,72 @@ def build_parser() -> argparse.ArgumentParser:
         help="project retained detail directly to this PNG resolution",
     )
     return parser
+
+
+def palette_command(api: PixelCommandAPI, project: Path, args: argparse.Namespace) -> None:
+    """Publish an edit only after the whole line and its atomic save succeed."""
+    if args.command == "edit":
+        candidate = copy.deepcopy(api.canvas)
+        if edit_project(candidate, args):
+            save_project(candidate, project)
+            api.canvas = candidate
+            print("saved")
+        else:
+            print("no changes")
+    elif args.command == "inspect":
+        print(json.dumps(inspect_command(api.canvas, args), ensure_ascii=True, sort_keys=True))
+    elif args.command == "export":
+        shape = tuple(args.resolution) if args.resolution is not None else None
+        api.export_png(args.output, args.size, output_resolution=shape)
+        print("exported")
+
+
+def run_palette(api: PixelCommandAPI, project: Path) -> int:
+    """Read commands from a terminal or a pipe without reloading the project."""
+    parser = build_parser(session=True)
+    interactive = sys.stdin.isatty()
+    status = 0
+    if interactive:
+        print("Pixel palette: help, edit, inspect, export, quit. Edits are saved automatically.")
+    while True:
+        try:
+            if interactive:
+                print("pixel> ", end="", flush=True)
+            line = sys.stdin.readline()
+            if not line:
+                return status
+            # Keep Windows backslashes and unquoted #RRGGBB colors literal.
+            lexer = shlex.shlex(line, posix=True)
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            lexer.escape = ""
+            tokens = list(lexer)
+            if not tokens:
+                continue
+            if tokens[0] in ("quit", "exit"):
+                if len(tokens) != 1:
+                    raise ValueError("quit/exit takes no arguments")
+                return status
+            if tokens[0] == "help":
+                if len(tokens) == 1:
+                    parser.print_help()
+                    print("help edit|inspect|export; quit/exit ends the session.")
+                    continue
+                if len(tokens) != 2 or tokens[1] not in ("edit", "inspect", "export"):
+                    raise ValueError("help expects edit, inspect or export")
+                tokens = [tokens[1], "--help"]
+            palette_command(api, project, parser.parse_args(tokens))
+        except SystemExit as error:
+            if error.code:
+                status = 2
+        except (ValueError, KeyError, IndexError, OSError, UnicodeError,
+                argparse.ArgumentTypeError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            status = 2
+        except KeyboardInterrupt:
+            if interactive:
+                print()
+            return 130
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -244,6 +321,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         api = PixelCommandAPI.load(args.project)
+        if args.command == "palette":
+            return run_palette(api, args.project)
         if args.command == "export":
             shape = (
                 tuple(args.resolution)

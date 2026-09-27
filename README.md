@@ -57,6 +57,38 @@ commands.export_png("pixel_art.png", output_resolution=(256, 256))
 
 ## CLIを使う
 
+### 一度起動して続けて編集する
+
+作成済みプロジェクトを対話パレットで開くと、Pythonを起動し直さずに編集できます。
+
+```bash
+python pixel_cli.py palette --project project.json
+```
+
+起動後は次のように入力します。
+
+```text
+help
+edit --paint 1 1 #FF0000
+edit --add-layer "人物"
+edit --paint 2 2 #00AAFF
+inspect --sample 2 2
+export --output "pixel art.png" --size 256
+quit
+```
+
+`edit`、`inspect`、`export` は通常のCLIと同じオプションを使いますが、`--project` は不要です。
+編集先は起動時のプロジェクトに固定され、`edit --output` は使用できません。
+`help edit` などで各操作のヘルプを表示できます。空白を含む名前・パスは引用符で囲んでください。
+Windowsの `\` と色指定の `#` はそのまま入力できます。
+
+編集は成功した行ごとに自動保存されます。同じ行の途中で入力・処理・保存に失敗した場合は、
+その行の変更をメモリにもファイルにも反映せず、次の入力を受け付けます。
+一行に複数の編集を指定した場合の順序は通常の `edit` と同じです。
+`quit` / `exit` または入力終了で閉じます。Ctrl+Cは終了コード130で終了します。
+標準入力からコマンド列を渡す自動処理にも対応し、一度でもエラーがあったセッションは終了コード2を返します。
+成功済みの行はエラーや終了後も保存されています。
+
 ### 新規プロジェクトと基本編集
 
 ```bash
@@ -127,6 +159,7 @@ python scripts/evaluate.py
 python test_pixel_backend.py
 python test_pixel_layers.py
 python test_pixel_cli.py
+python test_palette.py
 python test_resolution.py
 python test_refinement.py
 python test_commands.py

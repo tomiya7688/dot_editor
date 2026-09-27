@@ -46,7 +46,9 @@ jobs:
           python test_pixel_layers.py
 
       - name: Run non-interactive CLI regression tests
-        run: python test_pixel_cli.py
+        run: |
+          python test_pixel_cli.py
+          python test_palette.py
 
       - name: Run non-destructive resolution regression tests
         run: python test_resolution.py
