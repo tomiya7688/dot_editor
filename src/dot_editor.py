@@ -528,6 +528,13 @@ class PixelEditor:
                 self.report_error(error)
 
     def reset_canvas(self):
+        if not messagebox.askyesno(
+            "作品をリセット",
+            "すべてのレイヤー・描画・Undo/Redo履歴を消去します。\n"
+            "この操作は元に戻せません。リセットしますか？",
+            default=messagebox.NO,
+        ):
+            return
         self.reset_canvas_model()
 
     def upscale_resolution(self):
