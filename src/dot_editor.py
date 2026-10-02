@@ -11,6 +11,57 @@ from pixel_layers import LayeredPixelCanvas
 from resolution_field import resolution
 
 
+def menu_spec():
+    """Return native-menu labels, unique access keys and shared editor actions."""
+    return (
+        ("ファイル (F)", "F", (
+            ("command", "画像を読み込む", "I", "import_image"),
+            ("command", "プロジェクトを読み込む", "O", "load_project"),
+            ("command", "プロジェクトを保存", "S", "save_project"),
+            ("command", "PNGを保存", "P", "save_image"),
+            ("separator",),
+            ("command", "作品をリセット", "R", "reset_canvas"),
+        )),
+        ("編集 (E)", "E", (
+            ("command", "元に戻す", "U", "undo", "Ctrl+Z"),
+            ("command", "やり直す", "R", "redo", "Ctrl+Y"),
+        )),
+        ("描画 (T)", "T", (
+            ("cascade", "描画ツール", "T", (
+                ("command", "ブラシ (B)", "B", "activate_brush"),
+                ("command", "塗りつぶし (F)", "F", "activate_fill"),
+                ("command", "消しゴム (E)", "E", "activate_eraser"),
+                ("command", "スポイト (P)", "P", "activate_eyedropper"),
+            )),
+            ("command", "選択セルを4分割", "S", "split_selected_cell"),
+            ("command", "選択セルを折りたたむ", "C", "collapse_selected_cell"),
+            ("command", "選択セルの細部を破棄", "D", "discard_selected_detail"),
+        )),
+        ("レイヤー (L)", "L", (
+            ("layer-list", "レイヤーを選択", "S"),
+            ("command", "追加", "A", "add_layer"),
+            ("command", "削除", "R", "remove_layer"),
+            ("command", "上へ移動", "U", "move_layer_up"),
+            ("command", "下へ移動", "D", "move_layer_down"),
+            ("command", "表示切替", "V", "toggle_layer_visibility"),
+            ("command", "名称変更", "N", "rename_layer"),
+        )),
+        ("色 (C)", "C", (
+            ("palette", "パレット色", "P"),
+            ("command", "任意の色を選ぶ", "C", "choose_color"),
+        )),
+        ("表示 (V)", "V", (
+            ("radio", "細部を保持", "P", "detail_policy", "preserve"),
+            ("radio", "細部を破棄", "D", "detail_policy", "discard"),
+            ("command", "論理解像度を変更", "R", "change_size"),
+            ("command", "表示サイズを変更", "C", "change_canvas_size"),
+            ("command", "解像度アップ", "U", "upscale_resolution"),
+            ("command", "ズームイン", "I", "zoom_in"),
+            ("command", "ズームアウト", "O", "zoom_out"),
+        )),
+    )
+
+
 class PixelEditor:
     def __init__(self, master):
         self.master = master
@@ -31,11 +82,151 @@ class PixelEditor:
         self.backend = LayeredPixelCanvas(2)
         self.zoom_factor = 1.0
         self.detail_policy = tk.StringVar(master=master, value="preserve")
+        self.layer_menu_selection = tk.StringVar(
+            master=master, value=self.backend.active_layer
+        )
         self.canvas = tk.Canvas(master, bg="#111820", highlightthickness=1, highlightbackground="#3b4654")
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.canvas.bind("<Configure>", self.on_canvas_configure, add="+")
         self.canvas.bind("<Control-MouseWheel>", self.zoom_with_wheel)
         self.build_sidebar()
+        self.build_menu_bar()
+
+    @staticmethod
+    def access_label(label, access_key):
+        """Show and underline an ASCII access key, including for Japanese labels."""
+        position = label.casefold().find(access_key.casefold())
+        if position < 0:
+            label = f"{label} ({access_key.upper()})"
+            position = label.casefold().rfind(access_key.casefold())
+        return label, position
+
+    @classmethod
+    def add_access_key(cls, menu, label, access_key, **options):
+        label, position = cls.access_label(label, access_key)
+        menu.add_command(label=label, underline=position, **options)
+
+    def build_menu_bar(self):
+        self.menu_bar = tk.Menu(self.master, tearoff=False)
+        self.editor_menus = {}
+        self.layer_select_menu = None
+        self.palette_menu = None
+        for label, access_key, entries in menu_spec():
+            visible_label, underline = self.access_label(label, access_key)
+            menu = tk.Menu(self.menu_bar, tearoff=False)
+            self.populate_menu(menu, entries)
+            self.editor_menus[label] = menu
+            self.menu_bar.add_cascade(
+                label=visible_label,
+                menu=menu,
+                underline=underline,
+                postcommand=self.update_menu_state,
+            )
+        self.master.configure(menu=self.menu_bar)
+
+    def populate_menu(self, menu, entries):
+        for entry in entries:
+            kind = entry[0]
+            if kind == "separator":
+                menu.add_separator()
+            elif kind == "command":
+                _, label, access_key, action, *accelerator = entry
+                self.add_access_key(
+                    menu,
+                    label,
+                    access_key,
+                    command=getattr(self, action),
+                    accelerator=accelerator[0] if accelerator else "",
+                )
+            elif kind == "cascade":
+                _, label, access_key, children = entry
+                submenu = tk.Menu(menu, tearoff=False)
+                self.populate_menu(submenu, children)
+                visible_label, underline = self.access_label(label, access_key)
+                menu.add_cascade(
+                    label=visible_label,
+                    underline=underline,
+                    menu=submenu,
+                    postcommand=self.update_menu_state,
+                )
+            elif kind == "radio":
+                _, label, access_key, variable_name, value = entry
+                variable = getattr(self, variable_name)
+                visible_label, underline = self.access_label(label, access_key)
+                menu.add_radiobutton(
+                    label=visible_label,
+                    underline=underline,
+                    variable=variable,
+                    value=value,
+                )
+            elif kind == "layer-list":
+                _, label, access_key = entry
+                submenu = tk.Menu(menu, tearoff=False)
+                visible_label, underline = self.access_label(label, access_key)
+                menu.add_cascade(
+                    label=visible_label,
+                    underline=underline,
+                    menu=submenu,
+                    postcommand=lambda target=submenu: self.populate_layer_menu(target),
+                )
+                self.layer_select_menu = submenu
+            elif kind == "palette":
+                _, label, access_key = entry
+                submenu = tk.Menu(menu, tearoff=False)
+                visible_label, underline = self.access_label(label, access_key)
+                menu.add_cascade(
+                    label=visible_label,
+                    underline=underline,
+                    menu=submenu,
+                    postcommand=lambda target=submenu: self.populate_palette_menu(target),
+                )
+                self.palette_menu = submenu
+            else:
+                raise ValueError(f"unknown menu entry type: {kind}")
+
+    def update_menu_state(self):
+        """Disable history and layer actions when their targets do not exist."""
+        edit = self.editor_menus.get("編集 (E)")
+        if edit is not None:
+            edit.entryconfigure(0, state="normal" if self.history else "disabled")
+            edit.entryconfigure(1, state="normal" if self.future else "disabled")
+        layers = self.editor_menus.get("レイヤー (L)")
+        if layers is not None:
+            layers.entryconfigure(
+                2,
+                state="normal" if len(self.backend.layers) > 1 else "disabled",
+            )
+
+    def populate_layer_menu(self, menu):
+        menu.delete(0, tk.END)
+        for name in self.backend.layers:
+            menu.add_radiobutton(
+                label=name,
+                variable=self.layer_menu_selection,
+                value=name,
+                command=lambda selected=name: self.select_layer_from_menu(selected),
+            )
+        self.layer_menu_selection.set(self.backend.active_layer)
+
+    def select_layer_from_menu(self, name):
+        if name not in self.backend.layers:
+            return
+        self.commands.select_layer(name)
+        self.refresh_layer_list()
+        self.refresh_composite()
+        self.create_grid()
+        self.update_canvas()
+
+    def populate_palette_menu(self, menu):
+        menu.delete(0, tk.END)
+        for index, color in enumerate(self.palette_colors, start=1):
+            label = f"Color {index} (#{self.rgb_to_hex(color)[1:]})"
+            self.add_access_key(
+                menu,
+                label,
+                str(index),
+                command=lambda selected=color: self.set_palette_color(selected),
+            )
         self.update_canvas_size()
         self.refresh_layer_list()
         self.canvas.bind("<Button-1>", self.paint_pixel)
@@ -143,6 +334,15 @@ class PixelEditor:
             raise ValueError(f"unknown tool: {tool}")
         self.tool = tool
         self.refresh_tool_state()
+
+    def activate_brush(self):
+        self.set_tool("brush")
+
+    def move_layer_up(self):
+        self.move_layer("up")
+
+    def move_layer_down(self):
+        self.move_layer("down")
 
     def refresh_tool_state(self):
         names = {"brush": "ブラシ", "fill": "塗りつぶし", "eraser": "消しゴム", "picker": "スポイト"}
