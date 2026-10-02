@@ -80,7 +80,7 @@ commands.export_png("pixel_art.png", output_resolution=(256, 256))
 ## ソース構成と開発ツール
 
 - `src/`: GUI・CLI・共通バックエンド。既存のPython import名は維持しています。
-- `rust/`: 製品正本へ移行するRust workspace。現時点ではcoreの解像度型から整備しています。
+- `rust/`: 製品正本へ移行するRust workspace。現時点では解像度型とRGBAラスタ基礎を整備しています。
 - `tests/`: 自動テスト。
 - `scripts/`: 環境構築・評価・配布ビルド。
 - `tools/tomiya_code_atlas/`: 図生成用の外部Gitサブモジュール。
