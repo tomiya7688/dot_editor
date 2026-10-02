@@ -1,12 +1,16 @@
 """Headless checks for keyboard movement between the canvas and sidebar."""
 import unittest
+from unittest.mock import Mock
 
 from dot_editor import PixelEditor
 
 
 class FakeRoot:
-    def __init__(self):
+    def __init__(self, master=None):
+        self.master = master
+        self.is_toplevel = True
         self.focused = None
+        self.bindings = {}
 
     def focus_get(self):
         return self.focused
@@ -14,12 +18,16 @@ class FakeRoot:
     def after_idle(self, callback):
         callback()
 
+    def bind(self, sequence, callback, add=None):
+        self.bindings[sequence] = (callback, add)
+
 
 class FakeWidget:
-    def __init__(self, master=None, state="normal", exists=True):
+    def __init__(self, master=None, state="normal", exists=True, class_name="Button"):
         self.master = master
         self.state = state
         self.exists = exists
+        self.class_name = class_name
         self.focus_count = 0
         self.configured = {}
         self.bindings = {}
@@ -38,6 +46,15 @@ class FakeWidget:
 
     def winfo_exists(self):
         return self.exists
+
+    def winfo_class(self):
+        return self.class_name
+
+    def winfo_toplevel(self):
+        widget = self
+        while widget is not None and not getattr(widget, "is_toplevel", False):
+            widget = getattr(widget, "master", None)
+        return widget
 
     def configure(self, **options):
         self.configured.update(options)
@@ -146,6 +163,42 @@ class KeyboardFocusRegionTests(unittest.TestCase):
         visible = FocusableGeometry(root_y=150)
         self.editor.scroll_sidebar_focus_into_view(visible)
         self.assertIsNone(self.editor.sidebar_viewport.scroll_to)
+
+    def test_history_shortcuts_run_only_in_editor_not_text_inputs_or_dialogs(self):
+        self.editor.undo = Mock()
+        self.editor.redo = Mock()
+        self.editor.bind_global_shortcuts()
+        undo = self.editor.master.bindings["<Control-z>"][0]
+        redo = self.editor.master.bindings["<Control-y>"][0]
+
+        self.editor.master.focused = FakeWidget(self.editor.master)
+        self.assertEqual(undo(None), "break")
+        self.assertEqual(redo(None), "break")
+        self.editor.undo.assert_called_once_with()
+        self.editor.redo.assert_called_once_with()
+
+        for widget_class in ("Entry", "Text", "Spinbox", "TEntry", "TSpinbox", "TCombobox"):
+            with self.subTest(widget_class=widget_class):
+                self.editor.master.focused = FakeWidget(
+                    self.editor.master, class_name=widget_class
+                )
+                self.assertIsNone(undo(None))
+                self.assertIsNone(redo(None))
+
+        dialog = FakeRoot(master=self.editor.master)
+        self.editor.master.focused = FakeWidget(dialog)
+        self.assertIsNone(undo(None))
+        self.assertIsNone(redo(None))
+        self.assertEqual(self.editor.undo.call_count, 1)
+        self.assertEqual(self.editor.redo.call_count, 1)
+
+    def test_f6_does_not_steal_focus_from_a_dialog(self):
+        dialog = FakeRoot(master=self.editor.master)
+        dialog_entry = FakeWidget(dialog, class_name="Entry")
+        self.editor.master.focused = dialog_entry
+
+        self.assertIsNone(self.editor.focus_adjacent_region())
+        self.assertIs(self.editor.master.focused, dialog_entry)
 
 
 if __name__ == "__main__":

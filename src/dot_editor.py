@@ -98,6 +98,7 @@ class PixelEditor:
         self.canvas.bind("<Control-MouseWheel>", self.zoom_with_wheel)
         self.build_sidebar()
         self.bind_focus_region_navigation()
+        self.bind_global_shortcuts()
         self.build_menu_bar()
 
     @staticmethod
@@ -239,8 +240,6 @@ class PixelEditor:
         self.refresh_layer_list()
         self.canvas.bind("<Button-1>", self.paint_pixel)
         self.canvas.bind("<B1-Motion>", self.paint_pixel)
-        self.master.bind("<Control-z>", lambda event: self.undo())
-        self.master.bind("<Control-y>", lambda event: self.redo())
         self.canvas.bind("<ButtonPress-2>", self.begin_pan)
         self.canvas.bind("<B2-Motion>", self.pan_canvas)
 
@@ -382,6 +381,50 @@ class PixelEditor:
             add="+",
         )
 
+    def bind_global_shortcuts(self):
+        """Bind editor history shortcuts without taking over dialog text editing."""
+        self.master.bind("<Control-z>", self.handle_undo_shortcut, add="+")
+        self.master.bind("<Control-y>", self.handle_redo_shortcut, add="+")
+
+    def is_main_window_widget(self, widget):
+        if widget is None:
+            return False
+        try:
+            return widget.winfo_toplevel() is self.master
+        except (AttributeError, tk.TclError):
+            return False
+
+    @staticmethod
+    def is_text_input_widget(widget):
+        if widget is None:
+            return False
+        try:
+            widget_class = widget.winfo_class().casefold()
+        except (AttributeError, tk.TclError):
+            return False
+        return widget_class in {
+            "entry",
+            "text",
+            "spinbox",
+            "tentry",
+            "tspinbox",
+            "tcombobox",
+        }
+
+    def handle_undo_shortcut(self, _event=None):
+        focused = self.master.focus_get()
+        if not self.is_main_window_widget(focused) or self.is_text_input_widget(focused):
+            return None
+        self.undo()
+        return "break"
+
+    def handle_redo_shortcut(self, _event=None):
+        focused = self.master.focus_get()
+        if not self.is_main_window_widget(focused) or self.is_text_input_widget(focused):
+            return None
+        self.redo()
+        return "break"
+
     def is_sidebar_widget(self, widget):
         while widget is not None:
             if widget is self.sidebar_frame:
@@ -391,6 +434,8 @@ class PixelEditor:
 
     def focus_adjacent_region(self, _event=None, reverse=False):
         focused = self.master.focus_get()
+        if not self.is_main_window_widget(focused):
+            return None
         if self.is_sidebar_widget(focused):
             self.canvas.focus_set()
         else:
