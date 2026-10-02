@@ -85,11 +85,19 @@ class PixelEditor:
         self.layer_menu_selection = tk.StringVar(
             master=master, value=self.backend.active_layer
         )
-        self.canvas = tk.Canvas(master, bg="#111820", highlightthickness=1, highlightbackground="#3b4654")
+        self.canvas = tk.Canvas(
+            master,
+            bg="#111820",
+            highlightthickness=2,
+            highlightbackground="#3b4654",
+            highlightcolor="#80d4ff",
+            takefocus=1,
+        )
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.canvas.bind("<Configure>", self.on_canvas_configure, add="+")
         self.canvas.bind("<Control-MouseWheel>", self.zoom_with_wheel)
         self.build_sidebar()
+        self.bind_focus_region_navigation()
         self.build_menu_bar()
 
     @staticmethod
@@ -238,14 +246,17 @@ class PixelEditor:
 
     def build_sidebar(self):
         # Scrollable so the resolution/detail controls do not hide file actions.
+        self.sidebar_focus_targets = []
         frame = tk.Frame(self.master, bg="#0b0f14")
         frame.grid(row=0, column=1, padx=10, pady=10, sticky="ns")
         viewport = tk.Canvas(frame, bg="#0b0f14", width=240, height=640, highlightthickness=0)
+        self.sidebar_viewport = viewport
         scrollbar = tk.Scrollbar(frame, orient="vertical", command=viewport.yview)
         viewport.configure(yscrollcommand=scrollbar.set)
         viewport.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         sidebar = tk.Frame(viewport, bg="#0b0f14")
+        self.sidebar_frame = sidebar
         window = viewport.create_window((0, 0), window=sidebar, anchor="nw", width=240)
         sidebar.bind("<Configure>", lambda event: viewport.configure(scrollregion=viewport.bbox("all")))
         viewport.bind("<Configure>", lambda event: viewport.itemconfigure(window, width=event.width))
@@ -274,11 +285,13 @@ class PixelEditor:
         for index, color in enumerate(self.palette_colors):
             button = tk.Button(palette, width=2, height=1, bg=self.rgb_to_hex(color), relief="flat",
                                command=lambda color=color: self.set_palette_color(color))
+            self.register_sidebar_focus_target(button)
             button.grid(row=index // 4, column=index % 4, padx=1, pady=1)
             self.palette_buttons.append(button)
         layer_group = self.create_toolbar_group(sidebar, "レイヤー")
         self.layer_list = tk.Listbox(layer_group, height=4, width=20, bg="#111820", fg="#f0f3f6",
                                     selectbackground="#3f6685", highlightthickness=0, exportselection=False)
+        self.register_sidebar_focus_target(self.layer_list)
         self.layer_list.pack(fill="x", padx=6, pady=(0, 4))
         self.layer_list.bind("<<ListboxSelect>>", self.select_layer)
         self.add_layer_button = self.make_toolbar_button(layer_group, "追加", self.add_layer)
@@ -299,8 +312,18 @@ class PixelEditor:
         self.resolution_label = tk.Label(view_group, bg="#101820", fg="#a9c7df", anchor="w")
         self.resolution_label.pack(fill="x", padx=8)
         for value, title in (("preserve", "細部を保持（既定）"), ("discard", "細部を破棄して編集")):
-            tk.Radiobutton(view_group, text=title, variable=self.detail_policy, value=value,
-                           bg="#101820", fg="#f0f3f6", selectcolor="#17212b", anchor="w").pack(fill="x")
+            button = tk.Radiobutton(
+                view_group,
+                text=title,
+                variable=self.detail_policy,
+                value=value,
+                bg="#101820",
+                fg="#f0f3f6",
+                selectcolor="#17212b",
+                anchor="w",
+            )
+            self.register_sidebar_focus_target(button)
+            button.pack(fill="x")
         self.size_button = self.make_toolbar_button(view_group, "論理解像度を変更", self.change_size)
         self.canvas_size_button = self.make_toolbar_button(view_group, "表示サイズを変更", self.change_canvas_size)
         self.upscale_button = self.make_toolbar_button(view_group, "解像度アップ", self.upscale_resolution)
@@ -325,9 +348,92 @@ class PixelEditor:
     def make_toolbar_button(self, parent, text, command, use_pack=True):
         button = tk.Button(parent, text=text, command=command, bg="#17212b", fg="#f0f3f6",
                            activebackground="#263747", activeforeground="#ffffff", relief="flat")
+        self.register_sidebar_focus_target(button)
         if use_pack:
             button.pack(fill="x", padx=6, pady=2)
         return button
+
+    def register_sidebar_focus_target(self, widget):
+        """Make a sidebar control tabbable and give keyboard focus a clear outline."""
+        widget.configure(
+            takefocus=1,
+            highlightthickness=2,
+            highlightbackground="#253443",
+            highlightcolor="#80d4ff",
+        )
+        widget.bind(
+            "<FocusIn>",
+            lambda _event, target=widget: self.on_sidebar_focus(target),
+            add="+",
+        )
+        self.sidebar_focus_targets.append(widget)
+        return widget
+
+    def bind_focus_region_navigation(self):
+        """F6 exchanges focus between the canvas and its keyboard-operable sidebar."""
+        self.master.bind(
+            "<F6>",
+            lambda event: self.focus_adjacent_region(event, reverse=False),
+            add="+",
+        )
+        self.master.bind(
+            "<Shift-F6>",
+            lambda event: self.focus_adjacent_region(event, reverse=True),
+            add="+",
+        )
+
+    def is_sidebar_widget(self, widget):
+        while widget is not None:
+            if widget is self.sidebar_frame:
+                return True
+            widget = getattr(widget, "master", None)
+        return False
+
+    def focus_adjacent_region(self, _event=None, reverse=False):
+        focused = self.master.focus_get()
+        if self.is_sidebar_widget(focused):
+            self.canvas.focus_set()
+        else:
+            self.focus_sidebar(reverse=reverse)
+        return "break"
+
+    def focus_sidebar(self, reverse=False):
+        targets = reversed(self.sidebar_focus_targets) if reverse else self.sidebar_focus_targets
+        for widget in targets:
+            if widget.winfo_exists() and widget.cget("state") != tk.DISABLED:
+                widget.focus_set()
+                return True
+        return False
+
+    def on_sidebar_focus(self, widget):
+        self.master.after_idle(lambda target=widget: self.scroll_sidebar_focus_into_view(target))
+
+    def scroll_sidebar_focus_into_view(self, widget):
+        """Scroll the sidebar only when keyboard focus lands outside its viewport."""
+        viewport = self.sidebar_viewport
+        try:
+            region = viewport.bbox("all")
+            if region is None:
+                return
+            region_top, region_bottom = region[1], region[3]
+            content_height = max(1, region_bottom - region_top)
+            viewport_height = viewport.winfo_height()
+            view_top = viewport.canvasy(0)
+            view_bottom = viewport.canvasy(viewport_height)
+            widget_y = widget.winfo_rooty() - viewport.winfo_rooty()
+            widget_top = viewport.canvasy(widget_y)
+            widget_bottom = widget_top + widget.winfo_height()
+            if widget_top < view_top:
+                target_top = widget_top
+            elif widget_bottom > view_bottom:
+                target_top = max(region_top, widget_bottom - viewport_height)
+            else:
+                return
+            fraction = (target_top - region_top) / content_height
+            viewport.yview_moveto(max(0.0, min(1.0, fraction)))
+        except tk.TclError:
+            # A control can be destroyed while a deferred FocusIn callback waits.
+            return
 
     def set_tool(self, tool):
         if tool not in {"brush", "fill", "eraser", "picker"}:
