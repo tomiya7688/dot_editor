@@ -8,6 +8,26 @@ permissions:
   contents: read
 
 jobs:
+  rust-core:
+    name: Rust Core
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path rust/Cargo.toml -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path rust/Cargo.toml --workspace
+
+      - name: Build Rust workspace
+        run: cargo build --manifest-path rust/Cargo.toml --workspace
+
   evaluate:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
@@ -45,7 +65,7 @@ jobs:
 
   windows-build:
     runs-on: windows-latest
-    needs: evaluate
+    needs: [rust-core, evaluate]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

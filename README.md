@@ -2,6 +2,12 @@
 
 Hyper Dot Editor は、GUI と CLI から同じバックエンドを使ってドット絵を編集できるピクセルアートエディタです。バックエンドは複数のゲーム向け開発者ツールから共通利用できることを前提にし、レイヤー、セル分割、任意解像度の非破壊切替、JSONプロジェクト保存、PNG書き出しを扱います。
 
+## 実装の正本と移行方針
+
+製品バックエンドの正本は `rust/` のRust実装とします。Python版は既存GUI・参照実装として残し、移行中はプロジェクトJSONや描画結果など外部から確認できる振る舞いで互換性を検証します。仕様や互換テストに差異がある場合はRust Coreを基準にします。
+
+移行の順序はRust Core、Rust CLI、Rust配布物です。GUIのRust化は初期移行の必須条件にしません。Rust workspaceは現在基盤作成中であり、機能移植の完了を示すものではありません。
+
 ## 必要環境
 
 - Python 3.10〜3.14（CIで全バージョンを必須検証）
@@ -74,6 +80,7 @@ commands.export_png("pixel_art.png", output_resolution=(256, 256))
 ## ソース構成と開発ツール
 
 - `src/`: GUI・CLI・共通バックエンド。既存のPython import名は維持しています。
+- `rust/`: 製品正本へ移行するRust workspace。現時点ではcoreの解像度型から整備しています。
 - `tests/`: 自動テスト。
 - `scripts/`: 環境構築・評価・配布ビルド。
 - `tools/tomiya_code_atlas/`: 図生成用の外部Gitサブモジュール。

@@ -1,0 +1,7 @@
+[package]
+name = "hyper-dot-core"
+version = "0.1.0"
+description = "Rust source-of-truth core for Hyper Dot projects"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
