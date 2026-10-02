@@ -83,6 +83,54 @@ impl Raster {
         self.paint(x, y, TRANSPARENT)
     }
 
+    /// Fills the four-connected region matching the seed pixel's exact RGBA value.
+    /// Returns the number of changed pixels, or zero for an out-of-range seed or
+    /// an unchanged color. Allocation failure leaves the raster unchanged.
+    pub fn fill(&mut self, x: u32, y: u32, color: Color) -> Result<usize, RasterError> {
+        let Some(seed) = self.index(x, y) else {
+            return Ok(0);
+        };
+        let original = self.pixels[seed];
+        if original == color {
+            return Ok(0);
+        }
+
+        // Each pixel can enter the work list once: recoloring it when queued
+        // prevents revisits. Reserve the upper bound before any mutation.
+        let mut pending = Vec::new();
+        pending
+            .try_reserve_exact(self.pixels.len())
+            .map_err(|_| RasterError::AllocationFailed)?;
+        pending.push(seed);
+        self.pixels[seed] = color;
+        let mut changed = 1;
+        let width = self.resolution.width() as usize;
+
+        while let Some(index) = pending.pop() {
+            let column = index % width;
+            let neighbors = [
+                if column > 0 { Some(index - 1) } else { None },
+                if column + 1 < width {
+                    Some(index + 1)
+                } else {
+                    None
+                },
+                index.checked_sub(width),
+                index
+                    .checked_add(width)
+                    .filter(|next| *next < self.pixels.len()),
+            ];
+            for next in neighbors.into_iter().flatten() {
+                if self.pixels[next] == original {
+                    self.pixels[next] = color;
+                    pending.push(next);
+                    changed += 1;
+                }
+            }
+        }
+        Ok(changed)
+    }
+
     fn index(&self, x: u32, y: u32) -> Option<usize> {
         let width = self.resolution.width();
         let height = self.resolution.height();
