@@ -7,3 +7,4 @@
 
 pub mod raster;
 pub mod resolution;
+pub mod resolution_field;
