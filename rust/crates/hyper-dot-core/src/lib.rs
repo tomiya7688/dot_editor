@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod canvas;
 mod field_bounds;
 mod field_patch;
 pub mod raster;
