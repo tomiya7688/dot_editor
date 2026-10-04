@@ -5,6 +5,9 @@
 
 #![forbid(unsafe_code)]
 
+mod field_bounds;
+mod field_patch;
 pub mod raster;
+mod rational_coordinate;
 pub mod resolution;
 pub mod resolution_field;
