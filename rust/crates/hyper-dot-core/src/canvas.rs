@@ -5,6 +5,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 use crate::field_bounds::FieldBounds;
+use crate::flood_region::flood_region;
 use crate::raster::{Color, MAX_DIMENSION, MAX_PIXELS, Raster, RasterError};
 use crate::rational_coordinate::RationalCoordinate as Coordinate;
 use crate::resolution::Resolution;
@@ -329,40 +330,117 @@ impl Canvas {
         if x >= self.resolution.width() || y >= self.resolution.height() {
             return Ok(false);
         }
-        let exact_split = self
-            .splits
-            .iter()
-            .position(|split| split.matches(self.resolution, x, y));
         let has_detail = self.has_detail_at(x, y)?;
         let current = self.sample(x, y)?;
         if current == color && !(policy == DetailPolicy::Discard && has_detail) {
             return Ok(false);
         }
         let mut splits = self.copy_splits(0)?;
-        if policy == DetailPolicy::Preserve {
-            if let Some(index) = exact_split {
-                splits[index].base = color;
-                self.commit(self.resolution, self.field.clone(), Arc::new(splits))?;
-                return Ok(true);
+        let mut field = self.field.clone();
+        if !Self::edit_cell(
+            self.resolution,
+            &mut field,
+            &mut splits,
+            (x, y),
+            color,
+            policy,
+        )? {
+            return Ok(false);
+        }
+        self.commit(self.resolution, field, Arc::new(splits))?;
+        Ok(true)
+    }
+
+    /// Fills a four-connected region of equal logical RGBA samples. Returns the
+    /// number of targeted cells; same-color discard targets only detailed cells.
+    /// All edits form one undo step. Any error leaves state and history intact.
+    pub fn fill(
+        &mut self,
+        x: u32,
+        y: u32,
+        color: Color,
+        policy: DetailPolicy,
+    ) -> Result<usize, CanvasError> {
+        if x >= self.resolution.width() || y >= self.resolution.height() {
+            return Ok(0);
+        }
+        let original = self.sample(x, y)?;
+        if original == color && policy == DetailPolicy::Preserve {
+            return Ok(0);
+        }
+        let view = self.render()?;
+        let mut points = flood_region(&view, x, y)?;
+        let pixel_count = self.resolution.width() as usize * self.resolution.height() as usize;
+        let mut has_detail = !self.splits.is_empty();
+        let mut count = 0;
+        for index in 0..points.len() {
+            let (px, py) = points[index];
+            let detail = self.has_detail_at(px, py)?;
+            has_detail |= detail;
+            if original != color || detail {
+                points[count] = (px, py);
+                count += 1;
             }
         }
-        let raw = self.field.sample_raw_cell(self.resolution, x, y)?;
+        points.truncate(count);
+        if count == 0 {
+            return Ok(0);
+        }
+        // Avoid one patch per pixel for a uniform whole-canvas replacement.
+        // Preserve must never flatten fine samples or saved split metadata.
+        if count == pixel_count && (policy == DetailPolicy::Discard || !has_detail) {
+            let mut solid = Raster::new(Resolution::new(1, 1).expect("positive resolution"))?;
+            solid.paint(0, 0, color);
+            self.commit(
+                self.resolution,
+                ResolutionField::from_raster(solid),
+                Arc::new(Vec::new()),
+            )?;
+        } else {
+            let mut field = self.field.clone();
+            let mut splits = self.copy_splits(0)?;
+            for point in points {
+                Self::edit_cell(
+                    self.resolution,
+                    &mut field,
+                    &mut splits,
+                    point,
+                    color,
+                    policy,
+                )?;
+            }
+            self.commit(self.resolution, field, Arc::new(splits))?;
+        }
+        Ok(count)
+    }
+
+    fn edit_cell(
+        grid: Resolution,
+        field: &mut ResolutionField,
+        splits: &mut Vec<SplitCell>,
+        (x, y): (u32, u32),
+        color: Color,
+        policy: DetailPolicy,
+    ) -> Result<bool, CanvasError> {
+        if policy == DetailPolicy::Preserve {
+            if let Some(split) = splits.iter_mut().find(|split| split.matches(grid, x, y)) {
+                let changed = split.base != color;
+                split.base = color;
+                return Ok(changed);
+            }
+        }
+        let raw = field.sample_raw_cell(grid, x, y)?;
         let delta = std::array::from_fn(|i| i64::from(color[i]) - raw[i]);
-        let mut field = self.field.clone();
-        let field_changed = field.paint(self.resolution, x, y, color, policy)?;
+        let field_changed = field.paint(grid, x, y, color, policy)?;
         let metadata_changed = Self::update_splits(
-            &mut splits,
-            FieldBounds::cell(self.resolution, x, y),
+            splits,
+            FieldBounds::cell(grid, x, y),
             policy,
             color,
             delta,
             None,
         );
-        if !field_changed && !metadata_changed {
-            return Ok(false);
-        }
-        self.commit(self.resolution, field, Arc::new(splits))?;
-        Ok(true)
+        Ok(field_changed || metadata_changed)
     }
 
     pub fn erase(&mut self, x: u32, y: u32, policy: DetailPolicy) -> Result<bool, CanvasError> {

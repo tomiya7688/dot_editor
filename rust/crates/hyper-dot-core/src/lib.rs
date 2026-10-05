@@ -8,6 +8,7 @@
 pub mod canvas;
 mod field_bounds;
 mod field_patch;
+mod flood_region;
 pub mod raster;
 mod rational_coordinate;
 pub mod resolution;
