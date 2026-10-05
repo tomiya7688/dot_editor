@@ -139,6 +139,15 @@ impl ResolutionField {
             .sample_raw(cx, cy))
     }
 
+    pub(crate) fn sample_raw_cell(
+        &self,
+        resolution: Resolution,
+        x: u32,
+        y: u32,
+    ) -> Result<[i64; 4], RasterError> {
+        self.sample_raw(resolution, x, y)
+    }
+
     /// Builds a projected raster without replacing or resampling retained data.
     pub fn render(&self, resolution: Resolution) -> Result<Raster, RasterError> {
         let mut output = Raster::new(resolution)?;

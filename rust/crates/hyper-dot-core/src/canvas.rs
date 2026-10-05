@@ -2,23 +2,32 @@
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
-use crate::raster::{Color, Raster, RasterError};
+use crate::field_bounds::FieldBounds;
+use crate::raster::{Color, MAX_DIMENSION, MAX_PIXELS, Raster, RasterError};
+use crate::rational_coordinate::RationalCoordinate as Coordinate;
 use crate::resolution::Resolution;
 use crate::resolution_field::{DetailPolicy, ResolutionField, ResolutionFieldError};
+use crate::split_cell::SplitCell;
 
 const HISTORY_LIMIT: usize = 50;
+const MAX_SPLIT_CELLS: usize = 4096;
+
+pub type ChildCoordinate = (u8, u8);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CanvasState {
     resolution: Resolution,
     field: ResolutionField,
+    splits: Arc<Vec<SplitCell>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Canvas {
     resolution: Resolution,
     field: ResolutionField,
+    splits: Arc<Vec<SplitCell>>,
     history: Vec<CanvasState>,
     future: Vec<CanvasState>,
 }
@@ -27,7 +36,13 @@ pub struct Canvas {
 pub enum CanvasError {
     Raster(RasterError),
     Field(ResolutionFieldError),
+    AllocationFailed,
     HistoryAllocationFailed,
+    SplitLimitExceeded,
+    SplitResolutionOverflow,
+    ChildCoordinateOutOfBounds { x: u8, y: u8 },
+    CellNotSplit { x: u32, y: u32 },
+    CellNotExpanded { x: u32, y: u32 },
 }
 
 impl Canvas {
@@ -40,6 +55,7 @@ impl Canvas {
         Self {
             resolution,
             field: ResolutionField::from_raster(raster),
+            splits: Arc::new(Vec::new()),
             history: Vec::new(),
             future: Vec::new(),
         }
@@ -62,19 +78,225 @@ impl Canvas {
     }
 
     pub fn sample(&self, x: u32, y: u32) -> Result<Color, RasterError> {
+        if x < self.resolution.width() && y < self.resolution.height() {
+            if let Some(split) = self
+                .splits
+                .iter()
+                .find(|split| split.matches(self.resolution, x, y))
+            {
+                return Ok(split.base);
+            }
+        }
         self.field.sample(self.resolution, x, y)
     }
 
+    pub fn sample_child(
+        &self,
+        x: u32,
+        y: u32,
+        child: ChildCoordinate,
+    ) -> Result<Color, CanvasError> {
+        self.validate_parent(x, y)?;
+        Self::validate_child(child)?;
+        if !self
+            .splits
+            .iter()
+            .any(|split| split.matches(self.resolution, x, y))
+        {
+            return Err(CanvasError::CellNotSplit { x, y });
+        }
+        let grid = self.child_resolution()?;
+        Ok(self
+            .field
+            .sample(grid, 2 * x + u32::from(child.0), 2 * y + u32::from(child.1))?)
+    }
+
     pub fn render(&self) -> Result<Raster, RasterError> {
-        self.field.render(self.resolution)
+        self.projection(self.resolution)
     }
 
     pub fn render_at(&self, resolution: Resolution) -> Result<Raster, RasterError> {
         self.field.render(resolution)
     }
 
+    pub fn native_resolution(&self) -> Result<Resolution, CanvasError> {
+        if self
+            .splits
+            .iter()
+            .any(|split| split.resolution == self.resolution && split.expanded)
+        {
+            self.child_resolution()
+        } else {
+            Ok(self.resolution)
+        }
+    }
+
+    pub fn render_native(&self) -> Result<Raster, CanvasError> {
+        let target = self.native_resolution()?;
+        if target == self.resolution {
+            return Ok(self.render()?);
+        }
+        let source = self.render()?;
+        let mut output = Raster::new(target)?;
+        for y in 0..self.resolution.height() {
+            for x in 0..self.resolution.width() {
+                let color = source.sample(x, y)?;
+                for child_y in 0..2 {
+                    for child_x in 0..2 {
+                        output.paint(2 * x + child_x, 2 * y + child_y, color);
+                    }
+                }
+            }
+        }
+        for split in self
+            .splits
+            .iter()
+            .copied()
+            .filter(|split| split.resolution == self.resolution && split.expanded)
+        {
+            for child_y in 0..2u8 {
+                for child_x in 0..2u8 {
+                    let color = self.sample_child(split.x, split.y, (child_x, child_y))?;
+                    output.paint(
+                        2 * split.x + u32::from(child_x),
+                        2 * split.y + u32::from(child_y),
+                        color,
+                    );
+                }
+            }
+        }
+        Ok(output)
+    }
+
     pub fn has_detail_at(&self, x: u32, y: u32) -> Result<bool, RasterError> {
-        self.field.has_detail_at(self.resolution, x, y)
+        if self.field.has_detail_at(self.resolution, x, y)? {
+            return Ok(true);
+        }
+        let bounds = FieldBounds::cell(self.resolution, x, y);
+        for split in self.splits.iter().copied() {
+            let split_bounds = split.bounds();
+            if let Some(overlap) = split_bounds.intersection(bounds) {
+                if overlap == split_bounds {
+                    return Ok(true);
+                }
+                let center_x = Coordinate::center(split.x, split.resolution.width());
+                let center_y = Coordinate::center(split.y, split.resolution.height());
+                if bounds.contains(center_x, center_y)
+                    && split.base != self.field.sample(split.resolution, split.x, split.y)?
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    pub fn is_split(&self, x: u32, y: u32) -> bool {
+        self.splits
+            .iter()
+            .any(|split| split.matches(self.resolution, x, y) && split.expanded)
+    }
+
+    pub fn split_cell(&mut self, x: u32, y: u32) -> Result<bool, CanvasError> {
+        if x >= self.resolution.width() || y >= self.resolution.height() || self.is_split(x, y) {
+            return Ok(false);
+        }
+        self.child_resolution()?;
+        let key_index = self
+            .splits
+            .iter()
+            .position(|split| split.matches(self.resolution, x, y));
+        if key_index.is_none() && self.splits.len() >= MAX_SPLIT_CELLS {
+            return Err(CanvasError::SplitLimitExceeded);
+        }
+        let base = match key_index {
+            Some(index) => self.splits[index].base,
+            None => self.sample(x, y)?,
+        };
+        let mut splits = self.copy_splits(usize::from(key_index.is_none()))?;
+        if let Some(index) = key_index {
+            splits[index].expanded = true;
+        } else {
+            splits.push(SplitCell {
+                resolution: self.resolution,
+                x,
+                y,
+                base,
+                expanded: true,
+            });
+        }
+        self.commit(self.resolution, self.field.clone(), Arc::new(splits))?;
+        Ok(true)
+    }
+
+    pub fn collapse_cell(&mut self, x: u32, y: u32) -> Result<bool, CanvasError> {
+        if x >= self.resolution.width() || y >= self.resolution.height() {
+            return Ok(false);
+        }
+        let Some(index) = self
+            .splits
+            .iter()
+            .position(|split| split.matches(self.resolution, x, y) && split.expanded)
+        else {
+            return Ok(false);
+        };
+        let mut splits = self.copy_splits(0)?;
+        splits[index].expanded = false;
+        self.commit(self.resolution, self.field.clone(), Arc::new(splits))?;
+        Ok(true)
+    }
+
+    pub fn paint_child(
+        &mut self,
+        x: u32,
+        y: u32,
+        child: ChildCoordinate,
+        color: Color,
+        policy: DetailPolicy,
+    ) -> Result<bool, CanvasError> {
+        if x >= self.resolution.width() || y >= self.resolution.height() {
+            return Ok(false);
+        }
+        Self::validate_child(child)?;
+        if !self.is_split(x, y) {
+            return Err(CanvasError::CellNotExpanded { x, y });
+        }
+        let grid = self.child_resolution()?;
+        let child_x = 2 * x + u32::from(child.0);
+        let child_y = 2 * y + u32::from(child.1);
+        let has_detail = self.field.has_detail_at(grid, child_x, child_y)?;
+        let current = self.field.sample(grid, child_x, child_y)?;
+        if current == color && !(policy == DetailPolicy::Discard && has_detail) {
+            return Ok(false);
+        }
+        let raw = self.field.sample_raw_cell(grid, child_x, child_y)?;
+        let delta = std::array::from_fn(|i| i64::from(color[i]) - raw[i]);
+        let mut field = self.field.clone();
+        let field_changed = field.paint(grid, child_x, child_y, color, policy)?;
+        let mut splits = self.copy_splits(0)?;
+        let metadata_changed = Self::update_splits(
+            &mut splits,
+            FieldBounds::cell(grid, child_x, child_y),
+            policy,
+            color,
+            delta,
+            Some((self.resolution, x, y)),
+        );
+        if !field_changed && !metadata_changed {
+            return Ok(false);
+        }
+        self.commit(self.resolution, field, Arc::new(splits))?;
+        Ok(true)
+    }
+
+    pub fn erase_child(
+        &mut self,
+        x: u32,
+        y: u32,
+        child: ChildCoordinate,
+        policy: DetailPolicy,
+    ) -> Result<bool, CanvasError> {
+        self.paint_child(x, y, child, [0; 4], policy)
     }
 
     pub fn set_resolution(
@@ -87,9 +309,13 @@ impl Canvas {
         }
         let field = match policy {
             DetailPolicy::Preserve => self.field.clone(),
-            DetailPolicy::Discard => ResolutionField::from_raster(self.field.render(resolution)?),
+            DetailPolicy::Discard => ResolutionField::from_raster(self.projection(resolution)?),
         };
-        self.commit(resolution, field)?;
+        let splits = match policy {
+            DetailPolicy::Preserve => self.splits.clone(),
+            DetailPolicy::Discard => Arc::new(Vec::new()),
+        };
+        self.commit(resolution, field, splits)?;
         Ok(true)
     }
 
@@ -100,21 +326,55 @@ impl Canvas {
         color: Color,
         policy: DetailPolicy,
     ) -> Result<bool, CanvasError> {
-        let mut field = self.field.clone();
-        if !field.paint(self.resolution, x, y, color, policy)? {
+        if x >= self.resolution.width() || y >= self.resolution.height() {
             return Ok(false);
         }
-        self.commit(self.resolution, field)?;
+        let exact_split = self
+            .splits
+            .iter()
+            .position(|split| split.matches(self.resolution, x, y));
+        let has_detail = self.has_detail_at(x, y)?;
+        let current = self.sample(x, y)?;
+        if current == color && !(policy == DetailPolicy::Discard && has_detail) {
+            return Ok(false);
+        }
+        let mut splits = self.copy_splits(0)?;
+        if policy == DetailPolicy::Preserve {
+            if let Some(index) = exact_split {
+                splits[index].base = color;
+                self.commit(self.resolution, self.field.clone(), Arc::new(splits))?;
+                return Ok(true);
+            }
+        }
+        let raw = self.field.sample_raw_cell(self.resolution, x, y)?;
+        let delta = std::array::from_fn(|i| i64::from(color[i]) - raw[i]);
+        let mut field = self.field.clone();
+        let field_changed = field.paint(self.resolution, x, y, color, policy)?;
+        let metadata_changed = Self::update_splits(
+            &mut splits,
+            FieldBounds::cell(self.resolution, x, y),
+            policy,
+            color,
+            delta,
+            None,
+        );
+        if !field_changed && !metadata_changed {
+            return Ok(false);
+        }
+        self.commit(self.resolution, field, Arc::new(splits))?;
         Ok(true)
     }
 
     pub fn erase(&mut self, x: u32, y: u32, policy: DetailPolicy) -> Result<bool, CanvasError> {
-        let mut field = self.field.clone();
-        if !field.erase(self.resolution, x, y, policy)? {
+        self.paint(x, y, [0; 4], policy)
+    }
+
+    pub fn discard_detail(&mut self, x: u32, y: u32) -> Result<bool, CanvasError> {
+        if !self.has_detail_at(x, y)? {
             return Ok(false);
         }
-        self.commit(self.resolution, field)?;
-        Ok(true)
+        let color = self.sample(x, y)?;
+        self.paint(x, y, color, DetailPolicy::Discard)
     }
 
     pub fn undo(&mut self) -> Result<bool, CanvasError> {
@@ -148,6 +408,7 @@ impl Canvas {
         &mut self,
         resolution: Resolution,
         field: ResolutionField,
+        splits: Arc<Vec<SplitCell>>,
     ) -> Result<(), CanvasError> {
         self.reserve_history_slot()?;
         if self.history.len() == HISTORY_LIMIT {
@@ -157,6 +418,7 @@ impl Canvas {
         self.future.clear();
         self.resolution = resolution;
         self.field = field;
+        self.splits = splits;
         Ok(())
     }
 
@@ -173,12 +435,132 @@ impl Canvas {
         CanvasState {
             resolution: self.resolution,
             field: self.field.clone(),
+            splits: self.splits.clone(),
         }
     }
 
     fn restore(&mut self, state: CanvasState) {
         self.resolution = state.resolution;
         self.field = state.field;
+        self.splits = state.splits;
+    }
+
+    fn copy_splits(&self, additional: usize) -> Result<Vec<SplitCell>, CanvasError> {
+        let capacity = self
+            .splits
+            .len()
+            .checked_add(additional)
+            .ok_or(CanvasError::SplitLimitExceeded)?;
+        let mut splits = Vec::new();
+        splits
+            .try_reserve_exact(capacity)
+            .map_err(|_| CanvasError::AllocationFailed)?;
+        splits.extend(self.splits.iter().copied());
+        Ok(splits)
+    }
+
+    fn child_resolution(&self) -> Result<Resolution, CanvasError> {
+        let width = self
+            .resolution
+            .width()
+            .checked_mul(2)
+            .ok_or(CanvasError::SplitResolutionOverflow)?;
+        let height = self
+            .resolution
+            .height()
+            .checked_mul(2)
+            .ok_or(CanvasError::SplitResolutionOverflow)?;
+        if width > MAX_DIMENSION || height > MAX_DIMENSION {
+            return Err(CanvasError::Raster(RasterError::DimensionLimitExceeded {
+                width,
+                height,
+            }));
+        }
+        if u64::from(width) * u64::from(height) > MAX_PIXELS as u64 {
+            return Err(CanvasError::Raster(RasterError::PixelBudgetExceeded));
+        }
+        Resolution::new(width, height).map_err(|_| CanvasError::SplitResolutionOverflow)
+    }
+
+    fn validate_parent(&self, x: u32, y: u32) -> Result<(), CanvasError> {
+        if x >= self.resolution.width() || y >= self.resolution.height() {
+            return Err(CanvasError::Raster(RasterError::CoordinateOutOfBounds {
+                x,
+                y,
+            }));
+        }
+        Ok(())
+    }
+
+    fn validate_child(child: ChildCoordinate) -> Result<(), CanvasError> {
+        if child.0 > 1 || child.1 > 1 {
+            return Err(CanvasError::ChildCoordinateOutOfBounds {
+                x: child.0,
+                y: child.1,
+            });
+        }
+        Ok(())
+    }
+
+    fn projection(&self, resolution: Resolution) -> Result<Raster, RasterError> {
+        let mut raster = self.field.render(resolution)?;
+        for split in self
+            .splits
+            .iter()
+            .filter(|split| split.resolution == resolution)
+        {
+            raster.paint(split.x, split.y, split.base);
+        }
+        Ok(raster)
+    }
+
+    fn update_splits(
+        splits: &mut Vec<SplitCell>,
+        target: FieldBounds,
+        policy: DetailPolicy,
+        replacement: Color,
+        delta: [i64; 4],
+        skip: Option<(Resolution, u32, u32)>,
+    ) -> bool {
+        let mut changed = false;
+        splits.retain_mut(|split| {
+            if skip.is_some_and(|(resolution, x, y)| split.matches(resolution, x, y)) {
+                return true;
+            }
+            let bounds = split.bounds();
+            let Some(overlap) = bounds.intersection(target) else {
+                return true;
+            };
+            let center_x = Coordinate::center(split.x, split.resolution.width());
+            let center_y = Coordinate::center(split.y, split.resolution.height());
+            match policy {
+                DetailPolicy::Preserve => {
+                    if target.contains(center_x, center_y) {
+                        let updated = std::array::from_fn(|channel| {
+                            (i64::from(split.base[channel]) + delta[channel]).clamp(0, 255) as u8
+                        });
+                        if updated != split.base {
+                            split.base = updated;
+                            changed = true;
+                        }
+                    }
+                    true
+                }
+                DetailPolicy::Discard => {
+                    if overlap == bounds {
+                        changed = true;
+                        false
+                    } else {
+                        if target.contains(center_x, center_y) && split.base != replacement {
+                            split.base = replacement;
+                            changed = true;
+                        }
+                        true
+                    }
+                }
+            }
+        });
+        changed
     }
 }
 
@@ -199,8 +581,20 @@ impl Display for CanvasError {
         match self {
             Self::Raster(error) => Display::fmt(error, formatter),
             Self::Field(error) => Display::fmt(error, formatter),
+            Self::AllocationFailed => formatter.write_str("unable to allocate canvas state"),
             Self::HistoryAllocationFailed => {
                 formatter.write_str("unable to allocate canvas history")
+            }
+            Self::SplitLimitExceeded => formatter.write_str("canvas exceeds its split-cell limit"),
+            Self::SplitResolutionOverflow => {
+                formatter.write_str("split resolution exceeds the integer range")
+            }
+            Self::ChildCoordinateOutOfBounds { x, y } => {
+                write!(formatter, "child coordinate ({x}, {y}) is out of bounds")
+            }
+            Self::CellNotSplit { x, y } => write!(formatter, "cell ({x}, {y}) is not split"),
+            Self::CellNotExpanded { x, y } => {
+                write!(formatter, "cell ({x}, {y}) is not expanded")
             }
         }
     }
@@ -211,7 +605,13 @@ impl Error for CanvasError {
         match self {
             Self::Raster(error) => Some(error),
             Self::Field(error) => Some(error),
-            Self::HistoryAllocationFailed => None,
+            Self::AllocationFailed
+            | Self::HistoryAllocationFailed
+            | Self::SplitLimitExceeded
+            | Self::SplitResolutionOverflow
+            | Self::ChildCoordinateOutOfBounds { .. }
+            | Self::CellNotSplit { .. }
+            | Self::CellNotExpanded { .. } => None,
         }
     }
 }

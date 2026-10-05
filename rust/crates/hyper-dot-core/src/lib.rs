@@ -12,3 +12,4 @@ pub mod raster;
 mod rational_coordinate;
 pub mod resolution;
 pub mod resolution_field;
+mod split_cell;
