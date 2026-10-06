@@ -2,6 +2,19 @@
 
 use crate::raster::{Raster, RasterError};
 
+/// {
+///   責務: [flood_region: 変更前ラスタの同色4近傍領域を列挙する]
+///   処理: [
+///     1: 種点の色を読み探索領域を確保する
+///     2: 未訪問の上下左右を同色のときだけ探索する
+///   ]
+///   引数: [
+///     view: 判定元の論理表示
+///     x: 横座標
+///     y: 縦座標
+///   ]
+///   戻り値: [同色領域の座標配列または確保・座標エラー]
+/// }
 pub(crate) fn flood_region(view: &Raster, x: u32, y: u32) -> Result<Vec<(u32, u32)>, RasterError> {
     let original = view.sample(x, y)?;
     let width = view.resolution().width();

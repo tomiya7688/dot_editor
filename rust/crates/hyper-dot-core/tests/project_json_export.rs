@@ -5,10 +5,30 @@ use hyper_dot_core::resolution::Resolution;
 use hyper_dot_core::resolution_field::DetailPolicy;
 use serde_json::{Value, json};
 
+/// {
+///   責務: [grid: テスト用の正の解像度を作る]
+///   処理: [
+///     1: 幅と高さを検証してResolutionを生成する
+///   ]
+///   引数: [
+///     width: 対象領域の幅
+///     height: 対象領域の高さ
+///   ]
+///   戻り値: [解像度、不正な寸法ならテストを失敗させる]
+/// }
 fn grid(width: u32, height: u32) -> Resolution {
     Resolution::new(width, height).unwrap()
 }
 
+/// {
+///   責務: [export_matches_shared_transparent_non_square_fixture: 透明・非正方形の共有fixtureと出力を一致させることを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 透明・非正方形の共有fixtureと出力を一致させる操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn export_matches_shared_transparent_non_square_fixture() {
     let mut raster = Raster::new(grid(2, 1)).unwrap();
@@ -22,6 +42,15 @@ fn export_matches_shared_transparent_non_square_fixture() {
     assert_eq!(actual, expected);
 }
 
+/// {
+///   責務: [cropped_sources_keep_original_pixel_boundaries_and_unclamped_offsets: 切り出し元の画素境界と未飽和の色差分を保持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 切り出し元の画素境界と未飽和の色差分を保持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn cropped_sources_keep_original_pixel_boundaries_and_unclamped_offsets() {
     let mut raster = Raster::new(grid(4, 1)).unwrap();
@@ -49,6 +78,15 @@ fn cropped_sources_keep_original_pixel_boundaries_and_unclamped_offsets() {
     assert_eq!(shifted["offset"], json!([-60, 0, 0, 0]));
 }
 
+/// {
+///   責務: [export_sorts_split_records_and_includes_collapsed_child_samples: 分割記録を整列し折りたたみ子標本も出力することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 分割記録を整列し折りたたみ子標本も出力する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn export_sorts_split_records_and_includes_collapsed_child_samples() {
     let mut canvas = Canvas::new(grid(3, 2)).unwrap();
@@ -72,6 +110,15 @@ fn export_sorts_split_records_and_includes_collapsed_child_samples() {
     assert_eq!(source["retained_splits"].as_array().unwrap().len(), 2);
 }
 
+/// {
+///   責務: [repeated_export_preserves_undo_redo_and_is_deterministic: 書き出しの決定性とUndo/Redoの非変更ことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 書き出しの決定性とUndo/Redoの非変更操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn repeated_export_preserves_undo_redo_and_is_deterministic() {
     let mut canvas = Canvas::new(grid(4, 3)).unwrap();
@@ -84,6 +131,15 @@ fn repeated_export_preserves_undo_redo_and_is_deterministic() {
     assert!(canvas.can_redo());
 }
 
+/// {
+///   責務: [unsupported_coordinates_and_output_sizes_fail_without_mutation: 非対応座標と出力サイズで状態を変更しないことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 非対応座標と出力サイズで状態を変更しない操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn unsupported_coordinates_and_output_sizes_fail_without_mutation() {
     let mut canvas = Canvas::new(grid(1, 1)).unwrap();

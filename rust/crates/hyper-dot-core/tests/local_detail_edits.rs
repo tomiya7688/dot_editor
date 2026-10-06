@@ -2,10 +2,30 @@ use hyper_dot_core::raster::{Color, Raster};
 use hyper_dot_core::resolution::Resolution;
 use hyper_dot_core::resolution_field::{DetailPolicy, ResolutionField};
 
+/// {
+///   責務: [grid: テスト用の正の解像度を作る]
+///   処理: [
+///     1: 幅と高さを検証してResolutionを生成する
+///   ]
+///   引数: [
+///     width: 対象領域の幅
+///     height: 対象領域の高さ
+///   ]
+///   戻り値: [解像度、不正な寸法ならテストを失敗させる]
+/// }
 fn grid(width: u32, height: u32) -> Resolution {
     Resolution::new(width, height).unwrap()
 }
 
+/// {
+///   責務: [patterned: 位置ごとに異なるRGBAのテスト画像を作る]
+///   処理: [
+///     1: 画像を確保する
+///     2: 座標から色を計算して各画素へ描く
+///   ]
+///   引数: []
+///   戻り値: [標本位置と細部保持の比較に使うラスタ]
+/// }
 fn patterned() -> Raster {
     let mut raster = Raster::new(grid(16, 16)).unwrap();
     for y in 0..16 {
@@ -25,16 +45,53 @@ fn patterned() -> Raster {
     raster
 }
 
+/// {
+///   責務: [in_cell: 表示画素の中心が対象編集セル内にあるか判定する]
+///   処理: [
+///     1: 整数の中心座標を編集グリッドへ投影する
+///     2: 編集セル座標と比較する
+///   ]
+///   引数: [
+///     view: 判定元の論理表示
+///     x: 横座標
+///     y: 縦座標
+///     edit: 編集セルの解像度
+///     ex: 編集対象の横セル座標
+///     ey: 編集対象の縦セル座標
+///   ]
+///   戻り値: [対象編集セルに属す場合true]
+/// }
 fn in_cell(view: Resolution, x: u32, y: u32, edit: Resolution, ex: u32, ey: u32) -> bool {
     let cx = (2 * u64::from(x) + 1) * u64::from(edit.width()) / (2 * u64::from(view.width()));
     let cy = (2 * u64::from(y) + 1) * u64::from(edit.height()) / (2 * u64::from(view.height()));
     cx == u64::from(ex) && cy == u64::from(ey)
 }
 
+/// {
+///   責務: [shifted: RGBAへ色差分を加え表示範囲に丸める]
+///   処理: [
+///     1: 各成分へ差分を加算する
+///     2: 0から255へ制限する
+///   ]
+///   引数: [
+///     color: 適用するRGBA色
+///     delta: RGBA成分ごとの色差分
+///   ]
+///   戻り値: [補正後のRGBA]
+/// }
 fn shifted(color: Color, delta: [i64; 4]) -> Color {
     std::array::from_fn(|i| (i64::from(color[i]) + delta[i]).clamp(0, 255) as u8)
 }
 
+/// {
+///   責務: [preserve_detail_roundtrip: 細部保持編集の往復で元の標本を復元することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 細部保持編集の往復で元の標本を復元する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn preserve_detail_roundtrip() {
     let original = patterned();
@@ -67,6 +124,15 @@ fn preserve_detail_roundtrip() {
     }
 }
 
+/// {
+///   責務: [discard_detail_is_local: 細部破棄を対象セルへ限定することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 細部破棄を対象セルへ限定する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn discard_detail_is_local() {
     let before = ResolutionField::from_raster(patterned());
@@ -100,6 +166,15 @@ fn discard_detail_is_local() {
     }
 }
 
+/// {
+///   責務: [preserve_recovers_raw_samples_after_color_clipping: 色クリップ後も未飽和の標本を復元することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 色クリップ後も未飽和の標本を復元する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn preserve_recovers_raw_samples_after_color_clipping() {
     let mut source = Raster::new(grid(16, 16)).unwrap();
@@ -133,6 +208,15 @@ fn preserve_recovers_raw_samples_after_color_clipping() {
     }
 }
 
+/// {
+///   責務: [unchanged_preserve_and_discard_have_different_detail_behavior: 同色編集の保持と破棄で細部の扱いを区別することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 同色編集の保持と破棄で細部の扱いを区別する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn unchanged_preserve_and_discard_have_different_detail_behavior() {
     let mut field = ResolutionField::from_raster(patterned());
@@ -159,6 +243,15 @@ fn unchanged_preserve_and_discard_have_different_detail_behavior() {
     );
 }
 
+/// {
+///   責務: [undo_snapshot_restores_discarded_detail: スナップショットから破棄済み細部を復元することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: スナップショットから破棄済み細部を復元する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn undo_snapshot_restores_discarded_detail() {
     let original = patterned();
@@ -172,6 +265,15 @@ fn undo_snapshot_restores_discarded_detail() {
     assert_eq!(field.render(grid(16, 16)), Ok(original));
 }
 
+/// {
+///   責務: [fine_edits_on_unaligned_grids_survive_display_changes: 不整列グリッドの局所編集を表示変更後も維持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 不整列グリッドの局所編集を表示変更後も維持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn fine_edits_on_unaligned_grids_survive_display_changes() {
     let source = Raster::new(grid(1, 1)).unwrap();
@@ -189,6 +291,15 @@ fn fine_edits_on_unaligned_grids_survive_display_changes() {
     assert_eq!(field.sample(fine, 22, 16), Ok([0; 4]));
 }
 
+/// {
+///   責務: [editing_largest_logical_grid_does_not_overflow_or_change_neighboring_samples: 最大論理グリッドの編集で桁あふれと隣接変更を防ぐことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 最大論理グリッドの編集で桁あふれと隣接変更を防ぐ操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn editing_largest_logical_grid_does_not_overflow_or_change_neighboring_samples() {
     let original = patterned();
@@ -212,6 +323,15 @@ fn editing_largest_logical_grid_does_not_overflow_or_change_neighboring_samples(
     assert_eq!(field.render(grid(16, 16)), Ok(original));
 }
 
+/// {
+///   責務: [preserve_tints_mixed_raster_and_solid_patches_only_inside_the_edit: 混在する画像・単色パッチを編集領域内だけ着色することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 混在する画像・単色パッチを編集領域内だけ着色する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn preserve_tints_mixed_raster_and_solid_patches_only_inside_the_edit() {
     let mut field = ResolutionField::from_raster(patterned());

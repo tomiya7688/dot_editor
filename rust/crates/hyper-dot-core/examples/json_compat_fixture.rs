@@ -5,10 +5,31 @@ use hyper_dot_core::resolution::Resolution;
 use hyper_dot_core::resolution_field::DetailPolicy;
 use serde_json::{Value, json};
 
+/// {
+///   責務: [grid: 互換検証用の正の解像度を作る]
+///   処理: [
+///     1: 入力の縦横から解像度を構成する
+///   ]
+///   引数: [
+///     width: 対象領域の幅
+///     height: 対象領域の高さ
+///   ]
+///   戻り値: [検証用解像度]
+/// }
 fn grid(width: u32, height: u32) -> Resolution {
     Resolution::new(width, height).unwrap()
 }
 
+/// {
+///   責務: [pixels: 比較用にラスタのRGBA行列を取り出す]
+///   処理: [
+///     1: 各行・各列の画素を順に読む
+///   ]
+///   引数: [
+///     raster: 元となるRGBAラスタ
+///   ]
+///   戻り値: [RGBA行列]
+/// }
 fn pixels(raster: Raster) -> Vec<Vec<[u8; 4]>> {
     let size = raster.resolution();
     (0..size.height())
@@ -20,6 +41,18 @@ fn pixels(raster: Raster) -> Vec<Vec<[u8; 4]>> {
         .collect()
 }
 
+/// {
+///   責務: [case: 文書と複数解像度での期待観測値をまとめる]
+///   処理: [
+///     1: 複製Canvasの論理・保持・展開表示を記録する
+///     2: JSON文書と必要な追加編集の期待色を付ける
+///   ]
+///   引数: [
+///     name: 互換性ケースの識別名
+///     canvas: 観測・直列化するキャンバス
+///   ]
+///   戻り値: [互換検証ケースのJSON値]
+/// }
 fn case(name: &str, canvas: Canvas) -> Value {
     let mut observations = Vec::new();
     for resolution in [
@@ -55,6 +88,16 @@ fn case(name: &str, canvas: Canvas) -> Value {
     result
 }
 
+/// {
+///   責務: [main: 書き出し・読み込み互換検証のケースを入出力する]
+///   処理: [
+///     1: 入力モードなら標準入力の文書を検証する
+///     2: 書き出しモードなら代表的な保持状態を構成する
+///     3: 観測結果を標準出力へJSONで出す
+///   ]
+///   引数: []
+///   戻り値: [なし]
+/// }
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("--import") {
         match import_cases() {
@@ -118,6 +161,16 @@ fn main() {
     println!("{}", Value::Array(cases));
 }
 
+/// {
+///   責務: [import_cases: 標準入力の文書をRustで復元して観測値を返す]
+///   処理: [
+///     1: 入力ケースのJSON配列を読む
+///     2: 各文書を検証付きで復元する
+///     3: 複数解像度の観測値をまとめる
+///   ]
+///   引数: []
+///   戻り値: [観測ケース配列またはJSON・読み込みエラー]
+/// }
 fn import_cases() -> Result<Value, Box<dyn std::error::Error>> {
     use std::io::Read;
     let mut input = String::new();

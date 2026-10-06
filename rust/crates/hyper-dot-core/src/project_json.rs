@@ -17,6 +17,18 @@ impl Canvas {
     /// Large logical grids that cannot be rendered are rejected, as are retained
     /// coordinates outside the existing JSON format's exact fraction budget.
     /// Layered projects are not supported yet; see `from_json` for loading.
+    /// {
+    ///   責務: [to_json: 単一Canvasを互換version 2 JSONに書き出す]
+    ///   処理: [
+    ///     1: 表示ラスタと保持元画像を取得する
+    ///     2: 分割記録を整列して子色を付ける
+    ///     3: version 2形式へ直列化する
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///   ]
+    ///   戻り値: [JSON文字列または描画・座標・直列化エラー]
+    /// }
     pub fn to_json(&self) -> Result<String, ProjectJsonError> {
         let preview = self.render()?;
         let patches = self
@@ -74,10 +86,31 @@ impl Canvas {
     }
 }
 
+/// {
+///   責務: [shape: 解像度をJSON用の縦横ペアにする]
+///   処理: [
+///     1: 幅と高さを順に配列へ格納する
+///   ]
+///   引数: [
+///     resolution: 対象の解像度
+///   ]
+///   戻り値: [幅・高さの配列]
+/// }
 fn shape(resolution: Resolution) -> [u32; 2] {
     [resolution.width(), resolution.height()]
 }
 
+/// {
+///   責務: [encoded_color: RGBAを互換16進色またはnullに変換する]
+///   処理: [
+///     1: 完全な透明黒はNoneにする
+///     2: 不透明色は6桁、それ以外は8桁で符号化する
+///   ]
+///   引数: [
+///     [r, g, b, a]: 直列化するRGBA各成分
+///   ]
+///   戻り値: [色文字列、透明黒の場合はNone]
+/// }
 fn encoded_color([r, g, b, a]: Color) -> Option<String> {
     if [r, g, b, a] == [0; 4] {
         None
@@ -88,6 +121,17 @@ fn encoded_color([r, g, b, a]: Color) -> Option<String> {
     }
 }
 
+/// {
+///   責務: [raster_source: ラスタを行ごとの互換色配列へ変換する]
+///   処理: [
+///     1: 各行の画素を順に読む
+///     2: 各RGBAを互換色へ変換する
+///   ]
+///   引数: [
+///     raster: 元となるRGBAラスタ
+///   ]
+///   戻り値: [色行列または画素読み取りエラー]
+/// }
 fn raster_source(raster: &Raster) -> Result<Vec<Vec<Option<String>>>, ProjectJsonError> {
     let resolution = raster.resolution();
     (0..resolution.height())
@@ -99,6 +143,17 @@ fn raster_source(raster: &Raster) -> Result<Vec<Vec<Option<String>>>, ProjectJso
         .collect()
 }
 
+/// {
+///   責務: [bounds_source: 正確な領域をJSONの分数配列へ変換する]
+///   処理: [
+///     1: 各端の分子・分母を取得する
+///     2: 既存形式の座標上限を検査する
+///   ]
+///   引数: [
+///     bounds: 処理する正規化長方形
+///   ]
+///   戻り値: [四つの分数または座標上限エラー]
+/// }
 fn bounds_source(bounds: FieldBounds) -> Result<[[u64; 2]; 4], ProjectJsonError> {
     let fractions =
         [bounds.left, bounds.top, bounds.right, bounds.bottom].map(|value| value.fraction());
@@ -112,6 +167,17 @@ fn bounds_source(bounds: FieldBounds) -> Result<[[u64; 2]; 4], ProjectJsonError>
     Ok(fractions)
 }
 
+/// {
+///   責務: [patch_source: 保持パッチの元画素と色差分をJSONへ変換する]
+///   処理: [
+///     1: 切り取り前の元画像範囲を取得する
+///     2: 保存画素・範囲・未飽和の色差分を格納する
+///   ]
+///   引数: [
+///     patch: 直列化する保持パッチ
+///   ]
+///   戻り値: [保持パッチのJSON値または変換エラー]
+/// }
 fn patch_source(patch: &FieldPatch) -> Result<Value, ProjectJsonError> {
     let (extent, raster, color) = patch.source_data();
     let (resolution, pixels) = match raster {

@@ -3,10 +3,30 @@ use hyper_dot_core::raster::{Raster, RasterError};
 use hyper_dot_core::resolution::Resolution;
 use hyper_dot_core::resolution_field::{DetailPolicy, ResolutionFieldError};
 
+/// {
+///   責務: [grid: テスト用の正の解像度を作る]
+///   処理: [
+///     1: 幅と高さを検証してResolutionを生成する
+///   ]
+///   引数: [
+///     width: 対象領域の幅
+///     height: 対象領域の高さ
+///   ]
+///   戻り値: [解像度、不正な寸法ならテストを失敗させる]
+/// }
 fn grid(width: u32, height: u32) -> Resolution {
     Resolution::new(width, height).unwrap()
 }
 
+/// {
+///   責務: [fill_matches_raster_connectivity_and_rgba_from_every_seed: すべての始点でラスタと同じRGBA・連結領域を塗ることを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: すべての始点でラスタと同じRGBA・連結領域を塗る操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn fill_matches_raster_connectivity_and_rgba_from_every_seed() {
     let mut source = Raster::new(grid(7, 5)).unwrap();
@@ -34,6 +54,15 @@ fn fill_matches_raster_connectivity_and_rgba_from_every_seed() {
     }
 }
 
+/// {
+///   責務: [diagonal_cells_are_not_connected_and_replacement_does_not_extend_the_region: 斜め接続と置換色による領域拡張を防ぐことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 斜め接続と置換色による領域拡張を防ぐ操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn diagonal_cells_are_not_connected_and_replacement_does_not_extend_the_region() {
     let mut source = Raster::new(grid(3, 3)).unwrap();
@@ -46,6 +75,15 @@ fn diagonal_cells_are_not_connected_and_replacement_does_not_extend_the_region()
     assert_eq!(canvas.sample(2, 0), Ok([0; 4]));
 }
 
+/// {
+///   責務: [detailed_source: 連結領域と細部を区別できる8×2のテスト画像を作る]
+///   処理: [
+///     1: 交互の標本色と右側の壁色を計算する
+///     2: 各位置へRGBAを描く
+///   ]
+///   引数: []
+///   戻り値: [塗りつぶし検証用ラスタ]
+/// }
 fn detailed_source() -> Raster {
     let mut source = Raster::new(grid(8, 2)).unwrap();
     for y in 0..2 {
@@ -63,6 +101,15 @@ fn detailed_source() -> Raster {
     source
 }
 
+/// {
+///   責務: [coarse_fill_preserves_or_discards_only_connected_detail_in_one_history_step: 連結細部だけを保持または破棄し一括Undoすることを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 連結細部だけを保持または破棄し一括Undoする操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn coarse_fill_preserves_or_discards_only_connected_detail_in_one_history_step() {
     for policy in [DetailPolicy::Preserve, DetailPolicy::Discard] {
@@ -94,6 +141,15 @@ fn coarse_fill_preserves_or_discards_only_connected_detail_in_one_history_step()
     }
 }
 
+/// {
+///   責務: [same_color_discard_traverses_plain_cells_to_reach_collapsed_detail: 同色の通常セルを経由して折りたたみ細部を破棄することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 同色の通常セルを経由して折りたたみ細部を破棄する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn same_color_discard_traverses_plain_cells_to_reach_collapsed_detail() {
     let mut canvas = Canvas::new(grid(4, 1)).unwrap();
@@ -116,6 +172,15 @@ fn same_color_discard_traverses_plain_cells_to_reach_collapsed_detail() {
     assert_eq!(canvas.sample_child(2, 0, (0, 0)), Ok([0; 4]));
 }
 
+/// {
+///   責務: [fill_uses_saved_parent_colors_and_preserve_keeps_children_unchanged: 保存した親色で領域を判定し子色を維持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 保存した親色で領域を判定し子色を維持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn fill_uses_saved_parent_colors_and_preserve_keeps_children_unchanged() {
     for collapsed in [false, true] {
@@ -149,6 +214,15 @@ fn fill_uses_saved_parent_colors_and_preserve_keeps_children_unchanged() {
     }
 }
 
+/// {
+///   責務: [split_parent_override_is_a_connectivity_barrier: 分割親色の上書きを連結障壁として扱うことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 分割親色の上書きを連結障壁として扱う操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn split_parent_override_is_a_connectivity_barrier() {
     let mut canvas = Canvas::new(grid(3, 1)).unwrap();
@@ -160,6 +234,15 @@ fn split_parent_override_is_a_connectivity_barrier() {
     assert!(canvas.is_split(1, 0));
 }
 
+/// {
+///   責務: [coarse_fill_updates_or_removes_saved_cross_grid_splits: 粗い塗りつぶしで別グリッドの分割記録を更新・除去することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 粗い塗りつぶしで別グリッドの分割記録を更新・除去する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn coarse_fill_updates_or_removes_saved_cross_grid_splits() {
     for policy in [DetailPolicy::Preserve, DetailPolicy::Discard] {
@@ -196,6 +279,15 @@ fn coarse_fill_updates_or_removes_saved_cross_grid_splits() {
     }
 }
 
+/// {
+///   責務: [same_color_coarse_discard_counts_detail_cells_and_undo_restores_samples: 同色破棄の変更数とUndoによる標本復元ことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 同色破棄の変更数とUndoによる標本復元操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn same_color_coarse_discard_counts_detail_cells_and_undo_restores_samples() {
     let source = detailed_source();
@@ -215,6 +307,15 @@ fn same_color_coarse_discard_counts_detail_cells_and_undo_restores_samples() {
     assert_eq!(canvas.render_at(grid(8, 2)), Ok(source));
 }
 
+/// {
+///   責務: [noop_and_out_of_bounds_fill_preserve_redo_and_success_invalidates_it: 変更なし・範囲外ではRedoを保持し成功で無効化することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 変更なし・範囲外ではRedoを保持し成功で無効化する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn noop_and_out_of_bounds_fill_preserve_redo_and_success_invalidates_it() {
     let mut canvas = Canvas::new(grid(3, 2)).unwrap();
@@ -231,6 +332,15 @@ fn noop_and_out_of_bounds_fill_preserve_redo_and_success_invalidates_it() {
     assert!(!canvas.can_redo());
 }
 
+/// {
+///   責務: [whole_canvas_fill_exceeds_patch_count_without_losing_preserved_detail: 全面塗りつぶしでパッチ上限を超えず細部を保持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 全面塗りつぶしでパッチ上限を超えず細部を保持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn whole_canvas_fill_exceeds_patch_count_without_losing_preserved_detail() {
     for policy in [DetailPolicy::Preserve, DetailPolicy::Discard] {
@@ -260,6 +370,15 @@ fn whole_canvas_fill_exceeds_patch_count_without_losing_preserved_detail() {
     assert_eq!(canvas.render_at(grid(8, 2)), Ok(source));
 }
 
+/// {
+///   責務: [partial_fill_budget_failure_rolls_back_all_staged_cells_and_history: 部分塗りつぶしの予算超過で全候補と履歴を巻き戻すことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 部分塗りつぶしの予算超過で全候補と履歴を巻き戻す操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn partial_fill_budget_failure_rolls_back_all_staged_cells_and_history() {
     let mut source = Raster::new(grid(65, 65)).unwrap();
@@ -280,6 +399,15 @@ fn partial_fill_budget_failure_rolls_back_all_staged_cells_and_history() {
     assert!(canvas.can_redo());
 }
 
+/// {
+///   責務: [unsafe_projection_fails_without_changing_logical_state: 描画不能な投影で論理状態を変更しないことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 描画不能な投影で論理状態を変更しない操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn unsafe_projection_fails_without_changing_logical_state() {
     let mut canvas = Canvas::new(grid(1, 1)).unwrap();

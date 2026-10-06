@@ -3,19 +3,57 @@ use hyper_dot_core::resolution::Resolution;
 use hyper_dot_core::resolution_field::DetailPolicy;
 use serde_json::{Value, json};
 
+/// {
+///   責務: [grid: テスト用の正の解像度を作る]
+///   処理: [
+///     1: 幅と高さを検証してResolutionを生成する
+///   ]
+///   引数: [
+///     w: 対象画像の幅
+///     h: 対象画像の高さ
+///   ]
+///   戻り値: [解像度、不正な寸法ならテストを失敗させる]
+/// }
 fn grid(w: u32, h: u32) -> Resolution {
     Resolution::new(w, h).unwrap()
 }
+/// {
+///   責務: [fixture: 共有v2文書のテストfixtureを読み込む]
+///   処理: [
+///     1: 埋め込んだ透明・非正方形fixtureをJSON値に解析する
+///   ]
+///   引数: []
+///   戻り値: [fixtureのJSON値、構文不正ならテストを失敗させる]
+/// }
 fn fixture() -> Value {
     serde_json::from_str(include_str!(
         "../../../../tests/fixtures/project_json/transparent_rectangular_v2.json"
     ))
     .unwrap()
 }
+/// {
+///   責務: [load: テストのJSON値からCanvasを復元する]
+///   処理: [
+///     1: JSON値を文字列化してCanvas::from_jsonへ渡す
+///   ]
+///   引数: [
+///     source: 変換・検査する元データ
+///   ]
+///   戻り値: [復元Canvas、読込失敗ならテストを失敗させる]
+/// }
 fn load(source: &Value) -> Canvas {
     Canvas::from_json(&source.to_string()).unwrap()
 }
 
+/// {
+///   責務: [version_two_roundtrip_retains_hidden_rgb_and_starts_with_empty_history: v2の隠れたRGBを保持し履歴なしで読み込むことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: v2の隠れたRGBを保持し履歴なしで読み込む操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn version_two_roundtrip_retains_hidden_rgb_and_starts_with_empty_history() {
     let canvas = load(&fixture());
@@ -29,6 +67,15 @@ fn version_two_roundtrip_retains_hidden_rgb_and_starts_with_empty_history() {
     );
 }
 
+/// {
+///   責務: [shared_legacy_fixture_is_readable_and_migrates_to_version_two: 共有旧形式を読みv2へ移行することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 共有旧形式を読みv2へ移行する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn shared_legacy_fixture_is_readable_and_migrates_to_version_two() {
     let canvas = Canvas::from_json(include_str!(
@@ -42,6 +89,15 @@ fn shared_legacy_fixture_is_readable_and_migrates_to_version_two() {
     );
 }
 
+/// {
+///   責務: [collapsed_children_can_be_sampled_when_the_doubled_display_exceeds_render_limits: 倍サイズ描画不能でも折りたたみ子を読み出すことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 倍サイズ描画不能でも折りたたみ子を読み出す操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn collapsed_children_can_be_sampled_when_the_doubled_display_exceeds_render_limits() {
     let canvas = Canvas::new(grid(4096, 1)).unwrap();
@@ -56,6 +112,15 @@ fn collapsed_children_can_be_sampled_when_the_doubled_display_exceeds_render_lim
     assert!(restored.to_json().is_ok());
 }
 
+/// {
+///   責務: [split_child_offsets_survive_load_edit_and_history: 子色差分を読み込み・編集・履歴で維持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 子色差分を読み込み・編集・履歴で維持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn split_child_offsets_survive_load_edit_and_history() {
     let mut original = Canvas::new(grid(4, 3)).unwrap();
@@ -92,6 +157,15 @@ fn split_child_offsets_survive_load_edit_and_history() {
     assert_eq!(restored.render_at(grid(23, 17)), Ok(before));
 }
 
+/// {
+///   責務: [legacy_refined_cells_migrate_parent_children_and_collapsed_state: 旧形式の親色・子色・折りたたみ状態を移行することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 旧形式の親色・子色・折りたたみ状態を移行する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn legacy_refined_cells_migrate_parent_children_and_collapsed_state() {
     for expanded in [false, true] {
@@ -108,6 +182,15 @@ fn legacy_refined_cells_migrate_parent_children_and_collapsed_state() {
     }
 }
 
+/// {
+///   責務: [non_grid_source_extent_preserves_exact_sampling_and_edit_boundaries: グリッドに整列しない元画像範囲の標本と編集境界ことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: グリッドに整列しない元画像範囲の標本と編集境界操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn non_grid_source_extent_preserves_exact_sampling_and_edit_boundaries() {
     // First source occupies x=[0,2/3), with its pixel boundary at 1/3.
@@ -146,6 +229,15 @@ fn non_grid_source_extent_preserves_exact_sampling_and_edit_boundaries() {
     assert_eq!(restored.render_at(grid(73, 1)), Ok(after));
 }
 
+/// {
+///   責務: [duplicates_nonstandard_numbers_trailing_data_and_deep_unknown_fields_are_rejected: 重複キー・非標準数値・末尾データ・深い未知項目を拒否することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 重複キー・非標準数値・末尾データ・深い未知項目を拒否する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn duplicates_nonstandard_numbers_trailing_data_and_deep_unknown_fields_are_rejected() {
     for text in [
@@ -164,6 +256,15 @@ fn duplicates_nonstandard_numbers_trailing_data_and_deep_unknown_fields_are_reje
     assert!(Canvas::from_json(&deep).is_err());
 }
 
+/// {
+///   責務: [malformed_shapes_colors_offsets_and_fractions_are_rejected: 不正な寸法・色・差分・分数を拒否することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 不正な寸法・色・差分・分数を拒否する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn malformed_shapes_colors_offsets_and_fractions_are_rejected() {
     let paths = [
@@ -190,6 +291,15 @@ fn malformed_shapes_colors_offsets_and_fractions_are_rejected() {
     }
 }
 
+/// {
+///   責務: [overlap_holes_and_clips_outside_extent_are_rejected_without_sampling_panics: 重複・欠落・元範囲外のパッチを安全に拒否することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 重複・欠落・元範囲外のパッチを安全に拒否する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn overlap_holes_and_clips_outside_extent_are_rejected_without_sampling_panics() {
     let mut source = fixture();
@@ -204,6 +314,15 @@ fn overlap_holes_and_clips_outside_extent_are_rejected_without_sampling_panics()
     assert!(Canvas::from_json(&source.to_string()).is_err());
 }
 
+/// {
+///   責務: [split_duplicates_unsafe_expansion_and_preview_disagreement_are_rejected: 重複分割・描画不能な展開・プレビュー不一致を拒否することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 重複分割・描画不能な展開・プレビュー不一致を拒否する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn split_duplicates_unsafe_expansion_and_preview_disagreement_are_rejected() {
     let mut canvas = Canvas::new(grid(2, 1)).unwrap();
@@ -226,6 +345,15 @@ fn split_duplicates_unsafe_expansion_and_preview_disagreement_are_rejected() {
     assert!(Canvas::from_json(&bad.to_string()).is_err());
 }
 
+/// {
+///   責務: [nesting_boundary_matches_the_reference_and_unknown_fields_are_validated: 深さ境界を参照実装と一致させ未知項目も検査することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 深さ境界を参照実装と一致させ未知項目も検査する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn nesting_boundary_matches_the_reference_and_unknown_fields_are_validated() {
     let text = format!(
@@ -242,6 +370,15 @@ fn nesting_boundary_matches_the_reference_and_unknown_fields_are_validated() {
     assert!(Canvas::from_json(&text).is_err());
 }
 
+/// {
+///   責務: [patch_and_split_count_limits_are_rejected_before_rendering: パッチ数・分割数の上限を描画前に拒否することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: パッチ数・分割数の上限を描画前に拒否する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn patch_and_split_count_limits_are_rejected_before_rendering() {
     let mut source = fixture();
@@ -255,6 +392,15 @@ fn patch_and_split_count_limits_are_rejected_before_rendering() {
     assert!(Canvas::from_json(&source.to_string()).is_err());
 }
 
+/// {
+///   責務: [failures_leave_an_existing_document_and_redo_available: 読み込み失敗で既存文書とRedoを維持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 読み込み失敗で既存文書とRedoを維持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn failures_leave_an_existing_document_and_redo_available() {
     let mut canvas = Canvas::new(grid(2, 1)).unwrap();

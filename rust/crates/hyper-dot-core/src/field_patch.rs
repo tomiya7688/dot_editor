@@ -5,6 +5,16 @@ use crate::raster::{Color, Raster, RasterError};
 use crate::rational_coordinate::RationalCoordinate as Coordinate;
 use crate::resolution::Resolution;
 
+/// {
+///   責務: [PatchSource: パッチの未補正色と元の画素境界を保持する]
+///   フィールド: [
+///     Raster.raster: 共有する切り出し画像
+///     Raster.origin_x・origin_y: 元画像上の切り出し開始位置
+///     Raster.extent: 元画像の空間範囲
+///     Raster.original_size: 元画像の寸法
+///     Solid: 単色RGBA
+///   ]
+/// }
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PatchSource {
     Raster {
@@ -17,6 +27,15 @@ enum PatchSource {
     Solid(Color),
 }
 
+/// {
+///   責務: [FieldPatch: 局所領域の元色・標本密度・未飽和の色差分を保持する]
+///   フィールド: [
+///     bounds: 表示対象の切り出し範囲
+///     grid: 保持解像度の要約
+///     offset: RGBA各成分の未飽和差分
+///     source: 単色または元画像
+///   ]
+/// }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct FieldPatch {
     pub(crate) bounds: FieldBounds,
@@ -27,6 +46,17 @@ pub(crate) struct FieldPatch {
 
 impl FieldPatch {
     /// Stored source extent, before clipping, with unshifted source pixels.
+    /// {
+    ///   責務: [source_data: 元画素と切り取り前の正確な画像範囲を公開する]
+    ///   処理: [
+    ///     1: 単色なら現在領域と色を返す
+    ///     2: ラスタなら元範囲から保存画素の端を補間する
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///   ]
+    ///   戻り値: [元画像範囲・ラスタ参照・単色色]
+    /// }
     pub(crate) fn source_data(&self) -> (FieldBounds, Option<&Raster>, Color) {
         match &self.source {
             PatchSource::Solid(color) => (self.bounds, None, *color),
@@ -69,6 +99,17 @@ impl FieldPatch {
         }
     }
 
+    /// {
+    ///   責務: [from_raster: Canvas全体を覆うラスタパッチを作る]
+    ///   処理: [
+    ///     1: 元の画像寸法と単位領域を保存する
+    ///     2: 色差分と切り取り原点を0にする
+    ///   ]
+    ///   引数: [
+    ///     source: 保持する元RGBAラスタ
+    ///   ]
+    ///   戻り値: [新しい保持パッチ]
+    /// }
     pub(crate) fn from_raster(source: Raster) -> Self {
         let original_size = source.resolution();
         Self {
@@ -85,6 +126,20 @@ impl FieldPatch {
         }
     }
 
+    /// {
+    ///   責務: [from_source: 検証済みJSONの元範囲・画素・色差分を復元する]
+    ///   処理: [
+    ///     1: 範囲内の画素密度から要約解像度を求める
+    ///     2: 元画像範囲とサイズを保持してラスタを共有する
+    ///   ]
+    ///   引数: [
+    ///     bounds: 処理する正規化長方形
+    ///     extent: 元画像に対応する空間範囲
+    ///     raster: 元となるRGBAラスタ
+    ///     offset: RGBA成分の未飽和差分
+    ///   ]
+    ///   戻り値: [復元した保持パッチ]
+    /// }
     pub(crate) fn from_source(
         bounds: FieldBounds,
         extent: FieldBounds,
@@ -111,6 +166,19 @@ impl FieldPatch {
         }
     }
 
+    /// {
+    ///   責務: [solid: 局所領域を単色で保持するパッチを作る]
+    ///   処理: [
+    ///     1: 領域・解像度と単色を格納する
+    ///     2: 色差分を0にする
+    ///   ]
+    ///   引数: [
+    ///     bounds: 処理する正規化長方形
+    ///     grid: 座標を解釈するグリッド
+    ///     color: 適用するRGBA色
+    ///   ]
+    ///   戻り値: [単色保持パッチ]
+    /// }
     pub(crate) fn solid(bounds: FieldBounds, grid: Resolution, color: Color) -> Self {
         Self {
             bounds,
@@ -120,6 +188,19 @@ impl FieldPatch {
         }
     }
 
+    /// {
+    ///   責務: [sample_raw: パッチ内の元色と未飽和の色差分を読む]
+    ///   処理: [
+    ///     1: 単色または元画像範囲に対応する画素を取得する
+    ///     2: 各色成分へ保持差分を足す
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///     x: 横座標
+    ///     y: 縦座標
+    ///   ]
+    ///   戻り値: [範囲制限前のRGBA成分]
+    /// }
     pub(crate) fn sample_raw(&self, x: Coordinate, y: Coordinate) -> [i64; 4] {
         let color = match &self.source {
             PatchSource::Solid(color) => *color,
@@ -139,6 +220,16 @@ impl FieldPatch {
         std::array::from_fn(|channel| i64::from(color[channel]) + self.offset[channel])
     }
 
+    /// {
+    ///   責務: [stored_pixels: パッチが保持する元画素数を求める]
+    ///   処理: [
+    ///     1: 単色は1、ラスタは保存画像の縦横積を数える
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///   ]
+    ///   戻り値: [保持画素数]
+    /// }
     pub(crate) fn stored_pixels(&self) -> usize {
         match &self.source {
             PatchSource::Solid(_) => 1,
@@ -150,6 +241,19 @@ impl FieldPatch {
     }
 
     /// Removes inaccessible source pixels without moving their spatial boundaries.
+    /// {
+    ///   責務: [cropped: 画素境界を動かさず不要な元画素を除く]
+    ///   処理: [
+    ///     1: 元範囲から切り取りの画素端を求める
+    ///     2: 必要なら元画像を切り取る
+    ///     3: 元の座標系と色差分を引き継ぐ
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///     bounds: 処理する正規化長方形
+    ///   ]
+    ///   戻り値: [切り取り済みパッチまたはラスタ確保エラー]
+    /// }
     pub(crate) fn cropped(&self, bounds: FieldBounds) -> Result<Self, RasterError> {
         let source = match &self.source {
             PatchSource::Solid(color) => PatchSource::Solid(*color),

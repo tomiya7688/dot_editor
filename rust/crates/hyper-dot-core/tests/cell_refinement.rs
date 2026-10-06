@@ -3,10 +3,30 @@ use hyper_dot_core::raster::{Raster, RasterError};
 use hyper_dot_core::resolution::Resolution;
 use hyper_dot_core::resolution_field::DetailPolicy;
 
+/// {
+///   責務: [grid: テスト用の正の解像度を作る]
+///   処理: [
+///     1: 幅と高さを検証してResolutionを生成する
+///   ]
+///   引数: [
+///     width: 対象領域の幅
+///     height: 対象領域の高さ
+///   ]
+///   戻り値: [解像度、不正な寸法ならテストを失敗させる]
+/// }
 fn grid(width: u32, height: u32) -> Resolution {
     Resolution::new(width, height).unwrap()
 }
 
+/// {
+///   責務: [patterned: 位置ごとに異なるRGBAのテスト画像を作る]
+///   処理: [
+///     1: 画像を確保する
+///     2: 座標から色を計算して各画素へ描く
+///   ]
+///   引数: []
+///   戻り値: [標本位置と細部保持の比較に使うラスタ]
+/// }
 fn patterned() -> Raster {
     let mut raster = Raster::new(grid(16, 12)).unwrap();
     for y in 0..12 {
@@ -19,6 +39,15 @@ fn patterned() -> Raster {
 
 const CHILDREN: [ChildCoordinate; 4] = [(0, 0), (1, 0), (0, 1), (1, 1)];
 
+/// {
+///   責務: [split_children_are_independent_and_collapse_restores_the_parent_view: 子セルを独立編集し折りたたみで親表示に戻すことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 子セルを独立編集し折りたたみで親表示に戻す操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn split_children_are_independent_and_collapse_restores_the_parent_view() {
     let mut canvas = Canvas::from_raster(patterned());
@@ -63,6 +92,15 @@ fn split_children_are_independent_and_collapse_restores_the_parent_view() {
     assert_eq!(canvas.sample_child(1, 1, (1, 0)), Ok(replacement));
 }
 
+/// {
+///   責務: [child_erase_and_both_detail_policies_keep_the_parent_and_siblings: 子の消去と両細部方針で親・兄弟を維持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 子の消去と両細部方針で親・兄弟を維持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn child_erase_and_both_detail_policies_keep_the_parent_and_siblings() {
     for policy in [DetailPolicy::Preserve, DetailPolicy::Discard] {
@@ -96,6 +134,15 @@ fn child_erase_and_both_detail_policies_keep_the_parent_and_siblings() {
     }
 }
 
+/// {
+///   責務: [child_write_changes_only_its_exact_spatial_region: 子編集が正確な空間領域だけを変えることを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 子編集が正確な空間領域だけを変える操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn child_write_changes_only_its_exact_spatial_region() {
     let mut canvas = Canvas::from_raster(patterned());
@@ -121,6 +168,15 @@ fn child_write_changes_only_its_exact_spatial_region() {
     }
 }
 
+/// {
+///   責務: [parent_preserve_override_keeps_children_and_parent_discard_removes_split_metadata: 親色保持と細部破棄による分割記録除去ことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 親色保持と細部破棄による分割記録除去操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn parent_preserve_override_keeps_children_and_parent_discard_removes_split_metadata() {
     let mut canvas = Canvas::from_raster(patterned());
@@ -152,6 +208,15 @@ fn parent_preserve_override_keeps_children_and_parent_discard_removes_split_meta
     assert_eq!(canvas.sample_child(1, 1, (1, 1)), Ok(children[3]));
 }
 
+/// {
+///   責務: [split_metadata_survives_grid_changes_and_history_restores_it: グリッド変更と履歴復元で分割記録を維持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: グリッド変更と履歴復元で分割記録を維持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn split_metadata_survives_grid_changes_and_history_restores_it() {
     let mut canvas = Canvas::from_raster(patterned());
@@ -187,6 +252,15 @@ fn split_metadata_survives_grid_changes_and_history_restores_it() {
     assert_eq!(canvas.resolution(), grid(4, 3));
 }
 
+/// {
+///   責務: [invalid_children_unexpanded_cells_and_unsafe_split_grids_are_rejected: 不正な子座標・未展開セル・描画不能グリッドを拒否することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 不正な子座標・未展開セル・描画不能グリッドを拒否する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn invalid_children_unexpanded_cells_and_unsafe_split_grids_are_rejected() {
     let mut canvas = Canvas::new(grid(4, 3)).unwrap();
@@ -216,6 +290,15 @@ fn invalid_children_unexpanded_cells_and_unsafe_split_grids_are_rejected() {
     assert!(!edge.can_undo());
 }
 
+/// {
+///   責務: [splitting_is_local_noop_safe_and_collapse_does_not_discard_children: 局所分割の変更なし判定と折りたたみ後の細部保持ことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 局所分割の変更なし判定と折りたたみ後の細部保持操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn splitting_is_local_noop_safe_and_collapse_does_not_discard_children() {
     let mut canvas = Canvas::new(grid(4, 3)).unwrap();
@@ -230,6 +313,15 @@ fn splitting_is_local_noop_safe_and_collapse_does_not_discard_children() {
     assert!(canvas.is_split(1, 1));
 }
 
+/// {
+///   責務: [same_color_discard_removes_cross_grid_split_metadata_and_is_undoable: 同色破棄で別グリッドの分割記録を除きUndoすることを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 同色破棄で別グリッドの分割記録を除きUndoする操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn same_color_discard_removes_cross_grid_split_metadata_and_is_undoable() {
     let mut canvas = Canvas::new(grid(1, 1)).unwrap();
@@ -255,6 +347,15 @@ fn same_color_discard_removes_cross_grid_split_metadata_and_is_undoable() {
     assert!(!canvas.has_detail_at(0, 0).unwrap());
 }
 
+/// {
+///   責務: [coarse_preserve_updates_split_parent_bases_at_their_centers: 粗い保持編集で分割親色を中心位置から更新することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 粗い保持編集で分割親色を中心位置から更新する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn coarse_preserve_updates_split_parent_bases_at_their_centers() {
     let mut canvas = Canvas::new(grid(1, 1)).unwrap();
@@ -281,6 +382,15 @@ fn coarse_preserve_updates_split_parent_bases_at_their_centers() {
     assert_eq!(canvas.sample(1, 1), Ok(expected));
 }
 
+/// {
+///   責務: [discard_updates_only_split_bases_whose_centers_fall_inside_the_cell: 編集セル内に中心を持つ分割親色だけを更新することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 編集セル内に中心を持つ分割親色だけを更新する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn discard_updates_only_split_bases_whose_centers_fall_inside_the_cell() {
     let mut canvas = Canvas::new(grid(1, 1)).unwrap();
@@ -310,6 +420,15 @@ fn discard_updates_only_split_bases_whose_centers_fall_inside_the_cell() {
     assert_eq!(canvas.sample(1, 2), Ok(outside));
 }
 
+/// {
+///   責務: [half_open_bounds_assign_boundary_split_metadata_to_one_cell: 半開区間の境界で分割記録を一方のセルへ帰属させることを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 半開区間の境界で分割記録を一方のセルへ帰属させる操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn half_open_bounds_assign_boundary_split_metadata_to_one_cell() {
     let mut canvas = Canvas::new(grid(1, 1)).unwrap();
@@ -336,6 +455,15 @@ fn half_open_bounds_assign_boundary_split_metadata_to_one_cell() {
     assert_eq!(canvas.sample(1, 1), Ok([0; 4]));
 }
 
+/// {
+///   責務: [discard_resolution_bakes_parent_overrides_at_the_requested_grid: 解像度破棄で親色の上書きを指定グリッドへ焼き込むことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 解像度破棄で親色の上書きを指定グリッドへ焼き込む操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn discard_resolution_bakes_parent_overrides_at_the_requested_grid() {
     let mut canvas = Canvas::new(grid(1, 1)).unwrap();
@@ -358,6 +486,15 @@ fn discard_resolution_bakes_parent_overrides_at_the_requested_grid() {
     assert_eq!(canvas.retained_resolution(), grid(16, 16));
 }
 
+/// {
+///   責務: [split_metadata_limit_rejects_the_next_cell_without_changing_canvas: 分割記録上限超過でキャンバスを変更しないことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 分割記録上限超過でキャンバスを変更しない操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn split_metadata_limit_rejects_the_next_cell_without_changing_canvas() {
     let mut canvas = Canvas::new(grid(65, 64)).unwrap();

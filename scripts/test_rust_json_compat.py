@@ -13,11 +13,33 @@ from pixel_backend import PixelCanvas
 from PIL import Image
 
 
+# {
+#   責務: [image_rows: 描画画像を言語間比較用のRGBA行列へ変換する]
+#   処理: [
+#     1: 行ごとに各画素のRGBAを取り出す
+#   ]
+#   引数: [
+#     image: RGBA比較対象の画像
+#   ]
+#   戻り値: [RGBA行列]
+# }
 def image_rows(image):
     return [[list(image.getpixel((x, y))) for x in range(image.width)]
             for y in range(image.height)]
 
 
+# {
+#   責務: [check_case: Rustが記録した描画結果とPythonの復元結果を照合する]
+#   処理: [
+#     1: Pythonで文書を読み込み再保存する
+#     2: 複数解像度の論理・保持・展開表示を照合する
+#     3: 色差分の追加編集結果を照合する
+#   ]
+#   引数: [
+#     case: Rustが生成した期待描画付きケース
+#   ]
+#   戻り値: [なし、互換性が崩れた場合はAssertionError]
+# }
 def check_case(case):
     source = case["source"]
     # Loading validates previews and child compatibility data as well as patches.
@@ -40,6 +62,16 @@ def check_case(case):
             assert image_rows(model.render_resolution(16, 12)) == case["edited_detail"], (case["name"], "edited detail")
 
 
+# {
+#   責務: [main: RustとPythonのJSON往復互換を検証する]
+#   処理: [
+#     1: Rustの書き出しケースを起動して照合する
+#     2: Python作成文書と旧形式をRustへ読み戻す
+#     3: 観測結果と移行後の版番号を確認する
+#   ]
+#   引数: []
+#   戻り値: [なし、失敗時は例外]
+# }
 def main():
     command = [
         "cargo", "run", "--quiet", "--manifest-path", str(ROOT / "rust" / "Cargo.toml"),

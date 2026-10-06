@@ -8,6 +8,27 @@ permissions:
   contents: read
 
 jobs:
+  declaration-comments:
+    name: Declaration comments
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Test declaration comment checker
+        run: python -m unittest discover -s tests -p test_declaration_comments.py
+      - name: Audit migrated declarations
+        run: python scripts/check_declaration_comments.py
+      - name: Audit every declaration in changed owned sources
+        if: github.event_name == 'pull_request' || github.event.before != '0000000000000000000000000000000000000000'
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python scripts/check_declaration_comments.py --changed-base "$BASE_REVISION"
+
   rust-core:
     name: Rust Core
     runs-on: ubuntu-latest
@@ -76,7 +97,7 @@ jobs:
 
   windows-build:
     runs-on: windows-latest
-    needs: [rust-core, evaluate]
+    needs: [declaration-comments, rust-core, evaluate]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

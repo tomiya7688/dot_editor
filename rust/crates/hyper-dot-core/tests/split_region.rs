@@ -3,10 +3,30 @@ use hyper_dot_core::raster::{Raster, RasterError};
 use hyper_dot_core::resolution::Resolution;
 use hyper_dot_core::resolution_field::DetailPolicy;
 
+/// {
+///   責務: [grid: テスト用の正の解像度を作る]
+///   処理: [
+///     1: 幅と高さを検証してResolutionを生成する
+///   ]
+///   引数: [
+///     width: 対象領域の幅
+///     height: 対象領域の高さ
+///   ]
+///   戻り値: [解像度、不正な寸法ならテストを失敗させる]
+/// }
 fn grid(width: u32, height: u32) -> Resolution {
     Resolution::new(width, height).unwrap()
 }
 
+/// {
+///   責務: [rectangular_region_is_local_and_one_undo_restores_all_cells: 長方形領域だけを分割し一括Undoすることを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 長方形領域だけを分割し一括Undoする操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn rectangular_region_is_local_and_one_undo_restores_all_cells() {
     let mut source = Raster::new(grid(7, 5)).unwrap();
@@ -48,6 +68,15 @@ fn rectangular_region_is_local_and_one_undo_restores_all_cells() {
     assert_eq!(canvas.render(), Ok(source));
 }
 
+/// {
+///   責務: [region_expansion_survives_unaligned_grid_changes_with_retained_samples: 不整列グリッド変更後も領域の保持標本を維持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 不整列グリッド変更後も領域の保持標本を維持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn region_expansion_survives_unaligned_grid_changes_with_retained_samples() {
     let mut source = Raster::new(grid(16, 12)).unwrap();
@@ -78,6 +107,15 @@ fn region_expansion_survives_unaligned_grid_changes_with_retained_samples() {
     assert!(canvas.is_split(2, 2));
 }
 
+/// {
+///   責務: [mixed_expanded_collapsed_and_new_cells_keep_parent_overrides_and_children: 展開済み・折りたたみ・新規セルの親色と子色を維持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 展開済み・折りたたみ・新規セルの親色と子色を維持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn mixed_expanded_collapsed_and_new_cells_keep_parent_overrides_and_children() {
     let mut canvas = Canvas::new(grid(4, 3)).unwrap();
@@ -103,6 +141,15 @@ fn mixed_expanded_collapsed_and_new_cells_keep_parent_overrides_and_children() {
     assert!(canvas.is_split(2, 1));
 }
 
+/// {
+///   責務: [noop_region_keeps_redo_but_a_new_split_invalidates_it: 変更なし領域ではRedoを維持し新規分割で消すことを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 変更なし領域ではRedoを維持し新規分割で消す操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn noop_region_keeps_redo_but_a_new_split_invalidates_it() {
     let mut canvas = Canvas::new(grid(3, 2)).unwrap();
@@ -116,6 +163,15 @@ fn noop_region_keeps_redo_but_a_new_split_invalidates_it() {
     assert!(!canvas.can_redo());
 }
 
+/// {
+///   責務: [invalid_regions_and_overflow_leave_state_and_history_intact: 不正な範囲と桁あふれで状態・履歴を維持することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 不正な範囲と桁あふれで状態・履歴を維持する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn invalid_regions_and_overflow_leave_state_and_history_intact() {
     let mut canvas = Canvas::new(grid(7, 5)).unwrap();
@@ -153,6 +209,15 @@ fn invalid_regions_and_overflow_leave_state_and_history_intact() {
     assert_eq!(canvas.split_region(6, 4, 1, 1), Ok(1));
 }
 
+/// {
+///   責務: [rectangular_child_grid_is_validated_by_both_dimensions_and_pixel_budget: 長方形子グリッドの両寸法と画素予算を検査することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 長方形子グリッドの両寸法と画素予算を検査する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn rectangular_child_grid_is_validated_by_both_dimensions_and_pixel_budget() {
     let mut valid = Canvas::new(grid(1800, 500)).unwrap();
@@ -178,6 +243,15 @@ fn rectangular_child_grid_is_validated_by_both_dimensions_and_pixel_budget() {
     }
 }
 
+/// {
+///   責務: [budget_counts_new_records_not_reexpanded_cells_and_rejects_atomically: 再展開を新規記録予算に数えず超過時に一括拒否することを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 再展開を新規記録予算に数えず超過時に一括拒否する操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn budget_counts_new_records_not_reexpanded_cells_and_rejects_atomically() {
     let mut canvas = Canvas::new(grid(65, 64)).unwrap();
@@ -200,6 +274,15 @@ fn budget_counts_new_records_not_reexpanded_cells_and_rejects_atomically() {
     assert_eq!(canvas, before);
 }
 
+/// {
+///   責務: [splits_from_other_grids_are_preserved_and_count_toward_the_budget: 別グリッドの分割を維持し予算に含めることを回帰検証する]
+///   処理: [
+///     1: 対象の画像・状態を用意する
+///     2: 別グリッドの分割を維持し予算に含める操作を実行し期待結果をassertで比較する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
 #[test]
 fn splits_from_other_grids_are_preserved_and_count_toward_the_budget() {
     let mut canvas = Canvas::new(grid(64, 64)).unwrap();
