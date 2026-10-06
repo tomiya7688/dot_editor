@@ -41,9 +41,25 @@ pub enum CanvasError {
     HistoryAllocationFailed,
     SplitLimitExceeded,
     SplitResolutionOverflow,
-    ChildCoordinateOutOfBounds { x: u8, y: u8 },
-    CellNotSplit { x: u32, y: u32 },
-    CellNotExpanded { x: u32, y: u32 },
+    InvalidRegionSize,
+    RegionOutOfBounds {
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    },
+    ChildCoordinateOutOfBounds {
+        x: u8,
+        y: u8,
+    },
+    CellNotSplit {
+        x: u32,
+        y: u32,
+    },
+    CellNotExpanded {
+        x: u32,
+        y: u32,
+    },
 }
 
 impl Canvas {
@@ -202,32 +218,83 @@ impl Canvas {
         if x >= self.resolution.width() || y >= self.resolution.height() || self.is_split(x, y) {
             return Ok(false);
         }
-        self.child_resolution()?;
-        let key_index = self
-            .splits
-            .iter()
-            .position(|split| split.matches(self.resolution, x, y));
-        if key_index.is_none() && self.splits.len() >= MAX_SPLIT_CELLS {
-            return Err(CanvasError::SplitLimitExceeded);
+        Ok(self.split_region(x, y, 1, 1)? != 0)
+    }
+
+    /// Expands every cell in a positive, fully contained rectangle. Returns the
+    /// number newly expanded, including previously collapsed cells. Existing
+    /// parent overrides and children survive re-expansion. The whole operation
+    /// is one undo step; invalid bounds or budgets leave state/history intact.
+    pub fn split_region(
+        &mut self,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) -> Result<usize, CanvasError> {
+        if width == 0 || height == 0 {
+            return Err(CanvasError::InvalidRegionSize);
         }
-        let base = match key_index {
-            Some(index) => self.splits[index].base,
-            None => self.sample(x, y)?,
-        };
-        let mut splits = self.copy_splits(usize::from(key_index.is_none()))?;
-        if let Some(index) = key_index {
-            splits[index].expanded = true;
-        } else {
-            splits.push(SplitCell {
-                resolution: self.resolution,
+        let end_x = x.checked_add(width);
+        let end_y = y.checked_add(height);
+        let (Some(end_x), Some(end_y)) = (end_x, end_y) else {
+            return Err(CanvasError::RegionOutOfBounds {
                 x,
                 y,
-                base,
-                expanded: true,
+                width,
+                height,
+            });
+        };
+        if end_x > self.resolution.width() || end_y > self.resolution.height() {
+            return Err(CanvasError::RegionOutOfBounds {
+                x,
+                y,
+                width,
+                height,
             });
         }
+        self.child_resolution()?;
+        let area = u64::from(width) * u64::from(height);
+        let mut retained = 0;
+        let mut expanded = 0;
+        for split in self.splits.iter().filter(|split| {
+            split.resolution == self.resolution
+                && (x..end_x).contains(&split.x)
+                && (y..end_y).contains(&split.y)
+        }) {
+            retained += 1;
+            expanded += u64::from(split.expanded);
+        }
+        let additional = area - retained;
+        if additional > (MAX_SPLIT_CELLS - self.splits.len()) as u64 {
+            return Err(CanvasError::SplitLimitExceeded);
+        }
+        let changed = area - expanded;
+        if changed == 0 {
+            return Ok(0);
+        }
+        // The budget check bounds both conversions and iteration to 4096 cells.
+        let mut splits = self.copy_splits(additional as usize)?;
+        for py in y..end_y {
+            for px in x..end_x {
+                if let Some(split) = splits
+                    .iter_mut()
+                    .find(|split| split.matches(self.resolution, px, py))
+                {
+                    split.expanded = true;
+                } else {
+                    splits.push(SplitCell {
+                        resolution: self.resolution,
+                        x: px,
+                        y: py,
+                        base: self.field.sample(self.resolution, px, py)?,
+                        expanded: true,
+                    });
+                }
+            }
+        }
         self.commit(self.resolution, self.field.clone(), Arc::new(splits))?;
-        Ok(true)
+        Ok(changed as usize)
     }
 
     pub fn collapse_cell(&mut self, x: u32, y: u32) -> Result<bool, CanvasError> {
@@ -667,6 +734,18 @@ impl Display for CanvasError {
             Self::SplitResolutionOverflow => {
                 formatter.write_str("split resolution exceeds the integer range")
             }
+            Self::InvalidRegionSize => formatter.write_str("region dimensions must be positive"),
+            Self::RegionOutOfBounds {
+                x,
+                y,
+                width,
+                height,
+            } => {
+                write!(
+                    formatter,
+                    "region ({x}, {y}, {width}, {height}) is outside the canvas"
+                )
+            }
             Self::ChildCoordinateOutOfBounds { x, y } => {
                 write!(formatter, "child coordinate ({x}, {y}) is out of bounds")
             }
@@ -687,6 +766,8 @@ impl Error for CanvasError {
             | Self::HistoryAllocationFailed
             | Self::SplitLimitExceeded
             | Self::SplitResolutionOverflow
+            | Self::InvalidRegionSize
+            | Self::RegionOutOfBounds { .. }
             | Self::ChildCoordinateOutOfBounds { .. }
             | Self::CellNotSplit { .. }
             | Self::CellNotExpanded { .. } => None,
