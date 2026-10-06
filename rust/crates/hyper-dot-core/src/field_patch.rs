@@ -24,6 +24,33 @@ pub(crate) struct FieldPatch {
 }
 
 impl FieldPatch {
+    /// Stored source extent, before clipping, with unshifted source pixels.
+    pub(crate) fn source_data(&self) -> (FieldBounds, Option<&Raster>, Color) {
+        match &self.source {
+            PatchSource::Solid(color) => (self.bounds, None, *color),
+            PatchSource::Raster {
+                raster,
+                origin_x,
+                origin_y,
+            } => {
+                let size = raster.resolution();
+                let extent = FieldBounds {
+                    left: Coordinate::new(u64::from(*origin_x), u64::from(self.grid.width())),
+                    top: Coordinate::new(u64::from(*origin_y), u64::from(self.grid.height())),
+                    right: Coordinate::new(
+                        u64::from(*origin_x) + u64::from(size.width()),
+                        u64::from(self.grid.width()),
+                    ),
+                    bottom: Coordinate::new(
+                        u64::from(*origin_y) + u64::from(size.height()),
+                        u64::from(self.grid.height()),
+                    ),
+                };
+                (extent, Some(raster), [0; 4])
+            }
+        }
+    }
+
     pub(crate) fn from_raster(source: Raster) -> Self {
         Self {
             bounds: FieldBounds::full(),

@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "canvas_size": 2,
+  "resolution": [2, 1],
+  "pixels": [[null, "#11223300"]],
+  "retained_field": [{
+    "clip": [[0, 1], [0, 1], [1, 1], [1, 1]],
+    "extent": [[0, 1], [0, 1], [1, 1], [1, 1]],
+    "resolution": [2, 1],
+    "pixels": [[null, "#11223300"]],
+    "offset": [0, 0, 0, 0]
+  }],
+  "retained_splits": []
+}

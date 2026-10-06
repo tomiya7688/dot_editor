@@ -27,8 +27,8 @@ struct CanvasState {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Canvas {
     resolution: Resolution,
-    field: ResolutionField,
-    splits: Arc<Vec<SplitCell>>,
+    pub(crate) field: ResolutionField,
+    pub(crate) splits: Arc<Vec<SplitCell>>,
     history: Vec<CanvasState>,
     future: Vec<CanvasState>,
 }

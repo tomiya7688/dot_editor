@@ -28,6 +28,17 @@ jobs:
       - name: Build Rust workspace
         run: cargo build --manifest-path rust/Cargo.toml --workspace
 
+      - name: Set up Python reference
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Python reference dependencies
+        run: python -m pip install -e .
+
+      - name: Verify Rust to Python project JSON compatibility
+        run: python scripts/test_rust_json_compat.py
+
   evaluate:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest

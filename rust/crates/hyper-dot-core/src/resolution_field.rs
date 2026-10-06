@@ -103,7 +103,7 @@ impl Error for ResolutionFieldError {
 /// after all cropping, allocation and budget checks succeed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResolutionField {
-    patches: Arc<Vec<FieldPatch>>,
+    pub(crate) patches: Arc<Vec<FieldPatch>>,
 }
 
 impl ResolutionField {

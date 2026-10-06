@@ -8,6 +8,10 @@ pub(crate) struct RationalCoordinate {
 }
 
 impl RationalCoordinate {
+    pub(crate) const fn fraction(self) -> [u64; 2] {
+        [self.numerator, self.denominator]
+    }
+
     pub(crate) fn new(numerator: u64, denominator: u64) -> Self {
         debug_assert!(denominator > 0 && numerator <= denominator);
         let (mut a, mut b) = (numerator, denominator);

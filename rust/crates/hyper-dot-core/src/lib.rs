@@ -9,6 +9,8 @@ pub mod canvas;
 mod field_bounds;
 mod field_patch;
 mod flood_region;
+pub mod project_json;
+mod project_json_error;
 pub mod raster;
 mod rational_coordinate;
 pub mod resolution;
