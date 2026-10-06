@@ -12,6 +12,16 @@ from pathlib import Path
 from pixel_commands import Canvas, PixelCommandAPI, load_project, save_project
 
 
+# {
+#   責務: [parse_color: CLIのRGB色指定を不透明RGBAへ変換する]
+#   処理: [
+#     1: 前後の空白と先頭のシャープ記号を除く
+#     2: 6桁を2桁ずつ16進数として読み透明度255を付ける
+#     3: 桁数や数値が不正ならArgumentTypeErrorにする
+#   ]
+#   引数: [value: RGBの16進文字列]
+#   戻り値: [RGBAの4成分タプル、不正な色指定ならArgumentTypeError]
+# }
 def parse_color(value: str) -> tuple[int, int, int, int]:
     clean = value.strip().lstrip("#")
     if len(clean) != 6:
@@ -22,10 +32,28 @@ def parse_color(value: str) -> tuple[int, int, int, int]:
         raise argparse.ArgumentTypeError("color must be #RRGGBB") from error
 
 
+# {
+#   責務: [inspect_project: 文書の概要を共有コマンドAPIから取得する]
+#   処理: [1: CanvasをコマンドAPIへ渡しinspect結果を返す]
+#   引数: [canvas: 読み取り対象の単一またはレイヤー付き文書]
+#   戻り値: [文書概要の辞書]
+# }
 def inspect_project(canvas: Canvas) -> dict:
     return PixelCommandAPI(canvas).inspect()
 
 
+# {
+#   責務: [inspect_command: inspect引数に応じて概要または指定画素を読む]
+#   処理: [
+#     1: 子セル・レイヤー指定には標本座標が必要であることを検証する
+#     2: 座標なしなら概要、座標ありなら指定した子セル・レイヤーの標本を取得する
+#   ]
+#   引数: [
+#     canvas: 読み取り対象の文書
+#     args: sample・child・layerを持つ解析済み引数
+#   ]
+#   戻り値: [概要または画素情報の辞書、不正な指定なら例外]
+# }
 def inspect_command(canvas: Canvas, args: argparse.Namespace) -> dict:
     if args.child is not None and args.sample is None:
         raise ValueError("--child requires --sample X Y")
@@ -41,6 +69,19 @@ def inspect_command(canvas: Canvas, args: argparse.Namespace) -> dict:
     )
 
 
+# {
+#   責務: [edit_project: CLI編集指定を固定順で共有コマンドAPIへ渡す]
+#   処理: [
+#     1: 編集操作が少なくとも1つ指定されていることを確認する
+#     2: レイヤー操作、解像度、画像読込、分割、描画・塗りつぶし・消去の順に実行する
+#     3: 折りたたみ、細部破棄、解像度アップを実行し各操作の変更有無をまとめる
+#   ]
+#   引数: [
+#     canvas: その場で編集する文書、保存や失敗時の全体復元はこの関数では行わない
+#     args: 編集操作と細部方針を持つ解析済み引数
+#   ]
+#   戻り値: [いずれかの操作が変更を返した場合True、不正な操作なら例外]
+# }
 def edit_project(canvas: Canvas, args: argparse.Namespace) -> bool:
     """Translate CLI arguments into the shared command API's fixed order."""
     operations = (
@@ -125,6 +166,15 @@ def edit_project(canvas: Canvas, args: argparse.Namespace) -> bool:
     return changed
 
 
+# {
+#   責務: [build_parser: 単発CLIまたは対話セッション用の引数構文を定義する]
+#   処理: [
+#     1: 単発用ならnew・paletteと入力文書パスを定義する
+#     2: edit・inspect・exportの操作、型、選択肢と排他的な指定を定義する
+#   ]
+#   引数: [session: Trueなら開いた文書を使う対話用構文に限定する、既定はFalse]
+#   戻り値: [設定済みArgumentParser]
+# }
 def build_parser(*, session: bool = False) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PixelCanvas command line editor")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -239,6 +289,20 @@ def build_parser(*, session: bool = False) -> argparse.ArgumentParser:
     return parser
 
 
+# {
+#   責務: [palette_command: 対話セッションの1コマンドを実行する]
+#   処理: [
+#     1: editは文書の複製を編集し、変更があれば保存成功後にセッション状態へ採用する
+#     2: inspectは状態をJSONとして出力する
+#     3: exportは指定サイズのPNGを書き出し結果を表示する
+#   ]
+#   引数: [
+#     api: 開いた文書を保持する共有コマンドAPI
+#     project: 編集成功時の保存先
+#     args: edit・inspect・exportの解析済み引数
+#   ]
+#   戻り値: [なし、編集・保存・書き出し失敗なら例外、編集失敗時は採用前の文書を維持する]
+# }
 def palette_command(api: PixelCommandAPI, project: Path, args: argparse.Namespace) -> None:
     """Publish an edit only after the whole line and its atomic save succeed."""
     if args.command == "edit":
@@ -257,6 +321,20 @@ def palette_command(api: PixelCommandAPI, project: Path, args: argparse.Namespac
         print("exported")
 
 
+# {
+#   責務: [run_palette: 文書を開いたまま標準入力のコマンドを順に処理する]
+#   処理: [
+#     1: 端末入力なら案内とプロンプトを表示する
+#     2: Windowsのパス区切りと色のシャープ記号を保ち入力を分割する
+#     3: help・終了指定を処理し通常の行は解析後にpalette_commandへ渡す
+#     4: 操作エラー後も入力を続け、終了時に累積エラーまたは割り込み状態を返す
+#   ]
+#   引数: [
+#     api: セッションの文書を保持する共有コマンドAPI
+#     project: 自動保存する文書パス
+#   ]
+#   戻り値: [正常終了は0、処理中にエラーがあれば2、キーボード割り込みなら130]
+# }
 def run_palette(api: PixelCommandAPI, project: Path) -> int:
     """Read commands from a terminal or a pipe without reloading the project."""
     parser = build_parser(session=True)
@@ -305,6 +383,17 @@ def run_palette(api: PixelCommandAPI, project: Path) -> int:
             return 130
 
 
+# {
+#   責務: [main: 単発CLIの解析・文書操作と対話セッションへの振り分けを行う]
+#   処理: [
+#     1: 引数を解析しnewなら文書を作成して保存する
+#     2: 既存文書を読みpalette・export・inspect・editへ振り分ける
+#     3: editは変更ありまたは出力先指定時だけ保存する
+#     4: 操作エラーを引数エラーとして報告する
+#   ]
+#   引数: [argv: 解析対象の引数列、Noneならプロセスの引数を使用する]
+#   戻り値: [単発成功は0、対話ではセッション終了値、解析・操作エラーではSystemExitで終了する]
+# }
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
