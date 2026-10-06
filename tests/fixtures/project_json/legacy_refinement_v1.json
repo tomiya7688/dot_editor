@@ -1,0 +1,8 @@
+{
+  "canvas_size": 2,
+  "pixels": [["#112233", null], [null, null]],
+  "refined_cells": [{
+    "x": 0, "y": 0, "expanded": false,
+    "children": [["#FF0000", "#0000FF80"], [null, "#00FF00"]]
+  }]
+}

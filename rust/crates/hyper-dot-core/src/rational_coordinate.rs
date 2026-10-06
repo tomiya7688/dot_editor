@@ -8,6 +8,54 @@ pub(crate) struct RationalCoordinate {
 }
 
 impl RationalCoordinate {
+    /// Exact pixel position inside a source extent, independently of its origin.
+    pub(crate) fn relative_floor(self, start: Self, end: Self, pixels: u32) -> u32 {
+        let (numerator, denominator) = self.relative_ratio(start, end, pixels);
+        (numerator / denominator) as u32
+    }
+
+    pub(crate) fn relative_ceil(self, start: Self, end: Self, pixels: u32) -> u32 {
+        let (numerator, denominator) = self.relative_ratio(start, end, pixels);
+        numerator.div_ceil(denominator) as u32
+    }
+
+    fn relative_ratio(self, start: Self, end: Self, pixels: u32) -> (u128, u128) {
+        let span = u128::from(end.numerator) * u128::from(start.denominator)
+            - u128::from(start.numerator) * u128::from(end.denominator);
+        let distance = u128::from(self.numerator) * u128::from(start.denominator)
+            - u128::from(start.numerator) * u128::from(self.denominator);
+        (
+            distance * u128::from(end.denominator) * u128::from(pixels),
+            u128::from(self.denominator) * span,
+        )
+    }
+
+    pub(crate) fn interpolate(start: Self, end: Self, position: u32, pixels: u32) -> Self {
+        let span = u128::from(end.numerator) * u128::from(start.denominator)
+            - u128::from(start.numerator) * u128::from(end.denominator);
+        let numerator =
+            u128::from(start.numerator) * u128::from(end.denominator) * u128::from(pixels)
+                + span * u128::from(position);
+        let denominator =
+            u128::from(start.denominator) * u128::from(end.denominator) * u128::from(pixels);
+        let (mut a, mut b) = (numerator, denominator);
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        // Original extents are bounded JSON fractions or the unit rectangle;
+        // origins always refer to that original extent, never interpolated ones.
+        Self::new((numerator / a) as u64, (denominator / a) as u64)
+    }
+
+    pub(crate) fn density(start: Self, end: Self, pixels: u32) -> u32 {
+        let span = u128::from(end.numerator) * u128::from(start.denominator)
+            - u128::from(start.numerator) * u128::from(end.denominator);
+        let numerator =
+            u128::from(pixels) * u128::from(start.denominator) * u128::from(end.denominator);
+        // Retained resolution is a u32 summary; sampling still uses exact extents.
+        numerator.div_ceil(span).min(u128::from(u32::MAX)) as u32
+    }
+
     pub(crate) const fn fraction(self) -> [u64; 2] {
         [self.numerator, self.denominator]
     }
@@ -26,15 +74,6 @@ impl RationalCoordinate {
 
     pub(crate) fn center(position: u32, extent: u32) -> Self {
         Self::new(2 * u64::from(position) + 1, 2 * u64::from(extent))
-    }
-
-    pub(crate) fn floor_on_grid(self, extent: u32) -> u32 {
-        ((u128::from(self.numerator) * u128::from(extent)) / u128::from(self.denominator)) as u32
-    }
-
-    pub(crate) fn ceil_on_grid(self, extent: u32) -> u32 {
-        (u128::from(self.numerator) * u128::from(extent)).div_ceil(u128::from(self.denominator))
-            as u32
     }
 }
 

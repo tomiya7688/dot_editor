@@ -11,6 +11,8 @@ enum PatchSource {
         raster: Arc<Raster>,
         origin_x: u32,
         origin_y: u32,
+        extent: FieldBounds,
+        original_size: Resolution,
     },
     Solid(Color),
 }
@@ -32,18 +34,34 @@ impl FieldPatch {
                 raster,
                 origin_x,
                 origin_y,
+                extent,
+                original_size,
             } => {
                 let size = raster.resolution();
                 let extent = FieldBounds {
-                    left: Coordinate::new(u64::from(*origin_x), u64::from(self.grid.width())),
-                    top: Coordinate::new(u64::from(*origin_y), u64::from(self.grid.height())),
-                    right: Coordinate::new(
-                        u64::from(*origin_x) + u64::from(size.width()),
-                        u64::from(self.grid.width()),
+                    left: Coordinate::interpolate(
+                        extent.left,
+                        extent.right,
+                        *origin_x,
+                        original_size.width(),
                     ),
-                    bottom: Coordinate::new(
-                        u64::from(*origin_y) + u64::from(size.height()),
-                        u64::from(self.grid.height()),
+                    top: Coordinate::interpolate(
+                        extent.top,
+                        extent.bottom,
+                        *origin_y,
+                        original_size.height(),
+                    ),
+                    right: Coordinate::interpolate(
+                        extent.left,
+                        extent.right,
+                        origin_x + size.width(),
+                        original_size.width(),
+                    ),
+                    bottom: Coordinate::interpolate(
+                        extent.top,
+                        extent.bottom,
+                        origin_y + size.height(),
+                        original_size.height(),
                     ),
                 };
                 (extent, Some(raster), [0; 4])
@@ -52,6 +70,7 @@ impl FieldPatch {
     }
 
     pub(crate) fn from_raster(source: Raster) -> Self {
+        let original_size = source.resolution();
         Self {
             bounds: FieldBounds::full(),
             grid: source.resolution(),
@@ -60,6 +79,34 @@ impl FieldPatch {
                 raster: Arc::new(source),
                 origin_x: 0,
                 origin_y: 0,
+                extent: FieldBounds::full(),
+                original_size,
+            },
+        }
+    }
+
+    pub(crate) fn from_source(
+        bounds: FieldBounds,
+        extent: FieldBounds,
+        raster: Raster,
+        offset: [i64; 4],
+    ) -> Self {
+        let original_size = raster.resolution();
+        let grid = Resolution::new(
+            Coordinate::density(extent.left, extent.right, original_size.width()),
+            Coordinate::density(extent.top, extent.bottom, original_size.height()),
+        )
+        .expect("positive source extent and dimensions");
+        Self {
+            bounds,
+            grid,
+            offset,
+            source: PatchSource::Raster {
+                raster: Arc::new(raster),
+                origin_x: 0,
+                origin_y: 0,
+                extent,
+                original_size,
             },
         }
     }
@@ -80,10 +127,12 @@ impl FieldPatch {
                 raster,
                 origin_x,
                 origin_y,
+                extent,
+                original_size,
             } => raster
                 .sample(
-                    x.floor_on_grid(self.grid.width()) - origin_x,
-                    y.floor_on_grid(self.grid.height()) - origin_y,
+                    x.relative_floor(extent.left, extent.right, original_size.width()) - origin_x,
+                    y.relative_floor(extent.top, extent.bottom, original_size.height()) - origin_y,
                 )
                 .expect("patch clip lies inside the cropped source"),
         };
@@ -108,11 +157,25 @@ impl FieldPatch {
                 raster,
                 origin_x,
                 origin_y,
+                extent,
+                original_size,
             } => {
-                let x0 = bounds.left.floor_on_grid(self.grid.width());
-                let y0 = bounds.top.floor_on_grid(self.grid.height());
-                let x1 = bounds.right.ceil_on_grid(self.grid.width());
-                let y1 = bounds.bottom.ceil_on_grid(self.grid.height());
+                let x0 =
+                    bounds
+                        .left
+                        .relative_floor(extent.left, extent.right, original_size.width());
+                let y0 =
+                    bounds
+                        .top
+                        .relative_floor(extent.top, extent.bottom, original_size.height());
+                let x1 =
+                    bounds
+                        .right
+                        .relative_ceil(extent.left, extent.right, original_size.width());
+                let y1 =
+                    bounds
+                        .bottom
+                        .relative_ceil(extent.top, extent.bottom, original_size.height());
                 let size = raster.resolution();
                 if x0 == *origin_x
                     && y0 == *origin_y
@@ -133,6 +196,8 @@ impl FieldPatch {
                         raster: Arc::new(crop),
                         origin_x: x0,
                         origin_y: y0,
+                        extent: *extent,
+                        original_size: *original_size,
                     }
                 }
             }

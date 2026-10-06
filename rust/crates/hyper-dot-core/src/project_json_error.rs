@@ -10,6 +10,7 @@ pub enum ProjectJsonError {
     Canvas(CanvasError),
     CoordinateLimitExceeded,
     Json(serde_json::Error),
+    Invalid(&'static str),
 }
 
 impl From<RasterError> for ProjectJsonError {
@@ -39,6 +40,7 @@ impl Display for ProjectJsonError {
                 formatter.write_str("patch coordinate exceeds the project JSON limit")
             }
             Self::Json(error) => Display::fmt(error, formatter),
+            Self::Invalid(message) => formatter.write_str(message),
         }
     }
 }
@@ -50,6 +52,7 @@ impl Error for ProjectJsonError {
             Self::Canvas(error) => Some(error),
             Self::Json(error) => Some(error),
             Self::CoordinateLimitExceeded => None,
+            Self::Invalid(_) => None,
         }
     }
 }

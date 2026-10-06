@@ -1,4 +1,4 @@
-//! Version 2 single-canvas JSON export compatible with the Python reference.
+//! Single-canvas JSON export compatible with the Python reference.
 //! Exports retained sources and raw offsets, never flattened display samples.
 
 use serde_json::{Value, json};
@@ -16,7 +16,7 @@ impl Canvas {
     /// Returns a version 2 project without changing state, undo or redo history.
     /// Large logical grids that cannot be rendered are rejected, as are retained
     /// coordinates outside the existing JSON format's exact fraction budget.
-    /// Loading JSON and layered projects are implemented separately.
+    /// Layered projects are not supported yet; see `from_json` for loading.
     pub fn to_json(&self) -> Result<String, ProjectJsonError> {
         let preview = self.render()?;
         let patches = self

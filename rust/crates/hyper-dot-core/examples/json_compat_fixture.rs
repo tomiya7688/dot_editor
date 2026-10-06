@@ -56,6 +56,16 @@ fn case(name: &str, canvas: Canvas) -> Value {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--import") {
+        match import_cases() {
+            Ok(cases) => println!("{cases}"),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(2);
+            }
+        }
+        return;
+    }
     let mut cases = Vec::new();
     let mut raster = Raster::new(grid(2, 1)).unwrap();
     raster.paint(1, 0, [17, 34, 51, 0]);
@@ -106,4 +116,18 @@ fn main() {
         .unwrap();
     cases.push(case("solid_fill", solid));
     println!("{}", Value::Array(cases));
+}
+
+fn import_cases() -> Result<Value, Box<dyn std::error::Error>> {
+    use std::io::Read;
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    let cases: Vec<Value> = serde_json::from_str(&input)?;
+    let mut output = Vec::new();
+    for entry in cases {
+        let name = entry["name"].as_str().ok_or("missing case name")?;
+        let canvas = Canvas::from_json(&entry["source"].to_string())?;
+        output.push(case(name, canvas));
+    }
+    Ok(Value::Array(output))
 }

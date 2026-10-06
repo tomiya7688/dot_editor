@@ -36,7 +36,7 @@ jobs:
       - name: Install Python reference dependencies
         run: python -m pip install -e .
 
-      - name: Verify Rust to Python project JSON compatibility
+      - name: Verify bidirectional project JSON compatibility
         run: python scripts/test_rust_json_compat.py
 
   evaluate:

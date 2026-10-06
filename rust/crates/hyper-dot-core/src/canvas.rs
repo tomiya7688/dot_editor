@@ -63,6 +63,20 @@ pub enum CanvasError {
 }
 
 impl Canvas {
+    pub(crate) fn from_parts(
+        resolution: Resolution,
+        field: ResolutionField,
+        splits: Vec<SplitCell>,
+    ) -> Self {
+        Self {
+            resolution,
+            field,
+            splits: Arc::new(splits),
+            history: Vec::new(),
+            future: Vec::new(),
+        }
+    }
+
     pub fn new(resolution: Resolution) -> Result<Self, CanvasError> {
         Ok(Self::from_raster(Raster::new(resolution)?))
     }
@@ -122,7 +136,8 @@ impl Canvas {
         {
             return Err(CanvasError::CellNotSplit { x, y });
         }
-        let grid = self.child_resolution()?;
+        // Sampling a collapsed child does not allocate a doubled raster.
+        let grid = self.child_sampling_resolution()?;
         Ok(self
             .field
             .sample(grid, 2 * x + u32::from(child.0), 2 * y + u32::from(child.1))?)
@@ -605,6 +620,22 @@ impl Canvas {
     }
 
     fn child_resolution(&self) -> Result<Resolution, CanvasError> {
+        let resolution = self.child_sampling_resolution()?;
+        let width = resolution.width();
+        let height = resolution.height();
+        if width > MAX_DIMENSION || height > MAX_DIMENSION {
+            return Err(CanvasError::Raster(RasterError::DimensionLimitExceeded {
+                width,
+                height,
+            }));
+        }
+        if u64::from(width) * u64::from(height) > MAX_PIXELS as u64 {
+            return Err(CanvasError::Raster(RasterError::PixelBudgetExceeded));
+        }
+        Ok(resolution)
+    }
+
+    fn child_sampling_resolution(&self) -> Result<Resolution, CanvasError> {
         let width = self
             .resolution
             .width()
@@ -615,15 +646,6 @@ impl Canvas {
             .height()
             .checked_mul(2)
             .ok_or(CanvasError::SplitResolutionOverflow)?;
-        if width > MAX_DIMENSION || height > MAX_DIMENSION {
-            return Err(CanvasError::Raster(RasterError::DimensionLimitExceeded {
-                width,
-                height,
-            }));
-        }
-        if u64::from(width) * u64::from(height) > MAX_PIXELS as u64 {
-            return Err(CanvasError::Raster(RasterError::PixelBudgetExceeded));
-        }
         Resolution::new(width, height).map_err(|_| CanvasError::SplitResolutionOverflow)
     }
 
