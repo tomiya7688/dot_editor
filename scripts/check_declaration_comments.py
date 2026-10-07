@@ -246,6 +246,7 @@ def default_paths():
         ROOT / "src" / "pixel_cli.py",
         ROOT / "scripts" / "test_rust_json_compat.py",
         ROOT / "scripts" / "distribution_notices.py",
+        ROOT / "scripts" / "smoke_distribution.py",
         ROOT / "scripts" / "check_declaration_comments.py",
         ROOT / "tests" / "test_declaration_comments.py",
     ]
