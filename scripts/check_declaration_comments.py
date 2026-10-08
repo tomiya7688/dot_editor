@@ -249,6 +249,7 @@ def default_paths():
         ROOT / "scripts" / "smoke_distribution.py",
         ROOT / "scripts" / "check_declaration_comments.py",
         ROOT / "tests" / "test_declaration_comments.py",
+        ROOT / "tests" / "test_display_safety.py",
     ]
 
 
