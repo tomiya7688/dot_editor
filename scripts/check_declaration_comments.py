@@ -251,6 +251,7 @@ def default_paths():
         ROOT / "tests" / "test_declaration_comments.py",
         ROOT / "tests" / "test_display_safety.py",
         ROOT / "tests" / "test_keyboard_focus_regions.py",
+        ROOT / "tests" / "test_menu_structure.py",
     ]
 
 
