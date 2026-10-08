@@ -236,7 +236,7 @@ def audit_text(text, suffix):
 #   責務: [default_paths: 移行済み宣言の継続検査対象を取得する]
 #   処理: [
 #     1: Rust Coreのソース・テスト・exampleを列挙する
-#     2: 移行済みCLI・互換スクリプト・検査器・検査器テストを加える
+#     2: 移行済みCLI・互換スクリプト・検査器・移行済みGUIテストを加える
 #   ]
 #   引数: []
 #   戻り値: [対象パスのリスト]
@@ -250,6 +250,7 @@ def default_paths():
         ROOT / "scripts" / "check_declaration_comments.py",
         ROOT / "tests" / "test_declaration_comments.py",
         ROOT / "tests" / "test_display_safety.py",
+        ROOT / "tests" / "test_keyboard_focus_regions.py",
     ]
 
 
