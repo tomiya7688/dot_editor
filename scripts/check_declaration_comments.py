@@ -256,6 +256,7 @@ def default_paths():
         ROOT / "tests" / "test_project_json.py",
         ROOT / "tests" / "test_commands.py",
         ROOT / "tests" / "test_pixel_layers.py",
+        ROOT / "tests" / "test_pixel_backend.py",
     ]
 
 
