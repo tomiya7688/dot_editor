@@ -1,4 +1,5 @@
 """Issue #7: reject ambiguous/malformed JSON without losing editor state."""
+from copy import deepcopy
 import json
 from pathlib import Path
 import subprocess
@@ -149,6 +150,151 @@ class ProjectJsonTests(unittest.TestCase):
         self.path.write_text(json.dumps(source), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "maximum 128"):
             load_project(self.path)
+
+
+    # {
+    #   責務: [test_layered_validation_through_cli_and_gui: レイヤーJSONの異常をAPI・CUI・GUIで共通して拒否する]
+    #   処理: [
+    #     1: 正常な複数レイヤーJSONから不正な名前・解像度・選択レイヤー等を作る
+    #     2: APIがValueErrorを返し、CUIがコード2と診断を返すことを確認する
+    #     3: GUIが既存作品・選択・Undo/Redo履歴を保持し、出力ファイルを変更しないことを確認する
+    #   ]
+    #   引数: [self: テスト対象のProjectJsonTestsケース]
+    #   戻り値: [なし、入力拒否や状態保持が不一致ならAssertionErrorを送出する]
+    # }
+    def test_layered_validation_through_cli_and_gui(self):
+        from dot_editor import PixelEditor
+
+        valid = PixelCommandAPI.new(4, 3, layered=True).canvas.to_source()
+        second = deepcopy(valid["layers"][0])
+        second["name"] = "人物"
+        valid["layers"].append(second)
+        valid["active_layer"] = "人物"
+        invalid_resolution = PixelCommandAPI.new(4, 4).canvas.to_source()
+
+        # 読込エラーが発生してもGUIは現在のレイヤーと選択・履歴を維持する。
+        editor = PixelEditor.__new__(PixelEditor)
+        editor.backend = PixelCommandAPI.new(4, 3, layered=True).canvas
+        editor.backend.paint(1, 1, (255, 0, 0, 255))
+        original = editor.backend
+        original_source = original.to_source()
+        editor.selected_cell = (1, 1)
+        editor.history = ["undo retained"]
+        editor.future = ["redo retained"]
+        editor.report_error = Mock()
+        editor.refresh_composite = Mock()
+        editor.refresh_layer_list = Mock()
+        editor.update_canvas_size = Mock()
+
+        cases = (
+            ("duplicate name", lambda s: s["layers"][1].__setitem__("name", "背景")),
+            ("empty name", lambda s: s["layers"][1].__setitem__("name", "")),
+            ("whitespace name", lambda s: s["layers"][1].__setitem__("name", "   ")),
+            ("non-string name", lambda s: s["layers"][1].__setitem__("name", 123)),
+            ("mismatched resolution", lambda s: s["layers"][1].__setitem__("source", invalid_resolution)),
+            ("mismatched canvas size", lambda s: s.__setitem__("canvas_size", 5)),
+            ("mismatched declared resolution", lambda s: s.__setitem__("resolution", [4, 4])),
+            ("invalid active layer", lambda s: s.__setitem__("active_layer", "不存在")),
+            ("non-string active layer", lambda s: s.__setitem__("active_layer", None)),
+            ("non-object layer", lambda s: s["layers"].__setitem__(1, None)),
+            ("non-object canvas", lambda s: s["layers"][0].__setitem__("source", [])),
+            ("invalid visibility", lambda s: s["layers"][0].__setitem__("visible", 0)),
+            ("empty layers", lambda s: s.__setitem__("layers", [])),
+            ("non-list layers", lambda s: s.__setitem__("layers", {})),
+            ("unsupported format version", lambda s: s.__setitem__("version", 3)),
+        )
+        image = self.path.with_suffix(".png")
+        image.write_bytes(b"existing PNG output must not be replaced")
+
+        for name, corrupt in cases:
+            with self.subTest(name=name):
+                payload = deepcopy(valid)
+                corrupt(payload)
+                self.path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+                original_bytes = self.path.read_bytes()
+
+                with self.assertRaises(ValueError):
+                    load_project(self.path)
+
+                result = subprocess.run(
+                    [sys.executable, "-m", "pixel_cli", "export", "--project",
+                     str(self.path), "--output", str(image)],
+                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20,
+                )
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("error:", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertEqual(image.read_bytes(), b"existing PNG output must not be replaced")
+                self.assertEqual(self.path.read_bytes(), original_bytes)
+
+                with patch("dot_editor.filedialog.askopenfilename", return_value=str(self.path)):
+                    editor.load_project()
+                self.assertIs(editor.backend, original)
+                self.assertEqual(editor.backend.to_source(), original_source)
+                self.assertEqual(editor.selected_cell, (1, 1))
+                self.assertEqual(editor.history, ["undo retained"])
+                self.assertEqual(editor.future, ["redo retained"])
+                editor.refresh_composite.assert_not_called()
+        self.assertEqual(editor.report_error.call_count, len(cases))
+
+    # {
+    #   責務: [test_valid_layered_legacy_and_v2_roundtrip: 旧形式と現行形式のレイヤーJSONが読込・再保存できることを確認する]
+    #   処理: [
+    #     1: 旧形式の複数レイヤーと現行の非正方形プロジェクトを準備する
+    #     2: Python APIとCLI inspectの双方で読込と選択レイヤーを検証する
+    #     3: 現行JSONへ保存し直した後も情報と合成結果が変わらないことを確認する
+    #   ]
+    #   引数: [self: テスト対象のProjectJsonTestsケース]
+    #   戻り値: [なし、後方互換性や再保存が不一致ならAssertionErrorを送出する]
+    # }
+    def test_valid_layered_legacy_and_v2_roundtrip(self):
+        legacy_layer = {
+            "canvas_size": 2,
+            "pixels": [["#112233", None], [None, None]],
+        }
+        legacy = {
+            "canvas_size": 2,
+            "active_layer": "人物",
+            "layers": [
+                {"name": "背景", "source": deepcopy(legacy_layer)},
+                {"name": "人物", "source": deepcopy(legacy_layer)},
+            ],
+        }
+        modern_model = PixelCommandAPI.new(4, 3, layered=True).canvas
+        modern_model.paint(1, 1, (255, 0, 0, 255))
+        modern_model.add_layer("人物")
+        modern_model.paint(1, 1, (0, 0, 255, 255))
+        modern_model.set_layer_visibility(False)
+        modern = modern_model.to_source()
+
+        for name, source in (("legacy", legacy), ("v2", modern)):
+            with self.subTest(name=name):
+                self.path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+                parsed = PixelCommandAPI.load(self.path)
+                self.assertEqual(parsed.canvas.active_layer, "人物")
+                self.assertEqual(len(parsed.canvas.layers), 2)
+                if name == "legacy":
+                    self.assertEqual(parsed.resolution, (2, 2))
+                    self.assertTrue(parsed.canvas.is_layer_visible("人物"))
+                else:
+                    self.assertEqual(parsed.resolution, (4, 3))
+                    self.assertFalse(parsed.canvas.is_layer_visible("人物"))
+
+                command = subprocess.run(
+                    [sys.executable, "-m", "pixel_cli", "inspect", "--project", str(self.path)],
+                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20,
+                )
+                self.assertEqual(command.returncode, 0, command.stdout + command.stderr)
+                self.assertEqual(json.loads(command.stdout)["active_layer"], "人物")
+                copy_path = self.path.with_name("converted.json")
+                parsed.save(copy_path)
+                restored = PixelCommandAPI.load(copy_path)
+                self.assertEqual(restored.canvas.to_source(), parsed.canvas.to_source())
+                self.assertEqual(
+                    restored.canvas.composite().tobytes(),
+                    parsed.canvas.composite().tobytes(),
+                )
 
 
 if __name__ == "__main__":
