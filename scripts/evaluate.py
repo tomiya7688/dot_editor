@@ -19,6 +19,12 @@ BACKEND = SOURCE / "pixel_backend.py"
 CLI = SOURCE / "pixel_cli.py"
 
 
+# {
+#   責務: [check_compile: src・scripts・testsのPythonファイルを構文コンパイルする]
+#   処理: [対象ディレクトリから__init__.py以外を集め、py_compileで順にコンパイルする]
+#   引数: [なし]
+#   戻り値: [なし、構文エラーがあればpy_compileの例外を送出する]
+# }
 def check_compile() -> None:
     sources = [
         path
@@ -31,6 +37,12 @@ def check_compile() -> None:
         py_compile.compile(str(path), doraise=True)
 
 
+# {
+#   責務: [check_backend: PixelCanvasの描画・履歴・細部保持・解像度・PNG出力を評価する]
+#   処理: [塗り・Undo/Redo・fill・拡大・JSON復元・子画素編集と保持／破棄・PNG寸法とRGBA形式を照合する]
+#   引数: [なし]
+#   戻り値: [なし、期待値と異なる場合はassertionで失敗する]
+# }
 def check_backend() -> None:
     from pixel_backend import PixelCanvas
 
@@ -95,6 +107,12 @@ def check_backend() -> None:
             assert image.mode == "RGBA"
 
 
+# {
+#   責務: [check_layers: レイヤー選択・合成・子画素編集・JSON復元を評価する]
+#   処理: [背景と人物レイヤーを編集し、合成画素・分割状態・復元後の子画素色を照合する]
+#   引数: [なし]
+#   戻り値: [なし、期待値と異なる場合はassertionで失敗する]
+# }
 def check_layers() -> None:
     from pixel_layers import LayeredPixelCanvas
 
@@ -117,17 +135,45 @@ def check_layers() -> None:
     assert restored.is_split(1, 1)
     assert restored.sample(1, 1, (1, 0)) == (0, 0, 255, 255)
 
+# {
+#   責務: [check_display_resize: 表示領域変更と論理解像度変更の状態境界を評価する]
+#   処理: [表示サイズ変更で作品・履歴が保たれること、論理解像度変更とリセットで状態が更新されることを照合する]
+#   引数: [なし]
+#   戻り値: [なし、バックエンド・履歴・画像寸法が期待と異なる場合はassertionで失敗する]
+# }
 def check_display_resize() -> None:
     from dot_editor import PixelEditor
     from pixel_layers import LayeredPixelCanvas
 
+    # {
+    #   責務: [FakeCanvas: 表示サイズ確認でCanvasの設定値を記録するテスト用オブジェクト]
+    #   フィールド: [settings: config/configureへ渡された設定値]
+    # }
     class FakeCanvas:
+        # {
+        #   責務: [__init__: Canvas設定記録用の辞書を初期化する]
+        #   処理: [空の設定辞書をインスタンスへ割り当てる]
+        #   引数: [self: 初期化するFakeCanvas]
+        #   戻り値: [なし]
+        # }
         def __init__(self) -> None:
             self.settings: dict[str, object] = {}
 
+        # {
+        #   責務: [config: Canvas設定をテスト用辞書へ記録する]
+        #   処理: [キーワード設定をsettings辞書へ追加または上書きする]
+        #   引数: [self: 設定を受け取るFakeCanvas、kwargs: Canvas設定値]
+        #   戻り値: [なし]
+        # }
         def config(self, **kwargs: object) -> None:
             self.settings.update(kwargs)
 
+        # {
+        #   責務: [configure: configと同じ方法でCanvas設定を記録する]
+        #   処理: [キーワード設定をsettings辞書へ追加または上書きする]
+        #   引数: [self: 設定を受け取るFakeCanvas、kwargs: Canvas設定値]
+        #   戻り値: [なし]
+        # }
         def configure(self, **kwargs: object) -> None:
             self.settings.update(kwargs)
 
@@ -189,13 +235,35 @@ def check_display_resize() -> None:
     assert editor.future == []
 
 
+# {
+#   責務: [check_tool_state_ui: 描画ツール・色の切替がボタン表示と状態へ反映されることを評価する]
+#   処理: [ブラシ・消しゴム・スポイト・色選択後の選択ツールと表示状態を照合し、不正ツールの拒否を確認する]
+#   引数: [なし]
+#   戻り値: [なし、表示または選択状態が期待と異なる場合はassertionで失敗する]
+# }
 def check_tool_state_ui() -> None:
     from dot_editor import PixelEditor
 
+    # {
+    #   責務: [FakeWidget: ツールUIのconfigure設定を記録するテスト用ウィジェット]
+    #   フィールド: [options: configureへ渡された設定値]
+    # }
     class FakeWidget:
+        # {
+        #   責務: [__init__: ウィジェット設定記録用の辞書を初期化する]
+        #   処理: [空の設定辞書をインスタンスへ割り当てる]
+        #   引数: [self: 初期化するFakeWidget]
+        #   戻り値: [なし]
+        # }
         def __init__(self) -> None:
             self.options: dict[str, object] = {}
 
+        # {
+        #   責務: [configure: ツールUIへ渡された設定値を記録する]
+        #   処理: [キーワード設定をoptions辞書へ追加または上書きする]
+        #   引数: [self: 設定を受け取るFakeWidget、kwargs: ウィジェット設定値]
+        #   戻り値: [なし]
+        # }
         def configure(self, **kwargs: object) -> None:
             self.options.update(kwargs)
 
@@ -239,6 +307,12 @@ def check_tool_state_ui() -> None:
         raise AssertionError("unknown drawing tools must be rejected")
 
 
+# {
+#   責務: [run_cli_failure: CLIの異常終了と利用者向けエラー出力を確認する]
+#   処理: [pixel_cli.pyへ引数を渡して実行し、非ゼロ終了とTraceback非表示を検査する]
+#   引数: [arguments: CLIへ渡す引数列]
+#   戻り値: [標準出力・標準エラー・終了値を含むCompletedProcess]
+# }
 def run_cli_failure(*arguments: str) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         [PYTHON, str(CLI), *arguments],
@@ -252,6 +326,12 @@ def run_cli_failure(*arguments: str) -> subprocess.CompletedProcess[str]:
     return result
 
 
+# {
+#   責務: [run_cli: CLIコマンドを実行し正常終了を要求する]
+#   処理: [pixel_cli.pyへ引数を渡して実行し、失敗時は引数と出力を含むAssertionErrorを送出する]
+#   引数: [arguments: CLIへ渡す引数列]
+#   戻り値: [なし]
+# }
 def run_cli(*arguments: str) -> None:
     result = subprocess.run(
         [PYTHON, str(CLI), *arguments],
@@ -265,6 +345,12 @@ def run_cli(*arguments: str) -> None:
         )
 
 
+# {
+#   責務: [check_cli: CLIの新規作成・編集・細部・レイヤー・エラー処理を評価する]
+#   処理: [一時プロジェクトで編集とPNG出力を行い、JSON・画像・不正入力時のエラーを照合する]
+#   引数: [なし]
+#   戻り値: [なし、CLI結果が期待と異なる場合はassertionで失敗する]
+# }
 def check_cli() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -397,6 +483,12 @@ def check_cli() -> None:
         assert "active_layer" in failure.stderr
 
 
+# {
+#   責務: [check_gui_invalid_project: 不正なレイヤーJSON読込時にGUIの既存バックエンドを保つことを評価する]
+#   処理: [不正プロジェクトを一時作成し、ファイル選択を差し替えて読込後のバックエンド同一性を確認する]
+#   引数: [なし]
+#   戻り値: [なし、読込失敗でバックエンドが置き換わればassertionで失敗する]
+# }
 def check_gui_invalid_project() -> None:
     import dot_editor
     from dot_editor import PixelEditor
@@ -436,6 +528,12 @@ def check_gui_invalid_project() -> None:
         assert editor.backend is original_backend
 
 
+# {
+#   責務: [main: 評価項目を順に実行し成功結果を表示する]
+#   処理: [コンパイル・バックエンド・レイヤー・GUI状態・CLIを実行し、各項目の成功表示後に完了を報告する]
+#   引数: [なし]
+#   戻り値: [全評価が成功した場合の終了コード0、失敗時は例外を呼出元へ送出する]
+# }
 def main() -> int:
     checks = (
         ("compile", check_compile),
