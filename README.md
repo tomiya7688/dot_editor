@@ -38,6 +38,21 @@ python -m pip install -e .
 
 Windowsで手動セットアップする場合は、仮想環境の有効化を `.venv\Scripts\Activate.ps1` に読み替えてください。
 
+## 最短の動作確認（CLI）
+
+上記のセットアップを済ませ、**リポジトリ直下で以下を上から順に実行**してください。新しいレイヤー付き作品を作り、描画・セル分割・色の確認・PNG書き出しまで行います。いずれも対話操作は不要です。
+
+```bash
+python -m pixel_cli new --size 16 --layered --output quickstart.json
+python -m pixel_cli edit --project quickstart.json --paint 1 1 "#FF0000"
+python -m pixel_cli edit --project quickstart.json --split 1 1
+python -m pixel_cli edit --project quickstart.json --paint-child 1 1 1 0 "#0000FF"
+python -m pixel_cli inspect --project quickstart.json --sample 1 1 --child 1 0
+python -m pixel_cli export --project quickstart.json --output quickstart.png --size 256
+```
+
+`inspect` のJSONに `"rgba": [0, 0, 255, 255]` が含まれれば子セルの編集結果を確認できます。`quickstart.json` は後で編集を再開するためのレイヤー・細部情報付き作品、`quickstart.png` は256×256の合成画像です。実行例はCIでも実際に起動して検証します。
+
 ## GUIを起動する
 
 ```bash
@@ -72,7 +87,7 @@ commands = PixelCommandAPI.new(16, layered=True)
 commands.paint(4, 3, (255, 0, 0, 255))
 commands.set_resolution(23, 17)
 commands.save("project.json")
-commands.export_png("pixel_art.png", output_resolution=(256, 256))
+commands.export_png("exported.png", output_resolution=(256, 256))
 ```
 
 文字列ベースの呼び出しには `commands.execute("paint", ...)` も利用できます。詳細は [共通Command API](docs/Command_API.md) を参照してください。
@@ -89,6 +104,20 @@ commands.export_png("pixel_art.png", output_resolution=(256, 256))
 
 クラス図・シーケンス図は独自生成器ではなく [Tomiya Code Atlas](https://github.com/tomiya7688/tomiya_code_atlas) を使用します。
 導入・実行方法は [tools/README.md](tools/README.md) を参照してください。
+
+## Rust Core のビルド・テスト
+
+Rustコアの開発には **Rust stableツールチェーン（cargo / rustfmt / clippy）** が別途必要です。Pythonのセットアップと混同しないよう、Rust workspaceの確認はリポジトリ直下から次を実行します。
+
+```bash
+cargo fmt --manifest-path rust/Cargo.toml -- --check
+cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+cargo test --manifest-path rust/Cargo.toml --workspace
+cargo build --manifest-path rust/Cargo.toml --workspace
+python scripts/test_rust_json_compat.py
+```
+
+最後の互換性テストはセットアップ済みのPython参照実装とRust Coreで、双方向のJSON互換性を検証します。Rust CLIやRust製配布物は移行途中であり、現在の `python -m pixel_cli` およびWindows配布EXEはPythonベースです。
 
 ## CLIを使う
 
@@ -170,7 +199,7 @@ python -m pixel_cli edit --project project.json --discard-detail 1 1
 現在の表示を拡大する従来の書き出し:
 
 ```bash
-python -m pixel_cli export --project project.json --output pixel_art.png --size 256
+python -m pixel_cli export --project project.json --output exported.png --size 256
 ```
 
 保持中の細部から、指定した出力解像度へ直接投影する書き出し:
@@ -192,6 +221,9 @@ JSONの重複キー、非標準数値（NaN・Infinity）、128階層を超え�
 
 ## Windows配布ビルド
 
+Windows x64環境で、先に[Windowsのセットアップ](#windows-powershell)を実行して `.venv` を作成してください。ビルド用依存はビルドスクリプトが `requirements-build.txt` からインストールします。
+
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
 ```
@@ -205,6 +237,9 @@ CLIは `DotEditorCLI/DotEditorCLI.exe` です。各フォルダの `_internal` �
 GitHub ActionsのWindowsジョブでもビルドし、配布ZIPとwheel・sdistをArtifactsへアップロードします。
 
 ## 自動評価
+
+GUIウィンドウを開かない最低限の起動確認には `python -m dot_editor --smoke-test` を使えます。これは画面操作テストの代わりにはなりません。
+
 
 ```bash
 python scripts/evaluate.py
