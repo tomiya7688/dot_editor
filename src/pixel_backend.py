@@ -422,6 +422,12 @@ class PixelCanvas:
         self._commit(self._field, splits)
         return True
 
+    # {
+    #   責務: [collapse_cell: 指定画素の分割表示を折りたたむ]
+    #   処理: [必要なら細部を破棄し、通常は分割親色を保ったまま展開状態を解除する]
+    #   引数: [x: 横座標, y: 縦座標, discard_detail: 細部も破棄するか]
+    #   戻り値: [状態が変化した場合はTrue、それ以外はFalse]
+    # }
     def collapse_cell(self, x: int, y: int, discard_detail: bool = False) -> bool:
         if not self._in_bounds(x, y):
             return False
