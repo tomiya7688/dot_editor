@@ -213,14 +213,40 @@ class PixelCommandAPI:
     #   戻り値: [検証済み整数座標]
     # }
     def _point(self, x: object, y: object) -> tuple[int, int]:
-        try:
-            px, py = int(x), int(y)
-        except (TypeError, ValueError) as error:
-            raise ValueError("pixel coordinates must be integers") from error
-        if not (0 <= px < self.canvas.width and 0 <= py < self.canvas.height):
+        # 編集と読み取りで異なる座標変換を行わず、同じ検証へ集約する。
+        return self._point_for(self.canvas, x, y)
+
+    # {
+    #   責務: [_require_integer: 値が組み込みの整数型か検証する]
+    #   処理: [typeがintと完全一致しない値をValueErrorにし、適合値を返す]
+    #   引数: [value: 検証対象, label: エラー文に使う値の説明]
+    #   戻り値: [検証済み整数]
+    # }
+    @staticmethod
+    def _require_integer(value: object, label: str) -> int:
+        # boolはintの派生型なので、isinstanceでは座標への混入を防げない。
+        if type(value) is not int:
+            raise ValueError(f"{label} must be integers")
+        return value
+
+    # {
+    #   責務: [_point_for: 指定した作品モデルの論理画素座標を検証する]
+    #   処理: [
+    #     1: xとyが整数座標として有効か検証する
+    #     2: モデルの幅・高さの範囲内かを確認する
+    #   ]
+    #   引数: [canvas: 座標の対象作品, x: 横座標, y: 縦座標]
+    #   戻り値: [検証済み整数座標]
+    # }
+    @staticmethod
+    def _point_for(canvas: Canvas, x: object, y: object) -> tuple[int, int]:
+        # 暗黙変換による切り捨てを避け、範囲比較の前に両座標の型を確定する。
+        px = PixelCommandAPI._require_integer(x, "pixel coordinates")
+        py = PixelCommandAPI._require_integer(y, "pixel coordinates")
+        if not (0 <= px < canvas.width and 0 <= py < canvas.height):
             raise ValueError(
                 f"pixel coordinate ({px}, {py}) outside "
-                f"{self.canvas.width}x{self.canvas.height}"
+                f"{canvas.width}x{canvas.height}"
             )
         return px, py
 
@@ -238,13 +264,11 @@ class PixelCommandAPI:
             return None
         if len(child) != 2:
             raise ValueError("child coordinate requires CHILD_X CHILD_Y")
-        try:
-            values = tuple(int(value) for value in child)
-        except (TypeError, ValueError) as error:
-            raise ValueError("child coordinates must be integers") from error
+        # 親座標と同じ整数契約を適用してから、子セルの二値範囲を検証する。
+        values = tuple(self._require_integer(value, "child coordinates") for value in child)
         if values[0] not in (0, 1) or values[1] not in (0, 1):
             raise ValueError("child coordinate must be 0 or 1")
-        return values  # type: ignore[return-value]
+        return values[0], values[1]
 
     # {
     #   責務: [_region: キャンバス内の矩形領域を検証する]
@@ -259,10 +283,9 @@ class PixelCommandAPI:
         self, x: object, y: object, width: object = 1, height: object = 1
     ) -> tuple[int, int, int, int]:
         px, py = self._point(x, y)
-        try:
-            region_width, region_height = int(width), int(height)
-        except (TypeError, ValueError) as error:
-            raise ValueError("region width and height must be integers") from error
+        # 幅・高さも切り捨てず検証し、編集を開始する前に矩形全体を確定する。
+        region_width = self._require_integer(width, "region dimensions")
+        region_height = self._require_integer(height, "region dimensions")
         if region_width <= 0 or region_height <= 0:
             raise ValueError("region width and height must be positive")
         if px + region_width > self.canvas.width or py + region_height > self.canvas.height:
@@ -448,27 +471,6 @@ class PixelCommandAPI:
             target = self.canvas.layers[layer]
         px, py = self._point_for(target, x, y)
         return target.sample(px, py, self._child(child))
-
-    # {
-    #   責務: [_point_for: 指定した作品モデルの論理画素座標を検証する]
-    #   処理: [
-    #     1: xとyが整数座標として有効か検証する
-    #     2: モデルの幅・高さの範囲内かを確認する
-    #   ]
-    #   引数: [canvas: 座標の対象作品, x: 横座標, y: 縦座標]
-    #   戻り値: [検証済み整数座標]
-    # }
-    @staticmethod
-    def _point_for(canvas: Canvas, x: object, y: object) -> tuple[int, int]:
-        try:
-            px, py = int(x), int(y)
-        except (TypeError, ValueError) as error:
-            raise ValueError("pixel coordinates must be integers") from error
-        if not (0 <= px < canvas.width and 0 <= py < canvas.height):
-            raise ValueError(
-                f"pixel coordinate ({px}, {py}) outside {canvas.width}x{canvas.height}"
-            )
-        return px, py
 
     # {
     #   責務: [discard_detail: 矩形領域が保持する細部を破棄する]
