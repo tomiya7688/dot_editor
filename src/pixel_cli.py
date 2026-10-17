@@ -74,6 +74,7 @@ def inspect_command(canvas: Canvas, args: argparse.Namespace) -> dict:
 #   処理: [
 #     1: 編集操作が少なくとも1つ指定されていることを確認する
 #     2: レイヤー操作、解像度、画像読込、分割、描画・塗りつぶし・消去の順に実行する
+#        色と混在する座標文字列は整数へ変換し、不正な文字列はValueErrorで拒否する
 #     3: 折りたたみ、細部破棄、解像度アップを実行し各操作の変更有無をまとめる
 #   ]
 #   引数: [
@@ -125,20 +126,23 @@ def edit_project(canvas: Canvas, args: argparse.Namespace) -> bool:
         changed = api.split_region(*args.split_region) > 0 or changed
     if args.paint is not None:
         x, y, color = args.paint
+        # 色と混在する引数は一律のtype=intで解析できないため、API境界で整数に揃える。
         changed = api.paint(
-            x, y, parse_color(color), detail_policy=args.detail_policy
+            int(x), int(y), parse_color(color), detail_policy=args.detail_policy
         ) or changed
     if args.paint_child is not None:
         x, y, child_x, child_y, color = args.paint_child
+        # 親座標だけでなく子座標も変換し、APIの0または1という検証へ渡す。
         changed = api.paint(
-            x, y, parse_color(color),
-            child=(child_x, child_y),
+            int(x), int(y), parse_color(color),
+            child=(int(child_x), int(child_y)),
             detail_policy=args.detail_policy,
         ) or changed
     if args.fill is not None:
         x, y, color = args.fill
+        # 塗りつぶしの開始点も描画と同じ整数座標契約に合わせる。
         changed = api.fill(
-            x, y, parse_color(color), detail_policy=args.detail_policy
+            int(x), int(y), parse_color(color), detail_policy=args.detail_policy
         ) > 0 or changed
     if args.erase is not None:
         changed = api.erase(
