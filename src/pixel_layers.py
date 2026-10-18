@@ -359,6 +359,16 @@ class LayeredPixelCanvas:
         return self._edit_active("split_cell", x, y)
 
     # {
+    #   責務: [split_region: 選択中レイヤーの矩形領域をまとめて4分割する]
+    #   処理: [領域分割を委譲し、変更があれば1回の作品履歴へ記録する]
+    #   引数: [x: 左上の横座標, y: 左上の縦座標, width: 領域幅, height: 領域高さ]
+    #   戻り値: [新たに分割した画素数]
+    # }
+    def split_region(self, x: int, y: int, width: int, height: int) -> int:
+        # 選択中の層だけを編集し、戻り値が正なら作品履歴へ1回記録する。
+        return self._edit_active("split_region", x, y, width, height)
+
+    # {
     #   責務: [collapse_cell: 選択中レイヤーの分割画素を折りたたむ]
     #   処理: [細部の破棄指定を添えて委譲し、変更があれば作品履歴へ記録する]
     #   引数: [x: 横座標, y: 縦座標, discard_detail: 保持細部も破棄するか]

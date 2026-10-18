@@ -423,6 +423,45 @@ class PixelCanvas:
         return True
 
     # {
+    #   責務: [split_region: 矩形領域に含まれる画素をまとめて4分割する]
+    #   処理: [引数・境界・全分割予算を検証し、変更があれば一度の履歴操作で確定する]
+    #   引数: [x: 左上の横座標, y: 左上の縦座標, width: 領域幅, height: 領域高さ]
+    #   戻り値: [新たに分割した画素数]
+    # }
+    def split_region(self, x: int, y: int, width: int, height: int) -> int:
+        # 型・範囲・子セル描画の予算を、画像や履歴の更新前に検証する。
+        if any(type(value) is not int for value in (x, y, width, height)):
+            raise ValueError("split region coordinates and dimensions must be integers")
+        if width <= 0 or height <= 0:
+            raise ValueError("split region dimensions must be positive")
+        if x < 0 or y < 0 or x + width > self.width or y + height > self.height:
+            raise ValueError("split region must fit entirely inside the canvas")
+        resolution(2 * self.width, 2 * self.height)
+
+        # 候補だけを編集し、予算超過や色の参照失敗で部分更新を残さない。
+        splits = None
+        changed = 0
+        for row in range(y, y + height):
+            for column in range(x, x + width):
+                if self.is_split(column, row):
+                    continue
+                if splits is None:
+                    # 全セルが展開済みなら、辞書の複製も履歴の追加も行わない。
+                    splits = dict(self._splits)
+                key = self._key(column, row)
+                if key not in splits and len(splits) >= self.MAX_SPLITS:
+                    raise ValueError("too many retained split cells")
+                # 折りたたみ済みの親色は再利用し、既存の子画素を保持する。
+                base = splits[key][0] if key in splits else self.sample(column, row)
+                splits[key] = (base, True)
+                changed += 1
+        if splits is None:
+            return 0
+        # 領域全体を1回のUndoで戻せるよう、成功した候補を一度だけ確定する。
+        self._commit(self._field, splits)
+        return changed
+
+    # {
     #   責務: [collapse_cell: 指定画素の分割表示を折りたたむ]
     #   処理: [必要なら細部を破棄し、通常は分割親色を保ったまま展開状態を解除する]
     #   引数: [x: 横座標, y: 縦座標, discard_detail: 細部も破棄するか]

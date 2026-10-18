@@ -264,6 +264,7 @@ def default_paths():
         ROOT / "tests" / "test_readme_quickstart.py",
         ROOT / "tests" / "test_commands.py",
         ROOT / "tests" / "test_command_integer_inputs.py",
+        ROOT / "tests" / "test_region_split.py",
         ROOT / "tests" / "test_pixel_layers.py",
         ROOT / "tests" / "test_pixel_backend.py",
         ROOT / "tests" / "test_refinement.py",

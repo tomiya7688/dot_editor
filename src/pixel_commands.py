@@ -9,7 +9,6 @@ from typing import Any
 
 from pixel_backend import ChildCoordinate, Color, DetailPolicy, PixelCanvas
 from pixel_layers import LayeredPixelCanvas
-from resolution_field import resolution
 
 Canvas = PixelCanvas | LayeredPixelCanvas
 
@@ -349,7 +348,7 @@ class PixelCommandAPI:
 
     # {
     #   責務: [split_region: 矩形内のセルをまとめて4分割する]
-    #   処理: [領域全体を検証してから対象セルを分割する]
+    #   処理: [領域全体を検証し、バックエンドで全体を1回の履歴操作として分割する]
     #   引数: [x: 左上の横座標, y: 左上の縦座標, width: 領域幅, height: 領域高さ]
     #   戻り値: [分割されたセル数]
     # }
@@ -357,26 +356,8 @@ class PixelCommandAPI:
         self, x: object, y: object, width: object, height: object
     ) -> int:
         px, py, region_width, region_height = self._region(x, y, width, height)
-        # Validate all failure conditions before making the first edit.
-        resolution(self.canvas.width * 2, self.canvas.height * 2)
-        target = (
-            self.canvas.active
-            if isinstance(self.canvas, LayeredPixelCanvas)
-            else self.canvas
-        )
-        requested = sum(
-            not target.is_split(column, row)
-            for row in range(py, py + region_height)
-            for column in range(px, px + region_width)
-        )
-        retained = len(target.to_source().get("retained_splits", []))
-        if retained + requested > PixelCanvas.MAX_SPLITS:
-            raise ValueError("too many retained split cells")
-        changed = 0
-        for row in range(py, py + region_height):
-            for column in range(px, px + region_width):
-                changed += int(self.canvas.split_cell(column, row))
-        return changed
+        # 共有APIでセルごとに確定せず、バックエンドの一括更新へ委譲する。
+        return self.canvas.split_region(px, py, region_width, region_height)
 
     # {
     #   責務: [collapse: 指定した分割セルを折りたたむ]
