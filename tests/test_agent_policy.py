@@ -1,0 +1,92 @@
+"""Check agent-policy validation for both valid and invalid inputs."""
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from check_agent_policy import REQUIRED, check_pr_body, check_repository
+
+
+# {
+#   責務: [AgentPolicyTests: エージェントポリシーの回帰テストを保持する]
+#   フィールド: [unittest.TestCaseの検証状態のみ]
+# }
+class AgentPolicyTests(unittest.TestCase):
+    # {
+    #   責務: [test_pr_evidence: PRの必要欄と検証証跡を検査する]
+    #   処理: [
+    #     1: 有効なPR説明が通過することを確認する
+    #     2: 雛形のみのPR本文を拒否することを確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_pr_evidence(self):
+        valid = ("## Issue\nCloses #123; tested the issue scope.\n"
+                 "## Summary\nOne focused collaboration gate change.\n"
+                 "## Validation\npython scripts/check_agent_policy.py passed.\n"
+                 "## Risks\nNone for product data; only PR metadata validation.\n"
+                 "## Handoff\nCodex branch issue-123, ready for human review.\n")
+        self.assertEqual(check_pr_body(valid), [])
+        self.assertTrue(check_pr_body("## Issue\n<!-- Closes #123 -->\n"))
+
+    # {
+    #   責務: [test_pr_rejects_duplicate_and_todo: 不正なPR本文を拒否する]
+    #   処理: [
+    #     1: 重複見出しと未記入の内容を作成する
+    #     2: 両方の違反が検出されることを確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_pr_rejects_duplicate_and_todo(self):
+        errors = check_pr_body("## Issue\nIssue #2 is tracked.\n"
+                               "## Issue\nIssue #3 is tracked.\n"
+                               "## Summary\nTODO placeholder text.\n")
+        self.assertTrue(any("exactly one ## Issue" in item for item in errors))
+        self.assertTrue(any("concrete report" in item for item in errors))
+
+    # {
+    #   責務: [test_context_limits: 短い入口とClaude参照の制約を検証する]
+    #   処理: [
+    #     1: 必須ファイルを持つ一時リポジトリを作る
+    #     2: 正常条件と入口超過条件を比較する
+    #     3: 別のClaude指示を加えた際の拒否を確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_context_limits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in REQUIRED:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("shared policy\n", encoding="utf-8")
+            (root / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+            self.assertEqual(check_repository(root), [])
+            (root / "AGENTS.md").write_text("A" * 2401, encoding="utf-8")
+            self.assertTrue(any("exceeds" in item for item in check_repository(root)))
+            (root / "CLAUDE.md").write_text("separate policy", encoding="utf-8")
+            self.assertTrue(any("only @AGENTS.md" in item for item in check_repository(root)))
+
+    # {
+    #   責務: [test_broken_link: 参照切れのルール索引を拒否する]
+    #   処理: [
+    #     1: 一時リポジトリへ最小必須ファイルを作る
+    #     2: 不在の参照先が検出されることを確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_broken_link(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in REQUIRED:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("shared policy\n", encoding="utf-8")
+            (root / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+            (root / "AGENTS.md").write_text("[missing](nothing.md)\n", encoding="utf-8")
+            self.assertTrue(any("broken/outside" in item for item in check_repository(root)))

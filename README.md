@@ -1,5 +1,7 @@
 # Hyper Dot Editor
 
+Claude CodeとCodexの共同開発は [AGENTS.md](AGENTS.md) を入口にしてください。詳細ルールは [コンテキスト索引](docs/agents/README.md) に分割し、PRとCIで共通検証します。
+
 Hyper Dot Editor は、GUI と CLI から同じバックエンドを使ってドット絵を編集できるピクセルアートエディタです。バックエンドは複数のゲーム向け開発者ツールから共通利用できることを前提にし、レイヤー、セル分割、任意解像度の非破壊切替、JSONプロジェクト保存、PNG書き出しを扱います。
 
 ## 実装の正本と移行方針
