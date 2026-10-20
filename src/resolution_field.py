@@ -310,6 +310,7 @@ class ResolutionField:
         first = next(overlapping, None)
         if first is None:
             return False
+        # 2件あれば境界の細部があると確定するため、候補全体をリストへ集めない。
         if next(overlapping, None) is not None:
             return True
         return (
