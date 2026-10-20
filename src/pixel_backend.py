@@ -287,7 +287,7 @@ class PixelCanvas:
         rw, rh = self._field.retained_resolution
         return bool(self._splits) or rw > self.width or rh > self.height or any(
             (v * (self.width if i % 2 == 0 else self.height)).denominator != 1
-            for tile in self._field.tiles for i, v in enumerate(tile[0])
+            for tile in self._field.tiles for i, v in enumerate(tile.clip)
         )
 
     # {

@@ -2,20 +2,37 @@
 
 All positions are exact rational coordinates in [0, 1]. Changing the output
 resolution never resamples the stored patches. A write builds a new partition;
-old patch tuples remain usable by undo history.
+old patch records remain usable by undo history.
 """
 from __future__ import annotations
 
 from bisect import bisect_left
 from fractions import Fraction
 from math import ceil, floor, lcm
-from typing import Any
+from typing import Any, NamedTuple
 
 from PIL import Image
 
 Box = tuple[Fraction, Fraction, Fraction, Fraction]
 Offset = tuple[int, int, int, int]
-Tile = tuple[Box, Box, Image.Image, Offset]
+
+
+# {
+#   責務: [Tile: 元画像の座標対応を保つ局所パッチの記録を表す]
+#   フィールド: [
+#     clip: このパッチが担当する表示領域,
+#     extent: 元画像全体に対応する空間領域,
+#     image: 共有後は変更しない元RGBA画像,
+#     offset: 飽和させずに保持するRGBA各成分の色差分
+#   ]
+# }
+class Tile(NamedTuple):
+    clip: Box
+    extent: Box
+    image: Image.Image
+    offset: Offset
+
+
 FULL: Box = (Fraction(0), Fraction(0), Fraction(1), Fraction(1))
 ZERO: Offset = (0, 0, 0, 0)
 MAX_DIMENSION = 4096
@@ -153,7 +170,7 @@ class ResolutionField:
     # }
     def __init__(self, tiles: tuple[Tile, ...] | None = None) -> None:
         self.tiles = tiles if tiles is not None else (
-            (FULL, FULL, Image.new("RGBA", (1, 1)), ZERO),
+            Tile(FULL, FULL, Image.new("RGBA", (1, 1)), ZERO),
         )
 
     # {
@@ -165,7 +182,7 @@ class ResolutionField:
     @classmethod
     def from_image(cls, image: Image.Image) -> ResolutionField:
         resolution(*image.size)
-        return cls(((FULL, FULL, image.convert("RGBA").copy(), ZERO),))
+        return cls((Tile(FULL, FULL, image.convert("RGBA").copy(), ZERO),))
 
     # {
     #   責務: [_crop: 元画素の境界を動かさずパッチの保持画像範囲を切り詰める]
@@ -176,7 +193,7 @@ class ResolutionField:
     @staticmethod
     def _crop(tile: Tile, clip: Box, offset: Offset | None = None) -> Tile:
         """Crop inaccessible source pixels, without moving any pixel boundary."""
-        _, extent, image, old_offset = tile
+        extent, image, old_offset = tile.extent, tile.image, tile.offset
         # 元画素の間隔を基準に切り出し範囲を外側へ丸め、境界の位置を保持する。
         dx = (extent[2] - extent[0]) / image.width
         dy = (extent[3] - extent[1]) / image.height
@@ -190,7 +207,7 @@ class ResolutionField:
             cropped = image
         else:
             cropped = image.crop((x0, y0, x1, y1))
-        return clip, new_extent, cropped, old_offset if offset is None else offset
+        return Tile(clip, new_extent, cropped, old_offset if offset is None else offset)
 
     # {
     #   責務: [_checked: パッチ数と保存画素数の予算内でフィールドを構成する]
@@ -206,20 +223,29 @@ class ResolutionField:
     def _checked(tiles: list[Tile]) -> ResolutionField:
         # 編集結果の保存量を制限し、履歴へ過大なフィールドを渡さない。
         over_tiles = len(tiles) > MAX_TILES
-        over_pixels = sum(tile[2].width * tile[2].height for tile in tiles) > MAX_STORED_PIXELS
+        over_pixels = (
+            sum(tile.image.width * tile.image.height for tile in tiles)
+            > MAX_STORED_PIXELS
+        )
         field = ResolutionField(tuple(tiles))
         if not (over_tiles or over_pixels):
             return field
         # Optional lossless compaction of zero-offset patches on a bounded
         # common grid. It is never required for resolution changes. Unaligned
         # grids whose common raster is too large remain clipped patches.
-        if not any(tile[3] != ZERO for tile in tiles):
+        if not any(tile.offset != ZERO for tile in tiles):
             width = height = 1
             for clip, extent, image, _ in tiles:
                 dx = (extent[2] - extent[0]) / image.width
                 dy = (extent[3] - extent[1]) / image.height
-                width = lcm(width, dx.denominator, *(v.denominator for v in (clip[0], clip[2], extent[0])))
-                height = lcm(height, dy.denominator, *(v.denominator for v in (clip[1], clip[3], extent[1])))
+                width = lcm(
+                    width, dx.denominator,
+                    *(value.denominator for value in (clip[0], clip[2], extent[0])),
+                )
+                height = lcm(
+                    height, dy.denominator,
+                    *(value.denominator for value in (clip[1], clip[3], extent[1])),
+                )
                 if width > MAX_DIMENSION or height > MAX_DIMENSION or width * height > MAX_PIXELS:
                     break
             else:
@@ -238,12 +264,12 @@ class ResolutionField:
         # 元パッチを変更せず候補を組み立て、Undoで参照する旧状態を保つ。
         tiles: list[Tile] = []
         for tile in self.tiles:
-            overlap = intersection(tile[0], box)
+            overlap = intersection(tile.clip, box)
             if overlap is None:
                 tiles.append(tile)
             else:
-                tiles.extend(self._crop(tile, piece) for piece in outside(tile[0], overlap))
-        tiles.append((box, box, Image.new("RGBA", (1, 1), color), ZERO))
+                tiles.extend(self._crop(tile, piece) for piece in outside(tile.clip, overlap))
+        tiles.append(Tile(box, box, Image.new("RGBA", (1, 1), color), ZERO))
         return self._checked(tiles)
 
     # {
@@ -258,12 +284,12 @@ class ResolutionField:
             return self
         tiles: list[Tile] = []
         for tile in self.tiles:
-            overlap = intersection(tile[0], box)
+            overlap = intersection(tile.clip, box)
             if overlap is None:
                 tiles.append(tile)
                 continue
-            tiles.extend(self._crop(tile, piece) for piece in outside(tile[0], overlap))
-            offset = tuple(a + b for a, b in zip(tile[3], delta))
+            tiles.extend(self._crop(tile, piece) for piece in outside(tile.clip, overlap))
+            offset = tuple(a + b for a, b in zip(tile.offset, delta))
             # 飽和前の値は可逆な色編集に必要だが、累積量には安全上限を設ける。
             if any(abs(v) > 1_000_000 for v in offset):
                 raise ValueError("retained color offset exceeds the safety limit")
@@ -278,14 +304,20 @@ class ResolutionField:
     # }
     def has_detail(self, box: Box) -> bool:
         # 色の一致ではなく、パッチ境界と元画素の細かさを保持情報として判定する。
-        overlapping = [tile for tile in self.tiles if intersection(tile[0], box) is not None]
-        if len(overlapping) > 1:
+        overlapping = (
+            tile for tile in self.tiles if intersection(tile.clip, box) is not None
+        )
+        first = next(overlapping, None)
+        if first is None:
+            return False
+        if next(overlapping, None) is not None:
             return True
-        for _, extent, image, _ in overlapping:
-            if ((extent[2] - extent[0]) / image.width < box[2] - box[0]
-                    or (extent[3] - extent[1]) / image.height < box[3] - box[1]):
-                return True
-        return False
+        return (
+            (first.extent[2] - first.extent[0]) / first.image.width
+            < box[2] - box[0]
+            or (first.extent[3] - first.extent[1]) / first.image.height
+            < box[3] - box[1]
+        )
 
     # {
     #   責務: [sample_raw: 空間座標に対応する未飽和のRGBA値を取得する]
@@ -295,11 +327,16 @@ class ResolutionField:
     # }
     def sample_raw(self, x: Fraction, y: Fraction) -> tuple[int, int, int, int]:
         # 左上を含み右下を含まない領域で、境界上の参照先パッチを一意にする。
-        for clip, extent, image, offset in self.tiles:
-            if clip[0] <= x < clip[2] and clip[1] <= y < clip[3]:
-                ix = min(image.width - 1, floor((x - extent[0]) * image.width / (extent[2] - extent[0])))
-                iy = min(image.height - 1, floor((y - extent[1]) * image.height / (extent[3] - extent[1])))
-                return tuple(c + d for c, d in zip(image.getpixel((ix, iy)), offset))
+        for tile in self.tiles:
+            if tile.clip[0] <= x < tile.clip[2] and tile.clip[1] <= y < tile.clip[3]:
+                x_scale = tile.image.width / (tile.extent[2] - tile.extent[0])
+                y_scale = tile.image.height / (tile.extent[3] - tile.extent[1])
+                ix = min(tile.image.width - 1, floor((x - tile.extent[0]) * x_scale))
+                iy = min(tile.image.height - 1, floor((y - tile.extent[1]) * y_scale))
+                return tuple(
+                    channel + offset
+                    for channel, offset in zip(tile.image.getpixel((ix, iy)), tile.offset)
+                )
         raise ValueError("retained field has an uncovered coordinate")
 
     # {
@@ -328,24 +365,34 @@ class ResolutionField:
         destination = out.load()
         # 半画素を正確な分数で扱い、表示倍率を変えても参照境界がずれないようにする。
         half = Fraction(1, 2)
-        for clip, extent, image, offset in self.tiles:
-            x0 = max(0, ceil(clip[0] * width - half))
-            y0 = max(0, ceil(clip[1] * height - half))
-            x1 = min(width, ceil(clip[2] * width - half))
-            y1 = min(height, ceil(clip[3] * height - half))
+        for tile in self.tiles:
+            x0 = max(0, ceil(tile.clip[0] * width - half))
+            y0 = max(0, ceil(tile.clip[1] * height - half))
+            x1 = min(width, ceil(tile.clip[2] * width - half))
+            y1 = min(height, ceil(tile.clip[3] * height - half))
             if x0 >= x1 or y0 >= y1:
                 continue
-            xs = [min(image.width - 1, floor(((Fraction(2 * x + 1, 2 * width) - extent[0])
-                    * image.width) / (extent[2] - extent[0]))) for x in range(x0, x1)]
-            ys = [min(image.height - 1, floor(((Fraction(2 * y + 1, 2 * height) - extent[1])
-                    * image.height) / (extent[3] - extent[1]))) for y in range(y0, y1)]
-            if offset != ZERO:
-                lut = [max(0, min(255, c + d)) for d in offset for c in range(256)]
-                source = image.point(lut).load()
+            source_x = [
+                min(tile.image.width - 1, floor(
+                    (Fraction(2 * x + 1, 2 * width) - tile.extent[0])
+                    * tile.image.width / (tile.extent[2] - tile.extent[0])
+                ))
+                for x in range(x0, x1)
+            ]
+            source_y = [
+                min(tile.image.height - 1, floor(
+                    (Fraction(2 * y + 1, 2 * height) - tile.extent[1])
+                    * tile.image.height / (tile.extent[3] - tile.extent[1])
+                ))
+                for y in range(y0, y1)
+            ]
+            if tile.offset != ZERO:
+                lut = [max(0, min(255, c + delta)) for delta in tile.offset for c in range(256)]
+                source = tile.image.point(lut).load()
             else:
-                source = image.load()
-            for y, sy in enumerate(ys, y0):
-                for x, sx in enumerate(xs, x0):
+                source = tile.image.load()
+            for y, sy in enumerate(source_y, y0):
+                for x, sx in enumerate(source_x, x0):
                     destination[x, y] = source[sx, sy]
         return out
 
@@ -357,8 +404,10 @@ class ResolutionField:
     # }
     @property
     def retained_resolution(self) -> tuple[int, int]:
-        return (max(ceil(t[2].width / (t[1][2] - t[1][0])) for t in self.tiles),
-                max(ceil(t[2].height / (t[1][3] - t[1][1])) for t in self.tiles))
+        return (
+            max(ceil(tile.image.width / (tile.extent[2] - tile.extent[0])) for tile in self.tiles),
+            max(ceil(tile.image.height / (tile.extent[3] - tile.extent[1])) for tile in self.tiles),
+        )
 
     # {
     #   責務: [to_source: 空間フィールドを保存用のパッチ配列へ変換する]
@@ -367,10 +416,16 @@ class ResolutionField:
     #   戻り値: [有理数座標を分子・分母の組で表したパッチ辞書の一覧]
     # }
     def to_source(self) -> list[dict[str, Any]]:
-        return [{"clip": [[v.numerator, v.denominator] for v in clip],
-                 "extent": [[v.numerator, v.denominator] for v in extent],
-                 "resolution": list(image.size), "pixels": image_source(image),
-                 "offset": list(offset)} for clip, extent, image, offset in self.tiles]
+        return [
+            {
+                "clip": [[value.numerator, value.denominator] for value in tile.clip],
+                "extent": [[value.numerator, value.denominator] for value in tile.extent],
+                "resolution": list(tile.image.size),
+                "pixels": image_source(tile.image),
+                "offset": list(tile.offset),
+            }
+            for tile in self.tiles
+        ]
 
     # {
     #   責務: [_source_box: 保存された有理数座標を単位矩形内の正の面積の領域へ復元する]
@@ -428,7 +483,9 @@ class ResolutionField:
             if (not isinstance(offset, list) or len(offset) != 4
                     or any(type(v) is not int or abs(v) > 1_000_000 for v in offset)):
                 raise ValueError("invalid retained color offset")
-            tiles.append((clip, extent, source_image(entry.get("pixels"), width, height), tuple(offset)))
+            tiles.append(Tile(
+                clip, extent, source_image(entry.get("pixels"), width, height), tuple(offset)
+            ))
         # Disjoint clips with total area one partition the entire unit rectangle.
         events = []
         area = Fraction(0)
