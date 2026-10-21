@@ -30,6 +30,17 @@ jobs:
         if: github.event_name == 'pull_request'
         run: python scripts/check_agent_policy.py --pr-event "$GITHUB_EVENT_PATH"
 
+      - name: Verify context-route evidence for three tasks
+        run: python scripts/context_route_benchmark.py --check
+      - name: Save reproducible candidate selection metrics
+        run: python scripts/context_route_benchmark.py --json > context-route-evidence.json
+      - name: Upload context-route evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-route-evidence
+          path: context-route-evidence.json
+          if-no-files-found: error
+
   declaration-comments:
     name: Declaration comments
     runs-on: ubuntu-latest
