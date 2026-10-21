@@ -12,6 +12,10 @@ Prevent two agents from overwriting or unknowingly reviewing their own changes. 
 4. Keep commits scoped to the Issue. Do not silently rebase or force-push another agent's branch, directly push to `main`, remove tests, or relax CI to make a build green.
 5. Preserve Rust Core authority, Python 3.10–3.14 buildability, versioned JSON and retained detail. Interface/serialization changes need golden fixtures and language-compatibility tests.
 
+## Documentation boundary
+
+The product README, user help and public API guides explain how the software is used. **Never insert agent workflow, Issue ownership, CI approval instructions, review checklists or handoffs there.** Keep internal working procedures under `docs/agents/`, linked from the compact `AGENTS.md` entrypoint only.
+
 ## Transfer and completion
 
 For each handoff, record **Issue, agent, branch and SHA, owned files, finished work, exact test commands/results, risks/blockers, unresolved comments, next action** in the PR/Issue. The receiving agent must fetch and inspect the diff; previous checks do not prove the changed HEAD passes.

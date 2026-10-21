@@ -17,7 +17,12 @@ REQUIRED = (
     ".github/pull_request_template.md",
 )
 SECTIONS = ("Issue", "Summary", "Validation", "Risks", "Handoff")
-USER_DOCS = ("README.md",)
+USER_DOCS = (
+    "README.md",
+    "docs/Command_API.md",
+    "docs/CUI_detail_operations.md",
+    "docs/Non_destructive_resolution.md",
+)
 DEVELOPER_ONLY_REFERENCES = re.compile(
     r"AGENTS\.md|CLAUDE\.md|docs/agents/|doc/ワークフロー/|"
     r"コーディング規約\.md|Claude Code|Codex|共同開発|開発ワークフロー",
@@ -64,7 +69,8 @@ def check_repository(root: Path) -> list[str]:
     for relative in USER_DOCS:
         guide = root / relative
         if not guide.is_file():
-            problems.append(f"missing user guide: {relative}")
+            if relative == "README.md":
+                problems.append(f"missing user guide: {relative}")
             continue
         for match in DEVELOPER_ONLY_REFERENCES.finditer(guide.read_text(encoding="utf-8")):
             problems.append(

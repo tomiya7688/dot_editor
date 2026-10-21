@@ -8,3 +8,4 @@ Claude Code and Codex use **one** policy. Keep this file short; put details in t
 4. Follow [R01–R20](コーディング規約.md), including Japanese declaration comments; never weaken CI, hide failure, or claim missing GUI E2E passed.
 5. Open a focused PR with exact validation, risks, file ownership and handoff. A policy/CI change needs its own explicit review.
 6. Read the [context router](docs/agents/README.md) and **only relevant linked details**; do not load every document by default.
+7. Never mix internal agent workflows, review rules or handoffs into user-facing README/help/API documentation; keep them in `docs/agents/`.

@@ -118,4 +118,9 @@ class AgentPolicyTests(unittest.TestCase):
             self.assertTrue(any("developer-only" in item for item in check_repository(root)))
             guide.write_text("# 利用者向け\n\nClaude CodeとCodexの共同開発\n", encoding="utf-8")
             self.assertTrue(any("developer-only" in item for item in check_repository(root)))
+            guide.write_text("# 利用者向け\n\n起動と操作の説明\n", encoding="utf-8")
+            api_doc = root / "docs" / "Command_API.md"
+            api_doc.parent.mkdir(parents=True, exist_ok=True)
+            api_doc.write_text("# API案内\n\n[内部規則](docs/agents/README.md)\n", encoding="utf-8")
+            self.assertTrue(any("developer-only" in item for item in check_repository(root)))
 

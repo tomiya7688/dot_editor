@@ -2,7 +2,7 @@
 
 ## Automated enforcement
 
-- **Agent policy:** small AGENTS.md, shared CLAUDE import, reachable context docs; PR Issue/Summary/Validation/Risks/Handoff reports; checker unit tests.
+- **Agent policy:** small AGENTS.md, shared CLAUDE import, reachable context docs; PR Issue/Summary/Validation/Risks/Handoff reports; prevent developer workflow references in user README and public API guides; checker unit tests.
 - **Declaration comments:** existing R04 syntax audit and changed Python/Rust file gate, never disabled.
 - **Rust:** cargo fmt, clippy with warnings denied, tests, debug and release builds, Rust↔Python JSON compatibility.
 - **Python:** each of 3.10/3.11/3.12/3.13/3.14 builds wheel+sdist, installs wheel, runs evaluation and regression tests.
