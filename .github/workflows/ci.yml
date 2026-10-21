@@ -3,11 +3,44 @@ name: CI
 on:
   push:
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  agent-policy:
+    name: Agent policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Test shared agent policy gate
+        run: python -m unittest discover -s tests -p test_agent_policy.py
+      - name: Audit the minimal agent context
+        run: python scripts/check_agent_policy.py
+      - name: Require PR evidence and handoff
+        if: github.event_name == 'pull_request'
+        run: python scripts/check_agent_policy.py --pr-event "$GITHUB_EVENT_PATH"
+
+      - name: Verify context-route evidence for three tasks
+        run: python scripts/context_route_benchmark.py --check
+      - name: Save reproducible candidate selection metrics
+        run: python scripts/context_route_benchmark.py --json > context-route-evidence.json
+      - name: Upload context-route evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-route-evidence
+          path: context-route-evidence.json
+          if-no-files-found: error
+
   declaration-comments:
     name: Declaration comments
     runs-on: ubuntu-latest
@@ -49,6 +82,9 @@ jobs:
       - name: Build Rust workspace
         run: cargo build --manifest-path rust/Cargo.toml --workspace
 
+      - name: Build Rust release
+        run: cargo build --manifest-path rust/Cargo.toml --workspace --release
+
       - name: Set up Python reference
         uses: actions/setup-python@v5
         with:
@@ -89,6 +125,16 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
+      - name: Build wheel and source distribution
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel --sdist --outdir dist/python-${{ matrix.python-version }}
+
+      - name: Install wheel and verify imports
+        run: |
+          python -m pip install --force-reinstall --no-deps dist/python-${{ matrix.python-version }}/*.whl
+          python -c "import pixel_backend, pixel_commands, pixel_cli, pixel_layers, resolution_field"
+
       - name: Run evaluation
         run: python scripts/evaluate.py
 
@@ -97,7 +143,7 @@ jobs:
 
   windows-build:
     runs-on: windows-latest
-    needs: [declaration-comments, rust-core, evaluate]
+    needs: [agent-policy, declaration-comments, rust-core, evaluate]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
