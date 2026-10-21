@@ -162,6 +162,21 @@ impl Canvas {
     }
 
     /// {
+    ///   責務: [clear_history: 作品単位の履歴へ移した後のCanvas内履歴を破棄する]
+    ///   処理: [
+    ///     1: UndoとRedoを空にして古い保持状態の共有を解放する
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///   ]
+    ///   戻り値: [なし]
+    /// }
+    pub(crate) fn clear_history(&mut self) {
+        self.history.clear();
+        self.future.clear();
+    }
+
+    /// {
     ///   責務: [resolution: 現在の論理解像度を取得する]
     ///   処理: [
     ///     1: 保持している論理解像度を返す
