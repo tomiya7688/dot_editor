@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import copy
+import io
 import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from PIL import Image
 from pixel_layers import LayeredPixelCanvas
 
 
@@ -88,6 +91,50 @@ def observe(model):
 def assert_same(name, expected, actual):
     for key in ("names", "visible", "active_layer", "native", "detail"):
         assert expected[key] == actual[key], (name, key)
+
+
+# {
+#   責務: [decode_png: Rustが書いたPNGをPillowで開いてRGBA行列にする]
+#   処理: [
+#     1: 16進文字列をバイト列にしてPillowで読み込む
+#     2: 透明度つきのRGBAであることを確認して行列にする
+#   ]
+#   引数: [
+#     hex_text: PNGのバイト列を表す16進文字列
+#   ]
+#   戻り値: [RGBA行列]
+# }
+def decode_png(hex_text):
+    with Image.open(io.BytesIO(bytes.fromhex(hex_text))) as image:
+        image.load()
+        assert image.mode == "RGBA", image.mode
+        return image_rows(image)
+
+
+# {
+#   責務: [check_png: RustのPNGがPythonの保存結果と同じ画素になるか確認する]
+#   処理: [
+#     1: 自然な解像度・16x12の保持細部・9x9への拡大の3種類をPythonで保存する
+#     2: 保存したPNGとRustのPNGを、Pillowで読んだ画素で比較する
+#   ]
+#   引数: [
+#     name: ケース名
+#     rust: Rustの観測結果（PNGの16進文字列を含む）
+#     model: 同じ内容のPythonの作品
+#   ]
+#   戻り値: [なし、食い違えばAssertionError]
+# }
+def check_png(name, rust, model):
+    options = (("png_native", {}), ("png_detail", {"output_resolution": (16, 12)}),
+               ("png_scaled", {"export_size": 9}))
+    with tempfile.TemporaryDirectory() as directory:
+        for key, arguments in options:
+            path = Path(directory) / f"{key}.png"
+            model.save_png(path, **arguments)
+            with Image.open(path) as saved:
+                saved.load()
+                expected = image_rows(saved)
+            assert decode_png(rust[key]) == expected, (name, key)
 
 
 # {
@@ -186,12 +233,14 @@ def main():
         model = LayeredPixelCanvas.from_source(case["source"])
         assert_same(case["name"], case, observe(model))
         assert_same(case["name"], case, observe(LayeredPixelCanvas.from_source(model.to_source())))
+        check_png(case["name"], case, model)
     documents = python_documents()
     imports = [{"name": name, "source": source} for name, source in documents]
     for loaded, (name, source) in zip(run_example(["--import"], json.dumps(imports)), documents):
         assert "error" not in loaded, (name, loaded.get("error"))
         assert loaded["name"] == name
         assert_same(name, loaded, observe(LayeredPixelCanvas.from_source(source)))
+        check_png(name, loaded, LayeredPixelCanvas.from_source(source))
         assert_same(name, loaded, observe(LayeredPixelCanvas.from_source(loaded["source"])))
         assert loaded["source"]["version"] == 2
     broken = malformed_documents()

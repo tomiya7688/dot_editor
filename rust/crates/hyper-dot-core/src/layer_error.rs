@@ -16,6 +16,7 @@ use crate::raster::RasterError;
 ///     TooManyLayers: レイヤー数の上限超過
 ///     LastLayer: 最後の1層を削除しようとした失敗
 ///     HistoryAllocationFailed: 作品履歴の確保失敗
+///     ExportSmallerThanNative: 自然な解像度より小さい書き出しサイズ
 ///   ]
 /// }
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -27,6 +28,7 @@ pub enum LayerError {
     TooManyLayers,
     LastLayer,
     HistoryAllocationFailed,
+    ExportSmallerThanNative,
 }
 
 impl From<CanvasError> for LayerError {
@@ -83,6 +85,9 @@ impl Display for LayerError {
             Self::LastLayer => formatter.write_str("at least one layer is required"),
             Self::HistoryAllocationFailed => {
                 formatter.write_str("unable to allocate document history")
+            }
+            Self::ExportSmallerThanNative => {
+                formatter.write_str("export size cannot be smaller than the native canvas size")
             }
         }
     }

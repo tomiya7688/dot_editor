@@ -26,9 +26,11 @@ fn scale_nearest(source: Raster, target: Resolution) -> Result<Raster, RasterErr
     let mut output = Raster::new(target)?;
     for y in 0..target.height() {
         for x in 0..target.width() {
-            // 整数比の拡大では、出力画素の左上が属する元画素へ切り捨てて対応する。
-            let source_x = u64::from(x) * u64::from(from.width()) / u64::from(target.width());
-            let source_y = u64::from(y) * u64::from(from.height()) / u64::from(target.height());
+            // 出力画素の中心が属する元画素を選ぶ。Pillowの最近傍拡大と同じ位置になる。
+            let source_x =
+                (2 * u64::from(x) + 1) * u64::from(from.width()) / (2 * u64::from(target.width()));
+            let source_y = (2 * u64::from(y) + 1) * u64::from(from.height())
+                / (2 * u64::from(target.height()));
             let color = source.sample(source_x as u32, source_y as u32)?;
             output.paint(x, y, color);
         }
@@ -79,6 +81,26 @@ impl LayeredCanvas {
             composite_over(&mut result, &layer)?;
         }
         Ok(result)
+    }
+
+    /// {
+    ///   責務: [composite_scaled: 自然な合成を指定サイズへ最近傍で拡大する]
+    ///   処理: [
+    ///     1: 自然な出力解像度より小さい指定を拒否する
+    ///     2: 自然な合成を作り、指定サイズへ拡大する
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///     target: 書き出すサイズ。自然な解像度以上であること
+    ///   ]
+    ///   戻り値: [拡大した合成、小さい指定や描画予算超過ならエラー]
+    /// }
+    pub fn composite_scaled(&self, target: Resolution) -> Result<Raster, LayerError> {
+        let native = self.native_resolution()?;
+        if target.width() < native.width() || target.height() < native.height() {
+            return Err(LayerError::ExportSmallerThanNative);
+        }
+        Ok(scale_nearest(self.composite()?, target)?)
     }
 
     /// {

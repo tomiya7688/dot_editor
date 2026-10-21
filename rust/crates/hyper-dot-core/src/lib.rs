@@ -15,6 +15,7 @@ pub mod layered_canvas;
 mod layered_canvas_edit;
 mod layered_canvas_render;
 mod layered_project_json;
+mod png_export;
 pub mod project_json;
 mod project_json_error;
 mod project_json_import;

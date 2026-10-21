@@ -47,11 +47,25 @@ fn pixels(raster: Raster) -> Vec<Vec<[u8; 4]>> {
 }
 
 /// {
+///   責務: [hex: PNGのバイト列をJSONに載せられる16進文字列にする]
+///   処理: [
+///     1: 各バイトを2桁の小文字16進にして連結する
+///   ]
+///   引数: [
+///     bytes: 変換するバイト列
+///   ]
+///   戻り値: [16進文字列]
+/// }
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// {
 ///   責務: [observe: 作品の構成と合成結果をまとめる]
 ///   処理: [
 ///     1: 層の名前・表示状態・選択名を記録する
 ///     2: 自然な解像度の合成と、固定解像度の保持細部合成を記録する
-///     3: 再保存したJSON値を添える
+///     3: 3種類のPNG（自然・保持細部16x12・9x9への拡大）と再保存したJSON値を添える
 ///   ]
 ///   引数: [
 ///     document: 観測するレイヤー付き作品
@@ -70,6 +84,9 @@ fn observe(document: &LayeredCanvas) -> Value {
         "active_layer": document.active_layer(),
         "native": pixels(document.composite().unwrap()),
         "detail": pixels(document.render_at(grid(16, 12)).unwrap()),
+        "png_native": hex(&document.composite().unwrap().to_png().unwrap()),
+        "png_detail": hex(&document.render_at(grid(16, 12)).unwrap().to_png().unwrap()),
+        "png_scaled": hex(&document.composite_scaled(grid(9, 9)).unwrap().to_png().unwrap()),
         "source": serde_json::from_str::<Value>(&document.to_json().unwrap()).unwrap(),
     })
 }
