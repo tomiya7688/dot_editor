@@ -1,26 +1,26 @@
-# Context router: Claude Code and Codex
+# Task-first context router (contributors only)
 
-The root `AGENTS.md` and `CLAUDE.md` share one policy. **Do not load all linked documents by default.** The router is for internal contributors only, not product users.
+Keep `AGENTS.md` short. Read **only task-relevant** sources; this page is an index, not a second rulebook.
 
 ## Read first
 
-1. Identify this Issue's goal, acceptance criteria, owned files and current base/branch. Inspect `git status`, changed paths, and relevant PR feedback before editing.
-2. **Search first, read second:** `rg --files`, focused `rg -n`, and `git diff --name-only origin/main...HEAD` are initial candidates. If source and tests are already known, read those directly. Otherwise use the [task-to-source/test map](task-map.md) *only to locate candidates*.
-3. Read the selected source, related tests and the needed part of its authoritative specification. Do not infer semantics from the index or a search snippet alone.
+1. Confirm Issue, acceptance criteria, owned files, branch/`origin/main`, `git status` and relevant review feedback.
+2. **Search before reading:** use `rg --files`, focused `rg -n` and changed-path summaries. If source/tests are known, go directly to them; otherwise consult the [task-to-source/test map](task-map.md).
+3. Inspect the original source, matching tests and only the necessary specification sections. Search snippets and routing tables are not evidence of semantics.
 
-## Normally exclude
+## Exclude by default
 
-Build outputs (`dist/`, `build/`, `rust/target/`), `.venv/`, generated indexes, stale logs, unrelated Issues, entire histories and unrelated docs. **Exception:** read any of these when directly relevant (such as release artifact verification).
+Unrelated Issues/docs/history, stale logs, `dist/`, `build/`, `rust/target/`, `.venv/` and generated indexes. **Exception:** include any of these if directly relevant (e.g. artifact verification).
 
-## Scope and stop conditions
+## Stop or expand
 
-Stop expanding the search once the behavior, source, relevant tests, invariants and acceptance checks are established. Expand for a failing test, shared public API/JSON change, unclear ownership, or a discovered caller. Run targeted local checks first, but never omit required CI or affected E2E. Report **actual** commands, files reviewed, unknowns and unverified outcomes.
+Stop searching when required behavior, source, tests, invariants and checks are clear. Expand to direct consumers, fixtures and contracts on test failures, shared API/JSON changes or missing evidence. Run targeted local checks first **and all applicable required CI/E2E**. Report what was read, run and left unverified; never claim token savings without measured data.
 
 ## Read when needed
 
-- Applicable parts of [R01–R20](../../コーディング規約.md) and the [development workflow](../../doc/ワークフロー/ワークフロー.md) (all rules remain binding; CI checks remain required)
-- Parallel editing, PR ownership or handoff: [collaboration](collaboration.md) with optional Context Pack
-- CI, distribution or internal build work: [quality gates](quality-gates.md), [developer reference](development.md)
-- Specific cell-refinement regression: [regression specification](../Refinement_regressions.md)
+- Applicable [R01–R20](../../コーディング規約.md) and [workflow](../../doc/ワークフロー/ワークフロー.md) (all mandatory rules still apply)
+- Parallel work or optional Context Pack: [collaboration](collaboration.md)
+- CI/build/release: [quality gates](quality-gates.md), [internal build reference](development.md)
+- Cell detail regressions: [refinement spec](../Refinement_regressions.md)
 
-The route map is a discovery aid. Specialized ObaPick tools should be adopted **only after real repeated tasks justify their maintenance cost**. No context reduction percentage or Claude/Codex load behavior is assumed without measurement.
+ObaPick tools are **optional**; adopt one only if repeated work demonstrates value above its maintenance cost. `CLAUDE.md` and Codex use the same `AGENTS.md`.
