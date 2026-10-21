@@ -50,27 +50,59 @@ impl Canvas {
     ///   戻り値: [履歴のないCanvasまたは入力検証エラー]
     /// }
     pub fn from_json(text: &str) -> Result<Self> {
-        if text.len() > 256 * 1024 * 1024 {
-            return Err(invalid("project exceeds the JSON byte limit"));
-        }
-        let mut parser = serde_json::Deserializer::from_str(text);
-        // The visitor enforces precisely 128 containers (including the root),
-        // rather than serde_json's slightly stricter default recursion budget.
-        parser.disable_recursion_limit();
-        let StrictJson(source, _) = StrictJson::deserialize(&mut parser)?;
-        parser.end()?;
-        if !source.is_object() {
-            return Err(invalid("project root must be an object"));
-        }
+        let source = parse_project(text)?;
         if source.get("layers").is_some() {
-            return Err(invalid("layered project loading is not implemented yet"));
+            return Err(invalid("layered project requires LayeredCanvas::from_json"));
         }
+        Self::from_source(&source)
+    }
+
+    /// {
+    ///   責務: [from_source: 検証済み構文のJSON値から単一Canvasを復元する]
+    ///   処理: [
+    ///     1: 版番号を調べる
+    ///     2: 旧形式またはversion 2の復元へ振り分ける
+    ///   ]
+    ///   引数: [
+    ///     source: ルートがオブジェクトのJSON値
+    ///   ]
+    ///   戻り値: [履歴のないCanvasまたは入力検証エラー]
+    /// }
+    pub(crate) fn from_source(source: &Value) -> Result<Self> {
         match source.get("version").unwrap_or(&Value::from(1)).as_u64() {
-            Some(1) => legacy_canvas(&source),
-            Some(2) => current_canvas(&source),
+            Some(1) => legacy_canvas(source),
+            Some(2) => current_canvas(source),
             _ => Err(invalid("unsupported project version")),
         }
     }
+}
+
+/// {
+///   責務: [parse_project: 文書JSON文字列を重複キーと深さを検査して値にする]
+///   処理: [
+///     1: 入力サイズの上限を確認する
+///     2: 重複キー・128コンテナの深さ・末尾の余分な内容を拒否して解析する
+///     3: ルートがオブジェクトか確認する
+///   ]
+///   引数: [
+///     text: 解析対象のJSON文字列
+///   ]
+///   戻り値: [ルートがオブジェクトのJSON値または入力検証エラー]
+/// }
+pub(crate) fn parse_project(text: &str) -> Result<Value> {
+    if text.len() > 256 * 1024 * 1024 {
+        return Err(invalid("project exceeds the JSON byte limit"));
+    }
+    let mut parser = serde_json::Deserializer::from_str(text);
+    // The visitor enforces precisely 128 containers (including the root),
+    // rather than serde_json's slightly stricter default recursion budget.
+    parser.disable_recursion_limit();
+    let StrictJson(source, _) = StrictJson::deserialize(&mut parser)?;
+    parser.end()?;
+    if !source.is_object() {
+        return Err(invalid("project root must be an object"));
+    }
+    Ok(source)
 }
 
 /// {
@@ -413,7 +445,7 @@ fn current_canvas(source: &Value) -> Result<Canvas> {
     if canvas.render()? != raster(&source["pixels"], resolution)? {
         return Err(invalid("project pixels disagree with retained field"));
     }
-    let canonical: Value = serde_json::from_str(&canvas.to_json()?)?;
+    let canonical = canvas.to_source()?;
     if source
         .get("refined_cells")
         .unwrap_or(&serde_json::json!([]))

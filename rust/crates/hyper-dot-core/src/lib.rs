@@ -14,6 +14,7 @@ pub mod layer_error;
 pub mod layered_canvas;
 mod layered_canvas_edit;
 mod layered_canvas_render;
+mod layered_project_json;
 pub mod project_json;
 mod project_json_error;
 mod project_json_import;

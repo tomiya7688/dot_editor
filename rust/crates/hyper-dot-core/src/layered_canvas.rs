@@ -97,6 +97,27 @@ impl LayeredCanvas {
     }
 
     /// {
+    ///   責務: [from_entries: 検証済みのレイヤー一覧から履歴のない作品を組み立てる]
+    ///   処理: [
+    ///     1: レイヤーと選択位置を格納する
+    ///     2: UndoとRedoを空にする
+    ///   ]
+    ///   引数: [
+    ///     layers: 同じ解像度に揃った1層以上のレイヤー
+    ///     active: 編集対象にする層の位置
+    ///   ]
+    ///   戻り値: [新しい作品]
+    /// }
+    pub(crate) fn from_entries(layers: Vec<LayerEntry>, active: usize) -> Self {
+        Self {
+            layers,
+            active,
+            history: Vec::new(),
+            future: Vec::new(),
+        }
+    }
+
+    /// {
     ///   責務: [resolution: 全レイヤーに共通する論理解像度を取得する]
     ///   処理: [
     ///     1: 選択中レイヤーの解像度を返す
