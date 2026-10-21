@@ -16,6 +16,17 @@ Prevent two agents from overwriting or unknowingly reviewing their own changes. 
 
 The product README, user help and public API guides explain how the software is used. **Never insert agent workflow, Issue ownership, CI approval instructions, review checklists or handoffs there.** Keep internal working procedures under `docs/agents/`, linked from the compact `AGENTS.md` entrypoint only.
 
+## Optional Context Pack for multi-step handoffs
+
+For a cross-agent or resumed task spanning several files, leave a **short task-specific Context Pack** in the Issue/PR, not in `AGENTS.md` or a product guide:
+
+- Goal and acceptance criteria (link to the Issue).
+- First source/tests, owned files and the reason they were chosen.
+- Invariants, excluded scope and relevant contract links.
+- Branch/base/HEAD SHA, completed verification, blockers, next action.
+
+Link to source documents rather than copying long requirements or logs. This is a disposable working summary, not a second specification. Skip it for a small task whose target and test are already obvious. Refresh file ownership and HEAD when handing off; never assume an old summary describes the new branch.
+
 ## Transfer and completion
 
 For each handoff, record **Issue, agent, branch and SHA, owned files, finished work, exact test commands/results, risks/blockers, unresolved comments, next action** in the PR/Issue. The receiving agent must fetch and inspect the diff; previous checks do not prove the changed HEAD passes.

@@ -14,6 +14,7 @@ REQUIRED = (
     "doc/ワークフロー/ワークフロー.md", "docs/agents/README.md",
     "docs/agents/collaboration.md", "docs/agents/quality-gates.md",
     "docs/agents/development.md",
+    "docs/agents/task-map.md",
     ".github/pull_request_template.md",
 )
 SECTIONS = ("Issue", "Summary", "Validation", "Risks", "Handoff")
@@ -58,6 +59,7 @@ def check_repository(root: Path) -> list[str]:
     for relative in (
         "AGENTS.md",
         "docs/agents/README.md",
+        "docs/agents/task-map.md",
         "docs/agents/development.md",
         "docs/agents/collaboration.md",
         "docs/agents/quality-gates.md",

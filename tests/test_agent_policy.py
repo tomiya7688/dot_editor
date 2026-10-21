@@ -129,3 +129,35 @@ class AgentPolicyTests(unittest.TestCase):
             api_doc.write_text("# API案内\n\n[内部規則](docs/agents/README.md)\n", encoding="utf-8")
             self.assertTrue(any("developer-only" in item for item in check_repository(root)))
 
+    # {
+    #   責務: [test_task_map_routes_resolve_to_source_and_tests: 調査ルートの実装・テスト参照切れを防ぐ]
+    #   処理: [
+    #     1: 最小限の共有規則を一時リポジトリへ作る
+    #     2: 存在しない実装とテストの参照を検出する
+    #     3: 対象ファイルを追加すると検査が通過することを確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、検査結果が一致しなければ失敗]
+    # }
+    def test_task_map_routes_resolve_to_source_and_tests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in REQUIRED:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("shared policy\n", encoding="utf-8")
+            (root / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+            (root / "README.md").write_text("# User guide\n", encoding="utf-8")
+            task_map = root / "docs" / "agents" / "task-map.md"
+            task_map.write_text(
+                "[source](../../src/module.py) and [tests](../../tests/test_module.py)\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(any("task-map.md: broken/outside" in error
+                                for error in check_repository(root)))
+            for relative in ("src/module.py", "tests/test_module.py"):
+                destination = root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text("# placeholder\n", encoding="utf-8")
+            self.assertEqual(check_repository(root), [])
+
