@@ -55,7 +55,13 @@ def check_repository(root: Path) -> list[str]:
     claude = root / "CLAUDE.md"
     if claude.is_file() and claude.read_text(encoding="utf-8").strip() != "@AGENTS.md":
         problems.append("CLAUDE.md must contain only @AGENTS.md")
-    for relative in ("AGENTS.md", "docs/agents/README.md"):
+    for relative in (
+        "AGENTS.md",
+        "docs/agents/README.md",
+        "docs/agents/development.md",
+        "docs/agents/collaboration.md",
+        "docs/agents/quality-gates.md",
+    ):
         path = root / relative
         if not path.is_file():
             continue

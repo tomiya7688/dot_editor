@@ -76,7 +76,7 @@ class AgentPolicyTests(unittest.TestCase):
     #   責務: [test_broken_link: 参照切れのルール索引を拒否する]
     #   処理: [
     #     1: 一時リポジトリへ最小必須ファイルを作る
-    #     2: 不在の参照先が検出されることを確認する
+    #     2: 入口と開発者専用の文書にある不在の参照先を検出する
     #   ]
     #   引数: [self: テストケース]
     #   戻り値: [なし、不一致なら失敗]
@@ -91,6 +91,11 @@ class AgentPolicyTests(unittest.TestCase):
             (root / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
             (root / "README.md").write_text("# User guide\n", encoding="utf-8")
             (root / "AGENTS.md").write_text("[missing](nothing.md)\n", encoding="utf-8")
+            self.assertTrue(any("broken/outside" in item for item in check_repository(root)))
+            (root / "AGENTS.md").write_text("shared policy\n", encoding="utf-8")
+            (root / "docs" / "agents" / "development.md").write_text(
+                "[bad](missing-internal.md)\n", encoding="utf-8"
+            )
             self.assertTrue(any("broken/outside" in item for item in check_repository(root)))
 
     # {
