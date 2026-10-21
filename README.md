@@ -1,18 +1,10 @@
 # Hyper Dot Editor
 
-Claude CodeとCodexの共同開発は [AGENTS.md](AGENTS.md) を入口にしてください。詳細ルールは [コンテキスト索引](docs/agents/README.md) に分割し、PRとCIで共通検証します。
-
 Hyper Dot Editor は、GUI と CLI から同じバックエンドを使ってドット絵を編集できるピクセルアートエディタです。バックエンドは複数のゲーム向け開発者ツールから共通利用できることを前提にし、レイヤー、セル分割、任意解像度の非破壊切替、JSONプロジェクト保存、PNG書き出しを扱います。
-
-## 実装の正本と移行方針
-
-製品バックエンドの正本は `rust/` のRust実装とします。Python版は既存GUI・参照実装として残し、移行中はプロジェクトJSONや描画結果など外部から確認できる振る舞いで互換性を検証します。仕様や互換テストに差異がある場合はRust Coreを基準にします。
-
-移行の順序はRust Core、Rust CLI、Rust配布物です。GUIのRust化は初期移行の必須条件にしません。Rust workspaceは現在基盤作成中であり、機能移植の完了を示すものではありません。
 
 ## 必要環境
 
-- Python 3.10〜3.14（CIで全バージョンを必須検証）
+- Python 3.10〜3.14
 - Pillow（パッケージ依存は `pyproject.toml` で管理）
 - GUIとGUI関連テストにはTkinter。バックエンドとCLIだけの利用にはGUI起動は不要です。
 
@@ -53,7 +45,7 @@ python -m pixel_cli inspect --project quickstart.json --sample 1 1 --child 1 0
 python -m pixel_cli export --project quickstart.json --output quickstart.png --size 256
 ```
 
-`inspect` のJSONに `"rgba": [0, 0, 255, 255]` が含まれれば子セルの編集結果を確認できます。`quickstart.json` は後で編集を再開するためのレイヤー・細部情報付き作品、`quickstart.png` は256×256の合成画像です。実行例はCIでも実際に起動して検証します。
+`inspect` のJSONに `"rgba": [0, 0, 255, 255]` が含まれれば子セルの編集結果を確認できます。`quickstart.json` は後で編集を再開するためのレイヤー・細部情報付き作品、`quickstart.png` は256×256の合成画像です。
 
 ## GUIを起動する
 
@@ -76,7 +68,7 @@ Altを押すとメニューバーに入り、表示中の括弧付き英字を�
 キャンバスとサイドバーの切替はF6/Shift+F6です。サイドバー内の操作要素はTab/Shift+Tabで巡回し、フォーカスが表示範囲外に進むと自動スクロールします。
 キーボードフォーカスは水色の枠で表示します。メニューバーへは従来どおりAltで入ります。
 Ctrl+Z/Ctrl+Yはエディター本体にフォーカスがあるときだけ作品のUndo/Redoを実行します。入力欄やダイアログでは文字編集側のキー操作を優先します。
-キャンバス内の矢印キー移動とSpace描画はIssue #28/#29で扱います。
+キャンバス内の矢印キー移動とSpace描画は現在利用できません。
 
 ## Python Command API
 
@@ -93,33 +85,6 @@ commands.export_png("exported.png", output_resolution=(256, 256))
 ```
 
 文字列ベースの呼び出しには `commands.execute("paint", ...)` も利用できます。詳細は [共通Command API](docs/Command_API.md) を参照してください。
-
-## ソース構成と開発ツール
-
-- `src/`: GUI・CLI・共通バックエンド。既存のPython import名は維持しています。
-- `rust/`: 製品正本へ移行するRust workspace。RGBAラスタ、細部保持・破棄、4子セル分割・描画、Undo/Redo付きCanvasを整備しています。Canvasの4近傍塗りつぶしと長方形の領域分割は、それぞれ全体を1回でUndoできます。
-  単一CanvasのJSON読み込みは `Canvas::from_json()`（version 1・2）、書き出しは `Canvas::to_json()`（version 2）で利用できます。Pythonとの往復互換は `.venv/Scripts/python.exe scripts/test_rust_json_compat.py` で検証できます。レイヤー付きJSONとPNG出力は移植中です。
-- `tests/`: 自動テスト。
-- `scripts/`: 環境構築・評価・配布ビルド。
-- `tools/tomiya_code_atlas/`: 図生成用の外部Gitサブモジュール。
-- `dist/`: ローカルの配布成果物（Git対象外）。
-
-クラス図・シーケンス図は独自生成器ではなく [Tomiya Code Atlas](https://github.com/tomiya7688/tomiya_code_atlas) を使用します。
-導入・実行方法は [tools/README.md](tools/README.md) を参照してください。
-
-## Rust Core のビルド・テスト
-
-Rustコアの開発には **Rust stableツールチェーン（cargo / rustfmt / clippy）** が別途必要です。Pythonのセットアップと混同しないよう、Rust workspaceの確認はリポジトリ直下から次を実行します。
-
-```bash
-cargo fmt --manifest-path rust/Cargo.toml -- --check
-cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features -- -D warnings
-cargo test --manifest-path rust/Cargo.toml --workspace
-cargo build --manifest-path rust/Cargo.toml --workspace
-python scripts/test_rust_json_compat.py
-```
-
-最後の互換性テストはセットアップ済みのPython参照実装とRust Coreで、双方向のJSON互換性を検証します。Rust CLIやRust製配布物は移行途中であり、現在の `python -m pixel_cli` およびWindows配布EXEはPythonベースです。
 
 ## CLIを使う
 
@@ -221,44 +186,19 @@ JSONの重複キー、非標準数値（NaN・Infinity）、128階層を超え�
 
 解像度は1辺1〜4096、1ラスタ最大4,194,304画素です。保持パッチ等にも安全上限があります。上限超過時は無断で情報を捨てずにエラーにします。詳細は[データモデル・制限](docs/Non_destructive_resolution.md)を参照してください。
 
-## Windows配布ビルド
+## Windows配布版を利用する
 
-Windows x64環境で、先に[Windowsのセットアップ](#windows-powershell)を実行して `.venv` を作成してください。ビルド用依存はビルドスクリプトが `requirements-build.txt` からインストールします。
+Windows x64向けの `HyperDotEditor-windows-x64.zip` を展開し、`DotEditor/DotEditor.exe` を起動してください。CLIは `DotEditorCLI/DotEditorCLI.exe` です。各フォルダ内の `_internal` は削除しないでください。
 
+## 起動を確認する
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
-```
+GUIウィンドウを開かず起動状態を確認したい場合は `python -m dot_editor --smoke-test` を実行します。このコマンドではGUIの画面操作をテストしません。
 
-Pythonパッケージ（wheel・sdist）と、Pythonのインストール不要なWindows x64配布物を生成します。
-`dist/HyperDotEditor-windows-x64.zip` を展開し、`DotEditor/DotEditor.exe` を起動してください。
-CLIは `DotEditorCLI/DotEditorCLI.exe` です。各フォルダの `_internal` を含めて配布してください。
-ビルド時にCLIの保存・編集・PNG出力とGUI実行ファイルの非GUIスモーク検査を行います。
-画面を操作するGUIテストとは異なります。既存の同名 `dist` 成果物は再ビルドで更新されます。
+## 仕様・APIリファレンス
 
-GitHub ActionsのWindowsジョブでもビルドし、配布ZIPとwheel・sdistをArtifactsへアップロードします。
-
-## 自動評価
-
-GUIウィンドウを開かない最低限の起動確認には `python -m dot_editor --smoke-test` を使えます。これは画面操作テストの代わりにはなりません。
-
-
-```bash
-python scripts/evaluate.py
-python -m unittest discover -s tests
-```
-
-push / pull request ごとに Python 3.10 / 3.11 / 3.12 / 3.13 / 3.14 の全ジョブで評価・回帰テストを実行します。通常の自動評価はGUIウィンドウを起動しません。
-
-## 開発資料
-
-- [開発ワークフロー](doc/ワークフロー/ワークフロー.md)
-- [開発予定](docs/開発予定.md)
-- [コーディングルール](docs/コーディングルール.md)
-- [提案書](docs/提案.md)
 - [共通Command API](docs/Command_API.md)
-- [セル分割回帰仕様](docs/Refinement_regressions.md)
-- [非破壊解像度の仕様](docs/Non_destructive_resolution.md)
+- [非破壊解像度と保存形式](docs/Non_destructive_resolution.md)
+- [CLI細部編集の仕様](docs/CUI_detail_operations.md)
 
 ## ライセンス
 

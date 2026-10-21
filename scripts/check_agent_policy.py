@@ -13,9 +13,16 @@ REQUIRED = (
     "AGENTS.md", "CLAUDE.md", "コーディング規約.md",
     "doc/ワークフロー/ワークフロー.md", "docs/agents/README.md",
     "docs/agents/collaboration.md", "docs/agents/quality-gates.md",
+    "docs/agents/development.md",
     ".github/pull_request_template.md",
 )
 SECTIONS = ("Issue", "Summary", "Validation", "Risks", "Handoff")
+USER_DOCS = ("README.md",)
+DEVELOPER_ONLY_REFERENCES = re.compile(
+    r"AGENTS\.md|CLAUDE\.md|docs/agents/|doc/ワークフロー/|"
+    r"コーディング規約\.md|Claude Code|Codex|共同開発|開発ワークフロー",
+    re.IGNORECASE,
+)
 
 
 # {
@@ -23,7 +30,7 @@ SECTIONS = ("Issue", "Summary", "Validation", "Risks", "Handoff")
 #   処理: [
 #     1: 必須ファイルが存在するか調べる
 #     2: AGENTS.mdのサイズとClaude用の単一参照を確認する
-#     3: 短い索引中のローカルリンクが実在するか調べる
+#     3: 索引の参照先と利用者向け文書への開発ルール混入を検査する
 #   ]
 #   引数: [root: 対象リポジトリのルートパス]
 #   戻り値: [違反を表すメッセージのリスト]
@@ -54,6 +61,16 @@ def check_repository(root: Path) -> list[str]:
             destination = (path.parent / target.split("#", 1)[0]).resolve()
             if not destination.is_relative_to(root.resolve()) or not destination.exists():
                 problems.append(f"{relative}: broken/outside local link: {target}")
+    for relative in USER_DOCS:
+        guide = root / relative
+        if not guide.is_file():
+            problems.append(f"missing user guide: {relative}")
+            continue
+        for match in DEVELOPER_ONLY_REFERENCES.finditer(guide.read_text(encoding="utf-8")):
+            problems.append(
+                f"{relative}: developer-only work rule/reference at char {match.start()}: "
+                f"{match.group()}"
+            )
     return problems
 
 

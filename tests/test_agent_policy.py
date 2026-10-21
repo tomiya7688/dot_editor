@@ -65,6 +65,7 @@ class AgentPolicyTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("shared policy\n", encoding="utf-8")
             (root / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+            (root / "README.md").write_text("# User guide\n", encoding="utf-8")
             self.assertEqual(check_repository(root), [])
             (root / "AGENTS.md").write_text("A" * 2401, encoding="utf-8")
             self.assertTrue(any("exceeds" in item for item in check_repository(root)))
@@ -88,5 +89,33 @@ class AgentPolicyTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("shared policy\n", encoding="utf-8")
             (root / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+            (root / "README.md").write_text("# User guide\n", encoding="utf-8")
             (root / "AGENTS.md").write_text("[missing](nothing.md)\n", encoding="utf-8")
             self.assertTrue(any("broken/outside" in item for item in check_repository(root)))
+
+    # {
+    #   責務: [test_user_guide_isolated_from_agent_rules: 利用者向け案内への内部ルール混入を拒否する]
+    #   処理: [
+    #     1: 共有規約を備えた一時リポジトリを作る
+    #     2: 通常の利用者向け案内は通過することを確認する
+    #     3: AGENTSリンクやClaude向け手順を案内に入れると検出する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、検査結果が一致しない場合は失敗]
+    # }
+    def test_user_guide_isolated_from_agent_rules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in REQUIRED:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("shared policy\n", encoding="utf-8")
+            (root / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+            guide = root / "README.md"
+            guide.write_text("# 利用者向け\n\n起動と操作の説明\n", encoding="utf-8")
+            self.assertEqual(check_repository(root), [])
+            guide.write_text("# 利用者向け\n\n[開発規則](AGENTS.md)\n", encoding="utf-8")
+            self.assertTrue(any("developer-only" in item for item in check_repository(root)))
+            guide.write_text("# 利用者向け\n\nClaude CodeとCodexの共同開発\n", encoding="utf-8")
+            self.assertTrue(any("developer-only" in item for item in check_repository(root)))
+

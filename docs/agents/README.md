@@ -6,7 +6,7 @@ Use progressive disclosure: `AGENTS.md` is the compact entrypoint, and this tabl
 | --- | --- |
 | Any code or docs | [R01–R20](../../コーディング規約.md), [workflow](../../doc/ワークフロー/ワークフロー.md) |
 | Agent handoffs, branches, PRs | [collaboration](collaboration.md) |
-| Tests, CI, releases | [quality gates](quality-gates.md) |
+| Tests, CI, releases | [quality gates](quality-gates.md), [build and repository guide](development.md) |
 | Rust retained detail, JSON, resolution | [resolution specification](../Non_destructive_resolution.md) |
 | GUI, Python API or CLI | [Command API](../Command_API.md), [CLI detail operations](../CUI_detail_operations.md) |
 | Refined cell behavior | [regressions](../Refinement_regressions.md) |
