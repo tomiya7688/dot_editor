@@ -1,6 +1,9 @@
 use crate::rational_coordinate::RationalCoordinate as Coordinate;
 use crate::resolution::Resolution;
 
+#[cfg(test)]
+mod tests;
+
 /// {
 ///   責務: [FieldBounds: 正規化した有理座標で半開の長方形を表す]
 ///   フィールド: [
@@ -41,12 +44,13 @@ impl FieldBounds {
     ///   ]
     ///   引数: [
     ///     grid: 座標を解釈するグリッド
-    ///     x: 横座標
-    ///     y: 縦座標
+    ///     x: gridの幅未満の横座標。呼び出し元で検証する
+    ///     y: gridの高さ未満の縦座標。呼び出し元で検証する
     ///   ]
     ///   戻り値: [セルの半開領域]
     /// }
     pub(crate) fn cell(grid: Resolution, x: u32, y: u32) -> Self {
+        // 内部ヘルパーのため、公開入口で検証済みのセルから境界を構成する。
         Self {
             left: Coordinate::new(u64::from(x), u64::from(grid.width())),
             top: Coordinate::new(u64::from(y), u64::from(grid.height())),
@@ -102,11 +106,12 @@ impl FieldBounds {
     ///   ]
     ///   引数: [
     ///     self: 現在の値・状態
-    ///     cut: 除外する長方形
+    ///     cut: selfとの交差から得た、self内の正の面積を持つ長方形
     ///   ]
     ///   戻り値: [残り領域のイテレータ]
     /// }
     pub(crate) fn outside(self, cut: Self) -> impl Iterator<Item = Self> {
+        // 上下を全幅、左右を中央の帯に限定し、残り領域を重複させない。
         [
             Self {
                 bottom: cut.top,
