@@ -25,18 +25,30 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_environment.ps1
 .venv\Scripts\Activate.ps1
 ```
 
-`.venv` を作成し、依存関係をインストールしてから評価を実行します。個人PC固有のPythonパスは不要です。依存関係のインストールを省く場合は `-SkipInstall` を付けてください。
+`.venv` を作成し、安全なpip・certifiへ更新してから依存関係のインストールと評価を実行します。個人PC固有のPythonパスは不要です。更新と依存取得を省く場合は `-SkipInstall` を付けてください。この場合もtrust検査は行い、古い環境では停止します。
 
 ### macOS / Linux
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
+python scripts/python_trust.py
 python -m pip install -e .
 ```
 
 Windowsで手動セットアップする場合は、仮想環境の有効化を `.venv\Scripts\Activate.ps1` に読み替えてください。
+
+証明書インシデントへの対策として、bootstrapは[Python公式告知](https://discuss.python.org/t/109576)のSHA-256付きwheelで必要に応じてpipを更新します。新しい安定版pipは維持しますが、不明な版形式・開発版は固定wheelへの更新対象になります。単体certifiは更新後のpipでTLS検証を行い、公開PyPIから最低版以上を取得します。certifiの版・wheel hashは固定していません。
+
+pip同梱・単体の実CA bundle、Python既定SSLContextの読込済みroot、OpenSSL既定capath内のhash名ファイルに対象rootが残る場合は停止します。未対応のPEMラベルや追加の `SSL_CERT_DIR` 指定も安全とみなさず停止します。確認だけ行う場合は `python scripts/python_trust.py --check` を実行してください。実行したPython、版、bundleの実パス・件数・hashと既定capathの検査件数がJSONで表示されます。
+
+この検査は対象rootのfingerprintと最低版の確認であり、OS全体・独自CA設定・任意の代替チェーンの安全性を保証しません。失敗した場合は診断に従って環境を更新し、再実行してください。TLS検証を無効化して回避しないでください。CIはビルドとスモークテストを継続しますが、署名・attestation対策（Issue #55）の完了までは未署名成果物をアップロードしません。過去の配布物の再検証・再公開は別途対応します。
+
+GitHub-hostedのUbuntu CIでは、runnerのOS設定で選択中の証明書を実DERで照合し、対象rootだけを無効化してCA bundleを再生成します。これは使い捨てrunner限定の処理です。ローカルPC・self-hosted runnerの証明書設定は自動変更しません。分離ビルドが別に作成するPython環境や、過去の成果物内の信頼設定の監査は、この検査とは別に必要です。
+
+runnerのCA選択設定に欠落ファイル・不正PEM・余分な空白・範囲外パスがあれば、勝手に無視せずCIを停止します。対象rootの無効化後も、ローカル追加CAなどに対象rootが残れば後続の検査で停止します。
+
+GitHub-hostedのWindows CIでは、LocalMachine・CurrentUserのRoot/CAストアを実DERのSHA-256で照合します。一致した証明書だけをDisallowedへ登録して信頼側から除去し、新しいPythonプロセスで再検査します。この修復も使い捨てrunner限定で、ローカルPCでは実行しません。
 
 ## 最短の動作確認（CLI）
 

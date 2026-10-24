@@ -5,9 +5,17 @@ $Python = Join-Path $ProjectRoot ".venv/Scripts/python.exe"
 if (-not (Test-Path -LiteralPath $Python)) { throw "Run scripts/setup_environment.ps1 first." }
 Push-Location $ProjectRoot
 try {
+    # 新規venvでも、依存取得より先にpip自身の信頼ストアを更新する。
+    $TrustArguments = @()
+    if ($SkipInstall) { $TrustArguments = @("--check") }
+    & $Python (Join-Path $PSScriptRoot "python_trust.py") @TrustArguments
+    if ($LASTEXITCODE -ne 0) { throw "Python trust verification failed." }
     if (-not $SkipInstall) {
         & $Python -m pip install -e . -r requirements-build.txt
         if ($LASTEXITCODE -ne 0) { throw "Build dependency installation failed." }
+        # 依存解決が信頼パッケージを置き換えていないことをビルド直前にも確認する。
+        & $Python (Join-Path $PSScriptRoot "python_trust.py") --check
+        if ($LASTEXITCODE -ne 0) { throw "Python trust verification failed after installation." }
     }
     & $Python -m build
     if ($LASTEXITCODE -ne 0) { throw "Python package build failed." }

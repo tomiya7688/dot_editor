@@ -19,6 +19,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+      - name: Bootstrap Python trust
+        # runnerイメージのOS側に残る対象rootを無効化し、検査前に実bundleを再生成する。
+        # ローカルPCやself-hosted runnerでは実行しない。
+        # GitHub提供の環境名だけをsudoへ引き継ぎ、他の資格情報は渡さない。
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" -B scripts/prepare_ci_ca.py
+          python scripts/python_trust.py
       - name: Test declaration comment checker
         run: python -m unittest discover -s tests -p test_declaration_comments.py
       - name: Audit migrated declarations
@@ -55,7 +62,11 @@ jobs:
           python-version: "3.14"
 
       - name: Install Python reference dependencies
-        run: python -m pip install -e .
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" -B scripts/prepare_ci_ca.py
+          python scripts/python_trust.py
+          python -m pip install -e .
+          python scripts/python_trust.py --check
 
       - name: Verify bidirectional project JSON compatibility
         run: python scripts/test_rust_json_compat.py
@@ -86,8 +97,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" -B scripts/prepare_ci_ca.py
+          python scripts/python_trust.py
           python -m pip install -e .
+          python scripts/python_trust.py --check
 
       - name: Run evaluation
         run: python scripts/evaluate.py
@@ -107,14 +120,11 @@ jobs:
       - name: Prepare environment
         shell: pwsh
         run: python -m venv .venv
+      - name: Prepare Windows runner trust
+        shell: pwsh
+        run: ./scripts/prepare_ci_windows_ca.ps1
       - name: Build and smoke-test distribution
         shell: pwsh
         run: ./scripts/build_windows.ps1
-      - uses: actions/upload-artifact@v4
-        with:
-          name: HyperDotEditor-windows-x64
-          path: |
-            dist/HyperDotEditor-windows-x64.zip
-            dist/*.whl
-            dist/*.tar.gz
-          if-no-files-found: error
+      # #55の署名・attestation gateが完成するまで、未署名配布物は公開しない。
+      # ビルドとスモークテストは上で実行し、省略しない。
