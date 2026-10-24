@@ -13,6 +13,9 @@ try {
     if (-not $SkipInstall) {
         & $Python -m pip install -e . -r requirements-build.txt
         if ($LASTEXITCODE -ne 0) { throw "Build dependency installation failed." }
+        # 依存解決が信頼パッケージを置き換えていないことをビルド直前にも確認する。
+        & $Python (Join-Path $PSScriptRoot "python_trust.py") --check
+        if ($LASTEXITCODE -ne 0) { throw "Python trust verification failed after installation." }
     }
     & $Python -m build
     if ($LASTEXITCODE -ne 0) { throw "Python package build failed." }

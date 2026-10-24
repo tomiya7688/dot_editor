@@ -60,6 +60,7 @@ jobs:
         run: |
           python scripts/python_trust.py
           python -m pip install -e .
+          python scripts/python_trust.py --check
 
       - name: Verify bidirectional project JSON compatibility
         run: python scripts/test_rust_json_compat.py
@@ -92,6 +93,7 @@ jobs:
         run: |
           python scripts/python_trust.py
           python -m pip install -e .
+          python scripts/python_trust.py --check
 
       - name: Run evaluation
         run: python scripts/evaluate.py

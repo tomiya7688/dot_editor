@@ -59,6 +59,8 @@ def inspect_ca_bundle(path):
     # ラベルや版番号だけでなく、証明書本体のSHA-256で対象rootを識別する。
     path = Path(path)
     content = path.read_bytes()
+    if any(label != b"CERTIFICATE" for label in re.findall(rb"-----BEGIN ([^-]+)-----", content)):
+        raise ValueError(f"Unsupported PEM label in CA bundle: {path}")
     certificates = re.findall(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
                               content.decode("ascii"), re.S)
     if not certificates:
@@ -87,17 +89,46 @@ def inspect_pip_bundle():
 
 
 # {
-#   責務: [inspect_default_roots: Python既定SSLContextに対象rootがないことを検査する]
-#   処理: [1: 既定の証明書集合を読みfingerprintを比較する]
+#   責務: [inspect_default_ca_directories: 既定capathの遅延読込対象を検査する]
+#   処理: [1: OpenSSLの既定ディレクトリを解決する, 2: hash名の証明書ファイルを検査する]
 #   引数: []
-#   戻り値: [読み込んだ件数。対象root混入時は例外]
+#   戻り値: [ディレクトリごとの検査件数。読取・PEM・対象rootの検査失敗時は例外]
+# }
+def inspect_default_ca_directories():
+    # Contextの列挙には未使用capathが含まれないため、非再帰で実ファイルを検査する。
+    paths = ssl.get_default_verify_paths()
+    configured = os.environ.get(paths.openssl_capath_env, paths.openssl_capath)
+    reports = []
+    for directory in configured.split(os.pathsep):
+        if not directory:
+            continue
+        path = Path(directory)
+        if not path.exists():
+            continue
+        certificate_count = 0
+        file_count = 0
+        for entry in path.iterdir():
+            # OpenSSLのhash形式だけが遅延参照される。CRLと通常名の重複を数えない。
+            if re.fullmatch(r"[0-9a-fA-F]{8}\.\d+", entry.name):
+                certificate_count += inspect_ca_bundle(entry)["certificates"]
+                file_count += 1
+        reports.append({"path": str(path.resolve()), "files": file_count,
+                        "certificates": certificate_count})
+    return reports
+
+
+# {
+#   責務: [inspect_default_roots: 読込済み既定rootと遅延読込のcapathを検査する]
+#   処理: [1: 既定の証明書集合のfingerprintを比較する, 2: capathの実ファイルを検査する]
+#   引数: []
+#   戻り値: [読込済み件数とcapathの検査記録。検査失敗時は例外]
 # }
 def inspect_default_roots():
     # OSを変更せず、このContextに読み込まれた集合だけを検査する。
     roots = ssl.create_default_context().get_ca_certs(binary_form=True)
     if any(hashlib.sha256(root).hexdigest() == BAD_ROOT for root in roots):
         raise ValueError("Affected emSign root remains in Python default SSLContext")
-    return len(roots)
+    return {"loaded_certificates": len(roots), "ca_directories": inspect_default_ca_directories()}
 
 
 # {
@@ -131,7 +162,7 @@ def audit_environment():
     certifi = importlib.import_module("certifi")
     return {"python": sys.executable, "versions": versions,
             "pip_bundle": inspect_pip_bundle(), "certifi_bundle": inspect_ca_bundle(certifi.where()),
-            "default_context_certificates": inspect_default_roots(), "ca_overrides": inspect_ca_overrides()}
+            "default_trust": inspect_default_roots(), "ca_overrides": inspect_ca_overrides()}
 
 
 # {
@@ -180,7 +211,7 @@ def main(argv=None):
         report = audit_environment() if arguments.check else bootstrap_environment()
         print(json.dumps(report, ensure_ascii=False))
         return 0
-    except (OSError, ValueError, ImportError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, ImportError, AttributeError, subprocess.SubprocessError) as error:
         print(f"Python trust verification failed: {error}", file=sys.stderr)
         return 2
 

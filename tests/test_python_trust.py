@@ -32,6 +32,7 @@ class PythonTrustTests(unittest.TestCase):
             self.assertFalse(trust.meets_minimum(version, (26, 2, 2)))
         for version in ("26.2.2", "26.3", "27.0"):
             self.assertTrue(trust.meets_minimum(version, (26, 2, 2)))
+        self.assertRegex(trust.BAD_ROOT, r"^[0-9a-f]{64}$")
 
     # {
     #   責務: [test_bundle_checks_der_not_labels: ラベルがなくてもDER本体で対象rootを検出する]
@@ -59,6 +60,37 @@ class PythonTrustTests(unittest.TestCase):
                               encoding="ascii")
             with self.assertRaises(ssl.SSLError):
                 trust.inspect_ca_bundle(bundle)
+            bundle.write_text(pem + "\n-----BEGIN TRUSTED CERTIFICATE-----\nYWJj\n"
+                              "-----END TRUSTED CERTIFICATE-----\n", encoding="ascii")
+            with self.assertRaisesRegex(ValueError, "Unsupported PEM label"):
+                trust.inspect_ca_bundle(bundle)
+
+    # {
+    #   責務: [test_default_capath_checks_unloaded_files: 既定Contextに未読込のhash名証明書も検査する]
+    #   処理: [1: 既定capathを一時領域へ差し替える, 2: hash名だけの検査と失敗伝播を確認する]
+    #   引数: [self: テストの実行状態]
+    #   戻り値: [なし。不一致ならテスト失敗]
+    # }
+    def test_default_capath_checks_unloaded_files(self):
+        # 実OSの証明書を変更せず、遅延読込と無関係なファイル・CRLを区別する。
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            for name in ("1234abcd.0", "1234abcd.1", "ignored.pem", "1234abcd.r0"):
+                (path / name).touch()
+            paths = ssl.get_default_verify_paths()._replace(openssl_capath=directory)
+            with patch.dict(trust.os.environ, {}, clear=True), \
+                 patch.object(trust.ssl, "get_default_verify_paths", return_value=paths), \
+                 patch.object(trust.ssl, "create_default_context") as context, \
+                 patch.object(trust, "inspect_ca_bundle", return_value={"certificates": 1}) as inspect:
+                context.return_value.get_ca_certs.return_value = []
+                report = trust.inspect_default_roots()
+                self.assertEqual(report["loaded_certificates"], 0)
+                self.assertEqual(report["ca_directories"][0]["certificates"], 2)
+                self.assertEqual({call.args[0].name for call in inspect.call_args_list},
+                                 {"1234abcd.0", "1234abcd.1"})
+                inspect.side_effect = ValueError("Affected emSign root")
+                with self.assertRaisesRegex(ValueError, "Affected emSign root"):
+                    trust.inspect_default_roots()
 
     # {
     #   責務: [test_pip_upgrade_precedes_other_network_access: 旧pip更新と検証がcertifi取得より先であることを確認する]
@@ -95,6 +127,44 @@ class PythonTrustTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 trust.bootstrap_environment()
             install.assert_not_called()
+
+    # {
+    #   責務: [test_newer_pip_is_preserved_on_success: 新しい安定版pipを再導入せずcertifi取得と監査を完了する]
+    #   処理: [1: 新しいpipの正常経路を実行する, 2: certifiだけの取得と最終結果を確認する]
+    #   引数: [self: テストの実行状態]
+    #   戻り値: [なし。不一致ならテスト失敗]
+    # }
+    def test_newer_pip_is_preserved_on_success(self):
+        # pipを戻さないことと、必要なcertifi更新を省かないことを同時に確認する。
+        with patch.object(trust, "installed_version", return_value="27.0"), \
+             patch.object(trust, "inspect_pip_bundle"), \
+             patch.object(trust, "inspect_default_roots"), \
+             patch.object(trust, "inspect_ca_overrides"), \
+             patch.object(trust, "install_requirement") as install, \
+             patch.object(trust, "audit_environment", return_value={"verified": True}) as audit:
+            self.assertEqual(trust.bootstrap_environment(), {"verified": True})
+            install.assert_called_once_with("certifi>=2026.10.19")
+            audit.assert_called_once_with()
+
+    # {
+    #   責務: [test_old_pip_stops_at_each_failed_gate: 旧pip更新後に検査が失敗したらcertifiを取得しない]
+    #   処理: [1: 各検査を個別に失敗させる, 2: 取得がpipの固定wheelだけであることを確認する]
+    #   引数: [self: テストの実行状態]
+    #   戻り値: [なし。不一致ならテスト失敗]
+    # }
+    def test_old_pip_stops_at_each_failed_gate(self):
+        # 各ゲートの失敗を独立させ、ネットワークにも実際の証明書にも依存させない。
+        for failed_gate in ("inspect_pip_bundle", "inspect_default_roots", "inspect_ca_overrides"):
+            with self.subTest(gate=failed_gate), \
+                 patch.object(trust, "installed_version", return_value="26.2.1"), \
+                 patch.object(trust, "inspect_pip_bundle"), \
+                 patch.object(trust, "inspect_default_roots"), \
+                 patch.object(trust, "inspect_ca_overrides"), \
+                 patch.object(trust, failed_gate, side_effect=ValueError("unsafe")), \
+                 patch.object(trust, "install_requirement") as install:
+                with self.assertRaisesRegex(ValueError, "unsafe"):
+                    trust.bootstrap_environment()
+                install.assert_called_once_with(trust.PIP_WHEEL)
 
     # {
     #   責務: [test_check_mode_never_installs: 読み取り専用検査が更新を行わないことを確認する]
@@ -171,7 +241,10 @@ class PythonTrustTests(unittest.TestCase):
     def test_setup_and_ci_keep_the_security_gate(self):
         # #55で署名gateを実装する際は、この暫定公開停止の期待値も見直す。
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertEqual(workflow.count("python scripts/python_trust.py"), 3)
+        self.assertEqual(workflow.count("run: python scripts/python_trust.py"), 1)
+        self.assertEqual(workflow.count("python scripts/python_trust.py --check"), 2)
+        self.assertIn("run: ./scripts/build_windows.ps1", workflow)
+        self.assertIn("python -m unittest discover -s tests", workflow)
         self.assertNotIn("actions/upload-artifact", workflow)
         for name in ("setup_environment.ps1", "build_windows.ps1"):
             content = (ROOT / "scripts" / name).read_text(encoding="utf-8")

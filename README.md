@@ -38,7 +38,9 @@ python -m pip install -e .
 
 Windowsで手動セットアップする場合は、仮想環境の有効化を `.venv\Scripts\Activate.ps1` に読み替えてください。
 
-証明書インシデントへの対策として、bootstrapは[Python公式告知](https://discuss.python.org/t/109576)のSHA-256付きwheelで必要に応じてpipを更新し、単体certifiを取得します。pip同梱・単体の実CA bundleとPython既定SSLContextに対象rootが残る場合は停止します。確認だけ行う場合は `python scripts/python_trust.py --check` を実行してください。実行したPython、版、bundleの実パス・件数・hashがJSONで表示されます。
+証明書インシデントへの対策として、bootstrapは[Python公式告知](https://discuss.python.org/t/109576)のSHA-256付きwheelで必要に応じてpipを更新します。新しい安定版pipは維持しますが、不明な版形式・開発版は固定wheelへの更新対象になります。単体certifiは更新後のpipでTLS検証を行い、公開PyPIから最低版以上を取得します。certifiの版・wheel hashは固定していません。
+
+pip同梱・単体の実CA bundle、Python既定SSLContextの読込済みroot、OpenSSL既定capath内のhash名ファイルに対象rootが残る場合は停止します。未対応のPEMラベルや追加の `SSL_CERT_DIR` 指定も安全とみなさず停止します。確認だけ行う場合は `python scripts/python_trust.py --check` を実行してください。実行したPython、版、bundleの実パス・件数・hashと既定capathの検査件数がJSONで表示されます。
 
 この検査は対象rootのfingerprintと最低版の確認であり、OS全体・独自CA設定・任意の代替チェーンの安全性を保証しません。失敗した場合は診断に従って環境を更新し、再実行してください。TLS検証を無効化して回避しないでください。CIはビルドとスモークテストを継続しますが、署名・attestation対策（Issue #55）の完了までは未署名成果物をアップロードしません。過去の配布物の再検証・再公開は別途対応します。
 
