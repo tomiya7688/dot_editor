@@ -30,14 +30,15 @@ def plan_distrust(configuration, certificate_directory):
             certificate_path = (directory / name).resolve()
             if not certificate_path.is_relative_to(directory):
                 raise ValueError(f"CA path is outside the distribution directory: {name}")
-            content = certificate_path.read_text(encoding="ascii")
-            certificates = re.findall(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
+            content = certificate_path.read_bytes()
+            certificates = re.findall(rb"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
                                       content, re.S)
             if len(certificates) != 1:
                 raise ValueError(f"Expected one PEM certificate: {certificate_path}")
             # Ubuntuの仕様は1ファイル1証明書。比較前にOpenSSLで構造も検証する。
-            ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT).load_verify_locations(cadata=content)
-            fingerprint = hashlib.sha256(ssl.PEM_cert_to_DER_cert(certificates[0])).hexdigest()
+            certificate = certificates[0].decode("ascii")
+            ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT).load_verify_locations(cadata=certificate)
+            fingerprint = hashlib.sha256(ssl.PEM_cert_to_DER_cert(certificate)).hexdigest()
             if fingerprint == BAD_ROOT:
                 line = "!" + line
                 disabled.append(name)
@@ -55,7 +56,7 @@ def replace_configuration(configuration_path, content):
     # 書込途中の設定をupdate-ca-certificatesへ渡さない。失敗時は一時ファイルだけ除去する。
     temporary_path = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="ascii", newline="",
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="",
                                          dir=configuration_path.parent, delete=False) as temporary:
             temporary_path = Path(temporary.name)
             temporary.write(content)
@@ -86,7 +87,7 @@ def main():
         configuration_path = Path("/etc/ca-certificates.conf")
         if configuration_path.is_symlink():
             raise ValueError("CI CA configuration must not be a symlink")
-        original = configuration_path.read_text(encoding="ascii")
+        original = configuration_path.read_text(encoding="utf-8")
         updated, disabled = plan_distrust(original, Path("/usr/share/ca-certificates"))
         if disabled:
             replace_configuration(configuration_path, updated)

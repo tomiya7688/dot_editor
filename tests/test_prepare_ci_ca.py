@@ -37,6 +37,9 @@ class PrepareCiCaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path / "root.crt").write_text(pem, encoding="ascii")
+            # Ubuntuの選択設定には非ASCIIの証明書名もある。PEM外の注釈も内容と区別する。
+            (path / "ルート.crt").write_text("# 公開CA\n" + pem, encoding="utf-8")
+            self.assertEqual(repair.plan_distrust("ルート.crt\n", path), ("ルート.crt\n", []))
             original = "# comment\n!old.crt\n\nroot.crt\n"
             self.assertEqual(repair.plan_distrust(original, path), (original, []))
             fingerprint = hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem)).hexdigest()
@@ -45,6 +48,7 @@ class PrepareCiCaTests(unittest.TestCase):
                 self.assertEqual(updated, "# comment\n!old.crt\n\n!root.crt\n")
                 self.assertEqual(disabled, ["root.crt"])
                 self.assertEqual(repair.plan_distrust(updated, path), (updated, []))
+                self.assertEqual(repair.plan_distrust("ルート.crt\n", path), ("!ルート.crt\n", ["ルート.crt"]))
             with self.assertRaisesRegex(ValueError, "outside"):
                 repair.plan_distrust("../escape.crt\n", path)
             with self.assertRaises(FileNotFoundError):
@@ -134,10 +138,10 @@ class PrepareCiCaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "ca.conf"
             path.write_text("old\n", encoding="ascii")
-            repair.replace_configuration(path, "new\n")
-            self.assertEqual(path.read_text(encoding="ascii"), "new\n")
+            repair.replace_configuration(path, "新しい設定\n")
+            self.assertEqual(path.read_text(encoding="utf-8"), "新しい設定\n")
             with patch.object(repair.os, "replace", side_effect=OSError("denied")):
                 with self.assertRaises(OSError):
                     repair.replace_configuration(path, "unfinished\n")
-            self.assertEqual(path.read_text(encoding="ascii"), "new\n")
+            self.assertEqual(path.read_text(encoding="utf-8"), "新しい設定\n")
             self.assertEqual(list(Path(directory).iterdir()), [path])
