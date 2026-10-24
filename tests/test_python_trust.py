@@ -241,8 +241,14 @@ class PythonTrustTests(unittest.TestCase):
     def test_setup_and_ci_keep_the_security_gate(self):
         # #55で署名gateを実装する際は、この暫定公開停止の期待値も見直す。
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertEqual(workflow.count("python scripts/python_trust.py\n"), 3)
-        self.assertEqual(workflow.count('scripts/prepare_ci_ca.py'), 3)
+        jobs = dict(re.findall(r"^  ([a-z-]+):\n(.*?)(?=^  [a-z-]+:|\Z)", workflow, re.M | re.S))
+        for name in ("declaration-comments", "rust-core", "evaluate"):
+            job = jobs[name]
+            self.assertIn("runs-on: ubuntu-latest", job)
+            self.assertLess(job.index("actions/setup-python"), job.index("scripts/prepare_ci_ca.py"))
+            self.assertLess(job.index("scripts/prepare_ci_ca.py"), job.index("python scripts/python_trust.py"))
+        self.assertNotIn("sudo", jobs["windows-build"])
+        self.assertNotIn("scripts/prepare_ci_ca.py", jobs["windows-build"])
         self.assertEqual(workflow.count("python scripts/python_trust.py --check"), 2)
         self.assertIn("run: ./scripts/build_windows.ps1", workflow)
         self.assertIn("python -m unittest discover -s tests", workflow)

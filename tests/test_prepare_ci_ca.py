@@ -49,8 +49,9 @@ class PrepareCiCaTests(unittest.TestCase):
                 repair.plan_distrust("../escape.crt\n", path)
             with self.assertRaises(FileNotFoundError):
                 repair.plan_distrust("missing.crt\n", path)
-            with self.assertRaisesRegex(ValueError, "Whitespace"):
-                repair.plan_distrust(" root.crt\n", path)
+            for selection in (" root.crt\n", "root.crt \n", " # comment\n", " !root.crt\n"):
+                with self.subTest(selection=selection), self.assertRaisesRegex(ValueError, "Whitespace"):
+                    repair.plan_distrust(selection, path)
             (path / "root.crt").write_text("invalid", encoding="ascii")
             with self.assertRaisesRegex(ValueError, "one PEM"):
                 repair.plan_distrust(original, path)
@@ -83,13 +84,44 @@ class PrepareCiCaTests(unittest.TestCase):
              patch.object(repair.sys, "platform", "linux"), \
              patch.object(repair.os, "geteuid", return_value=0, create=True), \
              patch.object(repair.Path, "read_text", return_value="original"), \
-             patch.object(repair, "plan_distrust", return_value=("updated", ["root.crt"])), \
+             patch.object(repair.Path, "is_symlink", return_value=False), \
+             patch.object(repair, "plan_distrust", return_value=("updated", ["root.crt"])) as plan, \
              patch.object(repair, "replace_configuration") as replace, \
              patch.object(repair.subprocess, "run", side_effect=OSError("failed")) as run:
             self.assertEqual(repair.main(), 2)
+            plan.assert_called_once_with("original", Path("/usr/share/ca-certificates"))
             replace.assert_called_once_with(Path("/etc/ca-certificates.conf"), "updated")
             run.assert_called_once_with(["/usr/sbin/update-ca-certificates", "--fresh"],
                                         check=True, timeout=120)
+
+    # {
+    #   責務: [test_ci_success_refreshes_even_without_changes: 未変更でも再生成しsymlink設定は更新前に拒否する]
+    #   処理: [1: rootの正常なrunner環境を模擬する, 2: 再生成の成功とsymlink時の無操作を確認する]
+    #   引数: [self: テストの実行状態]
+    #   戻り値: [なし。不一致ならテスト失敗]
+    # }
+    def test_ci_success_refreshes_even_without_changes(self):
+        # 実FSの構成に依存させず、同じガードを経る主経路を検証する。
+        environment = {"GITHUB_ACTIONS": "true", "RUNNER_ENVIRONMENT": "github-hosted", "RUNNER_OS": "Linux"}
+        with patch.dict(repair.os.environ, environment, clear=True), \
+             patch.object(repair.sys, "platform", "linux"), \
+             patch.object(repair.os, "geteuid", return_value=0, create=True), \
+             patch.object(repair.Path, "read_text", return_value="original") as read, \
+             patch.object(repair.Path, "is_symlink", return_value=False) as symlink, \
+             patch.object(repair, "plan_distrust", return_value=("original", [])) as plan, \
+             patch.object(repair, "replace_configuration") as replace, \
+             patch.object(repair.subprocess, "run") as run:
+            self.assertEqual(repair.main(), 0)
+            plan.assert_called_once_with("original", Path("/usr/share/ca-certificates"))
+            replace.assert_not_called()
+            run.assert_called_once_with(["/usr/sbin/update-ca-certificates", "--fresh"],
+                                        check=True, timeout=120)
+            read.reset_mock()
+            run.reset_mock()
+            symlink.return_value = True
+            self.assertEqual(repair.main(), 2)
+            read.assert_not_called()
+            run.assert_not_called()
 
     # {
     #   責務: [test_configuration_replacement_is_atomic: 原子的置換に失敗した場合も既存設定を残す]

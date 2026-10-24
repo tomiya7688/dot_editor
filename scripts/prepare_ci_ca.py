@@ -24,9 +24,9 @@ def plan_distrust(configuration, certificate_directory):
     disabled = []
     for line in configuration.splitlines(keepends=True):
         name = line.strip()
+        if name and line.rstrip("\r\n") != name:
+            raise ValueError(f"Whitespace around CA selection is unsupported: {name}")
         if name and not name.startswith(("#", "!")):
-            if line.rstrip("\r\n") != name:
-                raise ValueError(f"Whitespace around CA selection is unsupported: {name}")
             certificate_path = (directory / name).resolve()
             if not certificate_path.is_relative_to(directory):
                 raise ValueError(f"CA path is outside the distribution directory: {name}")
@@ -62,6 +62,7 @@ def replace_configuration(configuration_path, content):
             temporary.flush()
             os.fsync(temporary.fileno())
         temporary_path.chmod(configuration_path.stat().st_mode & 0o777)
+        # 使い捨てrunnerの終了後は再利用しないため、電源断後の永続性は保証しない。
         os.replace(temporary_path, configuration_path)
     finally:
         if temporary_path is not None:
