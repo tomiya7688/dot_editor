@@ -48,6 +48,8 @@ GitHub-hostedのUbuntu CIでは、runnerのOS設定で選択中の証明書を�
 
 runnerのCA選択設定に欠落ファイル・不正PEM・余分な空白・範囲外パスがあれば、勝手に無視せずCIを停止します。対象rootの無効化後も、ローカル追加CAなどに対象rootが残れば後続の検査で停止します。
 
+GitHub-hostedのWindows CIでは、LocalMachine・CurrentUserのRoot/CAストアを実DERのSHA-256で照合します。一致した証明書だけをDisallowedへ登録して信頼側から除去し、新しいPythonプロセスで再検査します。この修復も使い捨てrunner限定で、ローカルPCでは実行しません。
+
 ## 最短の動作確認（CLI）
 
 上記のセットアップを済ませ、**リポジトリ直下で以下を上から順に実行**してください。新しいレイヤー付き作品を作り、描画・セル分割・色の確認・PNG書き出しまで行います。いずれも対話操作は不要です。

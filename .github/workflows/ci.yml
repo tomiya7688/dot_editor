@@ -120,6 +120,9 @@ jobs:
       - name: Prepare environment
         shell: pwsh
         run: python -m venv .venv
+      - name: Prepare Windows runner trust
+        shell: pwsh
+        run: ./scripts/prepare_ci_windows_ca.ps1
       - name: Build and smoke-test distribution
         shell: pwsh
         run: ./scripts/build_windows.ps1

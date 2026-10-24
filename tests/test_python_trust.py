@@ -249,6 +249,8 @@ class PythonTrustTests(unittest.TestCase):
             self.assertLess(job.index("scripts/prepare_ci_ca.py"), job.index("python scripts/python_trust.py"))
         self.assertNotIn("sudo", jobs["windows-build"])
         self.assertNotIn("scripts/prepare_ci_ca.py", jobs["windows-build"])
+        self.assertLess(jobs["windows-build"].index("scripts/prepare_ci_windows_ca.ps1"),
+                        jobs["windows-build"].index("scripts/build_windows.ps1"))
         self.assertEqual(workflow.count("python scripts/python_trust.py --check"), 2)
         self.assertIn("run: ./scripts/build_windows.ps1", workflow)
         self.assertIn("python -m unittest discover -s tests", workflow)
