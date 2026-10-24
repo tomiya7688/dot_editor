@@ -47,6 +47,10 @@ class PrepareCiCaTests(unittest.TestCase):
                 self.assertEqual(repair.plan_distrust(updated, path), (updated, []))
             with self.assertRaisesRegex(ValueError, "outside"):
                 repair.plan_distrust("../escape.crt\n", path)
+            with self.assertRaises(FileNotFoundError):
+                repair.plan_distrust("missing.crt\n", path)
+            with self.assertRaisesRegex(ValueError, "Whitespace"):
+                repair.plan_distrust(" root.crt\n", path)
             (path / "root.crt").write_text("invalid", encoding="ascii")
             with self.assertRaisesRegex(ValueError, "one PEM"):
                 repair.plan_distrust(original, path)

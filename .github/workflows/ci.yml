@@ -24,7 +24,7 @@ jobs:
         # ローカルPCやself-hosted runnerでは実行しない。
         # GitHub提供の環境名だけをsudoへ引き継ぎ、他の資格情報は渡さない。
         run: |
-          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" scripts/prepare_ci_ca.py
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" -B scripts/prepare_ci_ca.py
           python scripts/python_trust.py
       - name: Test declaration comment checker
         run: python -m unittest discover -s tests -p test_declaration_comments.py
@@ -63,7 +63,7 @@ jobs:
 
       - name: Install Python reference dependencies
         run: |
-          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" scripts/prepare_ci_ca.py
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" -B scripts/prepare_ci_ca.py
           python scripts/python_trust.py
           python -m pip install -e .
           python scripts/python_trust.py --check
@@ -97,7 +97,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" scripts/prepare_ci_ca.py
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" -B scripts/prepare_ci_ca.py
           python scripts/python_trust.py
           python -m pip install -e .
           python scripts/python_trust.py --check

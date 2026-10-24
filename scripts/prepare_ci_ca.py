@@ -25,6 +25,8 @@ def plan_distrust(configuration, certificate_directory):
     for line in configuration.splitlines(keepends=True):
         name = line.strip()
         if name and not name.startswith(("#", "!")):
+            if line.rstrip("\r\n") != name:
+                raise ValueError(f"Whitespace around CA selection is unsupported: {name}")
             certificate_path = (directory / name).resolve()
             if not certificate_path.is_relative_to(directory):
                 raise ValueError(f"CA path is outside the distribution directory: {name}")
@@ -81,6 +83,8 @@ def main():
         return 2
     try:
         configuration_path = Path("/etc/ca-certificates.conf")
+        if configuration_path.is_symlink():
+            raise ValueError("CI CA configuration must not be a symlink")
         original = configuration_path.read_text(encoding="ascii")
         updated, disabled = plan_distrust(original, Path("/usr/share/ca-certificates"))
         if disabled:
