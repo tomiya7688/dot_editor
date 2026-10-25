@@ -1,4 +1,5 @@
 """Verify layered project JSON interchange between Rust and Python without a GUI."""
+
 from __future__ import annotations
 
 import copy
@@ -27,8 +28,7 @@ from pixel_layers import LayeredPixelCanvas
 #   戻り値: [RGBA行列]
 # }
 def image_rows(image):
-    return [[list(image.getpixel((x, y))) for x in range(image.width)]
-            for y in range(image.height)]
+    return [[list(image.getpixel((x, y))) for x in range(image.width)] for y in range(image.height)]
 
 
 # {
@@ -45,11 +45,24 @@ def image_rows(image):
 # }
 def run_example(arguments, stdin=None):
     command = [
-        "cargo", "run", "--quiet", "--manifest-path", str(ROOT / "rust" / "Cargo.toml"),
-        "--example", "layered_json_compat_fixture", *(["--", *arguments] if arguments else []),
+        "cargo",
+        "run",
+        "--quiet",
+        "--manifest-path",
+        str(ROOT / "rust" / "Cargo.toml"),
+        "--example",
+        "layered_json_compat_fixture",
+        *(["--", *arguments] if arguments else []),
     ]
-    result = subprocess.run(command, input=stdin, cwd=ROOT, capture_output=True,
-                            text=True, encoding="utf-8", timeout=180)
+    result = subprocess.run(
+        command,
+        input=stdin,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=180,
+    )
     if result.returncode:
         raise RuntimeError(result.stderr)
     return json.loads(result.stdout)
@@ -125,8 +138,11 @@ def decode_png(hex_text):
 #   戻り値: [なし、食い違えばAssertionError]
 # }
 def check_png(name, rust, model):
-    options = (("png_native", {}), ("png_detail", {"output_resolution": (16, 12)}),
-               ("png_scaled", {"export_size": 9}))
+    options = (
+        ("png_native", {}),
+        ("png_detail", {"output_resolution": (16, 12)}),
+        ("png_scaled", {"export_size": 9}),
+    )
     with tempfile.TemporaryDirectory() as directory:
         for key, arguments in options:
             path = Path(directory) / f"{key}.png"
@@ -165,10 +181,20 @@ def python_documents():
     refined.set_resolution(2, 2)
     refined.move_layer("down")
     refined.rename_layer("手前だった層")
-    legacy = {"layers": [
-        {"name": "旧背景", "source": {"canvas_size": 2, "pixels": [["#102030", None], [None, "#FF000080"]]}},
-        {"name": "旧上", "visible": False, "source": {"canvas_size": 2, "pixels": [[None, None], ["#00FF00", None]]}},
-    ], "active_layer": "旧上"}
+    legacy = {
+        "layers": [
+            {
+                "name": "旧背景",
+                "source": {"canvas_size": 2, "pixels": [["#102030", None], [None, "#FF000080"]]},
+            },
+            {
+                "name": "旧上",
+                "visible": False,
+                "source": {"canvas_size": 2, "pixels": [[None, None], ["#00FF00", None]]},
+            },
+        ],
+        "active_layer": "旧上",
+    }
     return [
         ("python_stacked", stacked.to_source()),
         ("python_refined", refined.to_source()),
@@ -212,8 +238,12 @@ def malformed_documents():
     broken("missing_active_layer", lambda s: s.update(active_layer="無い"))
     broken("resolution_mismatch", lambda s: s.update(resolution=[3, 2]))
     broken("canvas_size_mismatch", lambda s: s.update(canvas_size=5))
-    broken("layer_size_mismatch",
-           lambda s: s["layers"][1].update(source=LayeredPixelCanvas(3, 3).to_source()["layers"][0]["source"]))
+    broken(
+        "layer_size_mismatch",
+        lambda s: s["layers"][1].update(
+            source=LayeredPixelCanvas(3, 3).to_source()["layers"][0]["source"]
+        ),
+    )
     broken("layer_source_missing", lambda s: s["layers"][1].pop("source"))
     return list(cases.items())
 
