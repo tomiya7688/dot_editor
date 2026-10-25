@@ -32,7 +32,7 @@ A small `AGENTS.md` and passing link checks prove only **structure**, not reduce
 
 ## Reproducible routing trials (developer-only)
 
-`python scripts/context_route_benchmark.py --check` checks the task-map for three representative changes: Rust project JSON, Python CLI, and GUI keyboard. Every trial has **independently declared required source, tests, and behavior/fixture evidence**. A missing fixture, broken route, duplicated reference, or route without required evidence fails CI. `--json` reports the full file candidates, character counts and UTF-8 bytes. CI stores that report as the `context-route-evidence` artifact.
+`python scripts/context_route_benchmark.py --check` checks the task-map for three representative changes: Rust project JSON, Python CLI, and GUI keyboard. Every trial has **independently declared required source, tests, and behavior/fixture evidence**. A missing fixture, broken route, duplicated reference, or route without required evidence fails CI. `--json` reports the full file candidates, character counts and UTF-8 bytes. CI records that report in the job summary; it is not uploaded as an artifact, because the repository publishes no unsigned artifacts until #55 is complete.
 
 The comparison is deliberately limited: **baseline = all eligible owned source, tests, public specifications and project JSON fixtures**, while **routed = the complete list of files linked by that task-map row**. Machine selection is not counted as model input. These figures are only full-file input *candidates*, not actual Claude Code/Codex file reads, token usage, elapsed time, correctness of bug fixes, or guaranteed future savings. No arbitrary reduction target justifies dropping required evidence.
 

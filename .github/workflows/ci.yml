@@ -32,14 +32,15 @@ jobs:
 
       - name: Verify context-route evidence for three tasks
         run: python scripts/context_route_benchmark.py --check
-      - name: Save reproducible candidate selection metrics
-        run: python scripts/context_route_benchmark.py --json > context-route-evidence.json
-      - name: Upload context-route evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: context-route-evidence
-          path: context-route-evidence.json
-          if-no-files-found: error
+      - name: Record candidate selection metrics in the job summary
+        # 未署名の成果物は公開しない方針（#55）のため、アップロードせず要約へ記録する。
+        run: |
+          {
+            echo '## Context route evidence'
+            echo '```json'
+            python scripts/context_route_benchmark.py --json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   declaration-comments:
     name: Declaration comments
