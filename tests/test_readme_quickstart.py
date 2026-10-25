@@ -1,4 +1,5 @@
 """Execute the README quickstart against the installed CLI and GUI smoke entrypoint."""
+
 from __future__ import annotations
 
 import json
@@ -103,23 +104,22 @@ class ReadmeQuickstartTests(unittest.TestCase):
     #   責務: [test_local_links_and_build_commands_match_repository: READMEのリンクと検証コマンドの参照先を検査する]
     #   処理: [
     #     1: README内のリポジトリ相対リンクがすべて存在することを検証する
-    #     2: Python・Rustの標準検証コマンドがREADMEとGitHub Actionsで一致することを確認する
-    #     3: Windows配布手順が環境準備を前提に記載されていることを確認する
+    #     2: Python・Rustの標準検証コマンドが開発者専用資料とGitHub Actionsで一致することを確認する
+    #     3: 利用者向け案内と開発者向け手順を混ぜないことを確認する
     #   ]
     #   引数: [self: テストを実行するインスタンス]
     #   戻り値: [なし、切れたリンクや手順の差異があればAssertionErrorを発生させる]
     # }
     def test_local_links_and_build_commands_match_repository(self):
         content = README.read_text(encoding="utf-8")
-        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
-            encoding="utf-8"
-        )
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         for target in re.findall(r"\]\(([^)]+)\)", content):
             if target.startswith(("https://", "http://", "#")):
                 continue
             path = target.split("#", 1)[0]
             self.assertTrue((ROOT / path).is_file(), f"README link is missing: {path}")
 
+        development = (ROOT / "docs" / "agents" / "development.md").read_text(encoding="utf-8")
         commands = (
             "python scripts/evaluate.py",
             "python -m unittest discover -s tests",
@@ -131,12 +131,15 @@ class ReadmeQuickstartTests(unittest.TestCase):
         )
         for command in commands:
             with self.subTest(command=command):
-                self.assertIn(command, content)
+                self.assertIn(command, development)
                 self.assertIn(command, workflow)
 
         self.assertIn("scripts/setup_environment.ps1", content)
-        self.assertIn("scripts/build_windows.ps1", content)
-        self.assertIn("requirements-build.txt", content)
+        self.assertIn("scripts/build_windows.ps1", development)
+        self.assertIn("requirements-build.txt", development)
+        self.assertNotIn("AGENTS.md", content)
+        self.assertNotIn("Claude Code", content)
+        self.assertNotIn("Codex", content)
         self.assertNotIn("pixel_art.png", content)
 
 
