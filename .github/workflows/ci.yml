@@ -110,6 +110,10 @@ jobs:
 
   windows-build:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     needs: [declaration-comments, rust-core, evaluate]
     timeout-minutes: 20
     steps:
@@ -126,5 +130,42 @@ jobs:
       - name: Build and smoke-test distribution
         shell: pwsh
         run: ./scripts/build_windows.ps1
+      - name: Attest final archives and checksum manifest
+        # PR/forkの読取専用tokenでは署名せず、pushの同一HEADを別途必須確認する。
+        if: github.event_name == 'push'
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          create-storage-record: false
+          subject-path: |
+            dist/HyperDotEditor-windows-x64.zip
+            dist/hyper_dot_editor-*.whl
+            dist/hyper_dot_editor-*.tar.gz
+            dist/SHA256SUMS
+      - name: Verify attestation identity and final bytes
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTATION_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          & .venv/Scripts/python.exe scripts/artifact_checksums.py dist --check
+          if ($LASTEXITCODE -ne 0) { throw "Final checksums changed before verification." }
+          $Artifacts = @(Get-ChildItem -LiteralPath dist -File | Where-Object {
+            $_.Name -eq 'SHA256SUMS' -or $_.Name -eq 'HyperDotEditor-windows-x64.zip' -or
+            $_.Name -like 'hyper_dot_editor-*.whl' -or $_.Name -like 'hyper_dot_editor-*.tar.gz'
+          })
+          if ($Artifacts.Count -ne 4) { throw "Expected four attestation subjects." }
+          $IdentityArguments = @(
+            '--repo', $env:GITHUB_REPOSITORY,
+            '--signer-workflow', "$env:GITHUB_REPOSITORY/.github/workflows/ci.yml",
+            '--source-digest', $env:GITHUB_SHA,
+            '--source-ref', $env:GITHUB_REF,
+            '--deny-self-hosted-runners'
+          )
+          foreach ($Artifact in $Artifacts) {
+            gh attestation verify $Artifact.FullName --bundle $env:ATTESTATION_BUNDLE @IdentityArguments
+            if ($LASTEXITCODE -ne 0) { throw "Artifact attestation verification failed: $($Artifact.Name)" }
+          }
       # #55の署名・attestation gateが完成するまで、未署名配布物は公開しない。
       # ビルドとスモークテストは上で実行し、省略しない。

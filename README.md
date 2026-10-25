@@ -52,6 +52,8 @@ GitHub-hostedのWindows CIでは、LocalMachine・CurrentUserのRoot/CAストア
 
 ## 最短の動作確認（CLI）
 
+配布物のSHA-256・署名付き出所情報の確認方法と、現在の公開停止条件は[成果物の検証](docs/成果物の検証.md)を参照してください。CIのattestationは、未実装のWindows Authenticode署名を代替しません。
+
 上記のセットアップを済ませ、**リポジトリ直下で以下を上から順に実行**してください。新しいレイヤー付き作品を作り、描画・セル分割・色の確認・PNG書き出しまで行います。いずれも対話操作は不要です。
 
 ```bash
@@ -246,7 +248,7 @@ CLIは `DotEditorCLI/DotEditorCLI.exe` です。各フォルダの `_internal` �
 ビルド時にCLIの保存・編集・PNG出力とGUI実行ファイルの非GUIスモーク検査を行います。
 画面を操作するGUIテストとは異なります。既存の同名 `dist` 成果物は再ビルドで更新されます。
 
-GitHub ActionsのWindowsジョブでもビルドし、配布ZIPとwheel・sdistをArtifactsへアップロードします。
+GitHub ActionsのWindowsジョブでもビルドし、最終ZIP・wheel・sdistとSHA256SUMSを検査します。pushでは署名付き出所情報も検証します。Windows署名などの公開gateが完成するまで、Artifactsへのアップロードは停止しています。
 
 ## 自動評価
 
