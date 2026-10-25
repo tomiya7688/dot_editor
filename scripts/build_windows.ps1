@@ -32,6 +32,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Distribution smoke test failed." }
     Compress-Archive -Path dist/windows/* -DestinationPath dist/HyperDotEditor-windows-x64.zip -Force
     Get-FileHash -LiteralPath dist/HyperDotEditor-windows-x64.zip -Algorithm SHA256
+    # 中身の署名とは別に、最終ZIP・wheel・sdistを同じ一覧で固定する。
+    & $Python scripts/artifact_checksums.py dist
+    if ($LASTEXITCODE -ne 0) { throw "Final artifact checksum verification failed." }
 } finally {
     Pop-Location
 }
