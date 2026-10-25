@@ -1,4 +1,5 @@
 """Execute the README quickstart against the installed CLI and GUI smoke entrypoint."""
+
 from __future__ import annotations
 
 import json
@@ -111,18 +112,14 @@ class ReadmeQuickstartTests(unittest.TestCase):
     # }
     def test_local_links_and_build_commands_match_repository(self):
         content = README.read_text(encoding="utf-8")
-        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
-            encoding="utf-8"
-        )
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         for target in re.findall(r"\]\(([^)]+)\)", content):
             if target.startswith(("https://", "http://", "#")):
                 continue
             path = target.split("#", 1)[0]
             self.assertTrue((ROOT / path).is_file(), f"README link is missing: {path}")
 
-        development = (ROOT / "docs" / "agents" / "development.md").read_text(
-            encoding="utf-8"
-        )
+        development = (ROOT / "docs" / "agents" / "development.md").read_text(encoding="utf-8")
         commands = (
             "python scripts/evaluate.py",
             "python -m unittest discover -s tests",

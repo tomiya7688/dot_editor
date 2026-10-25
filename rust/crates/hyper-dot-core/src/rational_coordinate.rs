@@ -1,5 +1,8 @@
 use std::cmp::Ordering;
 
+#[cfg(test)]
+mod tests;
+
 /// Exact normalized coordinate in the closed unit interval.
 /// {
 ///   責務: [RationalCoordinate: 単位区間内の位置を約分した有理数で表す]

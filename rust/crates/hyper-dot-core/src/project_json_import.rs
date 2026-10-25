@@ -15,6 +15,9 @@ use crate::resolution_field::{DetailPolicy, ResolutionField};
 use crate::split_cell::SplitCell;
 use crate::strict_json::StrictJson;
 
+#[cfg(test)]
+mod partition_tests;
+
 type Result<T> = std::result::Result<T, ProjectJsonError>;
 /// {
 ///   責務: [invalid: 入力検証の失敗理由を読み込みエラーにする]
@@ -304,11 +307,12 @@ fn field(value: &Value) -> Result<ResolutionField> {
 ///     3: 重なり・穴・不正な終端を拒否する
 ///   ]
 ///   引数: [
-///     patches: 被覆範囲を検証するパッチ列
+///     patches: 単位領域内の正の面積を持つ検証済みパッチ列
 ///   ]
 ///   戻り値: [成功時は単位値、被覆不正なら検証エラー]
 /// }
 fn validate_partition(patches: &[FieldPatch]) -> Result<()> {
+    // 各矩形の左右端をイベントにし、画素中心で見えない隙間も正確に調べる。
     let mut events = Vec::new();
     for patch in patches {
         let b = patch.bounds;
@@ -317,11 +321,13 @@ fn validate_partition(patches: &[FieldPatch]) -> Result<()> {
             (b.right, false, b.top, b.bottom),
         ]);
     }
+    // 同じxでは終了(false)を開始(true)より先に処理し、接する領域を重複扱いしない。
     events.sort_unstable();
     let mut active = BTreeSet::new();
     let mut previous = Coordinate::new(0, 1);
     for (x, start, y0, y1) in events {
         if x != previous {
+            // 幅のある各縦帯は、y=0から1まで重なりも欠落もなく覆う必要がある。
             let mut covered = Coordinate::new(0, 1);
             for &(top, bottom) in &active {
                 if top != covered {
@@ -336,6 +342,7 @@ fn validate_partition(patches: &[FieldPatch]) -> Result<()> {
             }
             previous = x;
         }
+        // 同じ縦区間が二重に有効になる場合は、集合による重複の隠蔽を防ぐ。
         if start {
             if !active.insert((y0, y1)) {
                 return Err(invalid("retained patches overlap"));
@@ -344,6 +351,7 @@ fn validate_partition(patches: &[FieldPatch]) -> Result<()> {
             return Err(invalid("invalid patch partition"));
         }
     }
+    // 右端まで到達し、全パッチの終了イベントを処理した状態だけを受け入れる。
     if previous != Coordinate::new(1, 1) || !active.is_empty() {
         return Err(invalid("retained field does not cover the canvas"));
     }

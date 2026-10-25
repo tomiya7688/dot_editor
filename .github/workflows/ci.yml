@@ -52,8 +52,25 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+      - name: Bootstrap Python trust
+        # runnerイメージのOS側に残る対象rootを無効化し、検査前に実bundleを再生成する。
+        # ローカルPCやself-hosted runnerでは実行しない。
+        # GitHub提供の環境名だけをsudoへ引き継ぎ、他の資格情報は渡さない。
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" -B scripts/prepare_ci_ca.py
+          python scripts/python_trust.py
       - name: Test declaration comment checker
         run: python -m unittest discover -s tests -p test_declaration_comments.py
+      - name: Check formatting of committed Python changes
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python -m pip install -e '.[dev]'
+          python scripts/python_trust.py --check
+          if [ "$BASE_REVISION" = '0000000000000000000000000000000000000000' ]; then
+            BASE_REVISION=$(git merge-base HEAD origin/main)
+          fi
+          python scripts/format_python.py --check --base "$BASE_REVISION"
       - name: Audit migrated declarations
         run: python scripts/check_declaration_comments.py
       - name: Audit every declaration in changed owned sources
@@ -91,7 +108,11 @@ jobs:
           python-version: "3.14"
 
       - name: Install Python reference dependencies
-        run: python -m pip install -e .
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" -B scripts/prepare_ci_ca.py
+          python scripts/python_trust.py
+          python -m pip install -e .
+          python scripts/python_trust.py --check
 
       - name: Verify bidirectional project JSON compatibility
         run: python scripts/test_rust_json_compat.py
@@ -122,8 +143,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS "$pythonLocation/bin/python" -B scripts/prepare_ci_ca.py
+          python scripts/python_trust.py
           python -m pip install -e .
+          python scripts/python_trust.py --check
 
       - name: Build wheel and source distribution
         run: |
@@ -143,6 +166,10 @@ jobs:
 
   windows-build:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     needs: [agent-policy, declaration-comments, rust-core, evaluate]
     timeout-minutes: 20
     steps:
@@ -153,14 +180,48 @@ jobs:
       - name: Prepare environment
         shell: pwsh
         run: python -m venv .venv
+      - name: Prepare Windows runner trust
+        shell: pwsh
+        run: ./scripts/prepare_ci_windows_ca.ps1
       - name: Build and smoke-test distribution
         shell: pwsh
         run: ./scripts/build_windows.ps1
-      - uses: actions/upload-artifact@v4
+      - name: Attest final archives and checksum manifest
+        # PR/forkの読取専用tokenでは署名せず、pushの同一HEADを別途必須確認する。
+        if: github.event_name == 'push'
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          name: HyperDotEditor-windows-x64
-          path: |
+          create-storage-record: false
+          subject-path: |
             dist/HyperDotEditor-windows-x64.zip
-            dist/*.whl
-            dist/*.tar.gz
-          if-no-files-found: error
+            dist/hyper_dot_editor-*.whl
+            dist/hyper_dot_editor-*.tar.gz
+            dist/SHA256SUMS
+      - name: Verify attestation identity and final bytes
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTATION_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          & .venv/Scripts/python.exe scripts/artifact_checksums.py dist --check
+          if ($LASTEXITCODE -ne 0) { throw "Final checksums changed before verification." }
+          $Artifacts = @(Get-ChildItem -LiteralPath dist -File | Where-Object {
+            $_.Name -eq 'SHA256SUMS' -or $_.Name -eq 'HyperDotEditor-windows-x64.zip' -or
+            $_.Name -like 'hyper_dot_editor-*.whl' -or $_.Name -like 'hyper_dot_editor-*.tar.gz'
+          })
+          if ($Artifacts.Count -ne 4) { throw "Expected four attestation subjects." }
+          $IdentityArguments = @(
+            '--repo', $env:GITHUB_REPOSITORY,
+            '--signer-workflow', "$env:GITHUB_REPOSITORY/.github/workflows/ci.yml",
+            '--source-digest', $env:GITHUB_SHA,
+            '--source-ref', $env:GITHUB_REF,
+            '--deny-self-hosted-runners'
+          )
+          foreach ($Artifact in $Artifacts) {
+            gh attestation verify $Artifact.FullName --bundle $env:ATTESTATION_BUNDLE @IdentityArguments
+            if ($LASTEXITCODE -ne 0) { throw "Artifact attestation verification failed: $($Artifact.Name)" }
+          }
+      # #55の署名・attestation gateが完成するまで、未署名配布物は公開しない。
+      # ビルドとスモークテストは上で実行し、省略しない。

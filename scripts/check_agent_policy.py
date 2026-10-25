@@ -1,4 +1,5 @@
 """Check the small agent context, shared Claude entrypoint and PR evidence."""
+
 from __future__ import annotations
 
 import argparse
@@ -10,9 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 MAX_BYTES = 2400
 MAX_LINES = 55
 REQUIRED = (
-    "AGENTS.md", "CLAUDE.md", "コーディング規約.md",
-    "doc/ワークフロー/ワークフロー.md", "docs/agents/README.md",
-    "docs/agents/collaboration.md", "docs/agents/quality-gates.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "コーディング規約.md",
+    "doc/ワークフロー/ワークフロー.md",
+    "docs/agents/README.md",
+    "docs/agents/collaboration.md",
+    "docs/agents/quality-gates.md",
     "docs/agents/development.md",
     "docs/agents/task-map.md",
     ".github/pull_request_template.md",
@@ -103,19 +108,26 @@ def check_pr_body(body: str) -> list[str]:
     headings = list(re.finditer(r"^## ([A-Za-z]+)[ \t]*$", source, flags=re.MULTILINE))
     problems = []
     for section in SECTIONS:
-        found = [(index, heading) for index, heading in enumerate(headings)
-                 if heading.group(1) == section]
+        found = [
+            (index, heading)
+            for index, heading in enumerate(headings)
+            if heading.group(1) == section
+        ]
         if len(found) != 1:
             problems.append(f"PR needs exactly one ## {section} section")
             continue
         index, heading = found[0]
         end = headings[index + 1].start() if index + 1 < len(headings) else len(source)
-        content = source[heading.end():end].strip()
-        if len(content) < 12 or re.search(r"\b(?:TODO|TBD|WIP|PLACEHOLDER)\b|未記入", content, re.IGNORECASE):
+        content = source[heading.end() : end].strip()
+        if len(content) < 12 or re.search(
+            r"\b(?:TODO|TBD|WIP|PLACEHOLDER)\b|未記入", content, re.IGNORECASE
+        ):
             problems.append(f"PR ## {section} needs a concrete report")
         if section == "Issue" and not re.search(r"(?<!\w)#\d+\b|/issues/\d+\b", content):
             problems.append("PR ## Issue needs a GitHub Issue reference")
-        if section == "Validation" and not re.search(r"python|cargo|CI|build|pytest|unittest|未実施|not run", content, re.IGNORECASE):
+        if section == "Validation" and not re.search(
+            r"python|cargo|CI|build|pytest|unittest|未実施|not run", content, re.IGNORECASE
+        ):
             problems.append("PR ## Validation needs commands/results or not-run explanation")
     return problems
 

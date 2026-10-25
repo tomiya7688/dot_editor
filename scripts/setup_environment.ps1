@@ -30,9 +30,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not $SkipInstall) {
-    & $Python -m pip install --upgrade pip
+    & $Python (Join-Path $PSScriptRoot "python_trust.py")
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to upgrade pip."
+        throw "Failed to bootstrap Python trust."
     }
 
     & $Python -m pip install -e $Root
@@ -40,6 +40,10 @@ if (-not $SkipInstall) {
         throw "Failed to install project dependencies."
     }
 }
+
+# インストール省略でも、古いpipや対象rootを含む環境を評価へ渡さない。
+& $Python (Join-Path $PSScriptRoot "python_trust.py") --check
+if ($LASTEXITCODE -ne 0) { throw "Python trust verification failed." }
 
 & $Python (Join-Path $PSScriptRoot "evaluate.py")
 if ($LASTEXITCODE -ne 0) {

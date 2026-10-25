@@ -1,4 +1,5 @@
 """Regression tests for bounded ObaPick-style context-route candidates."""
+
 from pathlib import Path
 import sys
 import tempfile
@@ -46,13 +47,17 @@ class ContextRouteBenchmarkTests(unittest.TestCase):
             path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
-        self.trial = ({
-            "id": "example-task",
-            "route": "Example flow",
-            "required_evidence": (
-                "src/example.py", "tests/test_example.py", "docs/contract.md"
-            ),
-        },)
+        self.trial = (
+            {
+                "id": "example-task",
+                "route": "Example flow",
+                "required_evidence": (
+                    "src/example.py",
+                    "tests/test_example.py",
+                    "docs/contract.md",
+                ),
+            },
+        )
 
     # {
     #   責務: [test_complete_evidence_and_bounded_candidates: 必須根拠を残した絞り込みを検査する]
@@ -87,8 +92,7 @@ class ContextRouteBenchmarkTests(unittest.TestCase):
         (self.root / "docs/other.md").write_text("# Wrong subject\n", encoding="utf-8")
         route_path = self.root / "docs/agents/task-map.md"
         text = route_path.read_text(encoding="utf-8")
-        route_path.write_text(text.replace("../contract.md", "../other.md"),
-                              encoding="utf-8")
+        route_path.write_text(text.replace("../contract.md", "../other.md"), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "missing required evidence"):
             build_report(self.root, self.trial)
 
@@ -104,12 +108,12 @@ class ContextRouteBenchmarkTests(unittest.TestCase):
     def test_missing_or_escaping_link_fails(self):
         route_path = self.root / "docs/agents/task-map.md"
         source = route_path.read_text(encoding="utf-8")
-        route_path.write_text(source.replace("../contract.md", "../missing.md"),
-                              encoding="utf-8")
+        route_path.write_text(source.replace("../contract.md", "../missing.md"), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "missing/outside"):
             task_routes(self.root)
-        route_path.write_text(source.replace("../contract.md", "../../../../secret.md"),
-                              encoding="utf-8")
+        route_path.write_text(
+            source.replace("../contract.md", "../../../../secret.md"), encoding="utf-8"
+        )
         with self.assertRaisesRegex(ValueError, "missing/outside"):
             task_routes(self.root)
 
@@ -123,14 +127,19 @@ class ContextRouteBenchmarkTests(unittest.TestCase):
     #   戻り値: [なし、不適切な候補があれば失敗]
     # }
     def test_baseline_excludes_generated_outputs(self):
-        for relative in ("dist/output.md", "build/cached.py",
-                         "rust/target/debug/untracked.rs", ".venv/module.py"):
+        for relative in (
+            "dist/output.md",
+            "build/cached.py",
+            "rust/target/debug/untracked.rs",
+            ".venv/module.py",
+        ):
             output = self.root / relative
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text("noise" * 1000, encoding="utf-8")
         pool = eligible_paths(self.root)
-        self.assertTrue(all(not p.startswith(("dist/", "build/", "rust/target/",
-                                               ".venv/")) for p in pool))
+        self.assertTrue(
+            all(not p.startswith(("dist/", "build/", "rust/target/", ".venv/")) for p in pool)
+        )
         self.assertIn("src/example.py", pool)
 
     # {
@@ -144,8 +153,12 @@ class ContextRouteBenchmarkTests(unittest.TestCase):
     # }
     def test_real_repository_three_routes(self):
         report = build_report(ROOT)
-        self.assertEqual([task["id"] for task in report["tasks"]],
-                         ["rust-project-json", "python-cli", "gui-keyboard"])
+        self.assertEqual(
+            [task["id"] for task in report["tasks"]],
+            ["rust-project-json", "python-cli", "gui-keyboard"],
+        )
         self.assertTrue(report["aggregate"]["required_evidence_complete"])
-        self.assertLess(report["aggregate"]["routed_candidate_bytes"],
-                        report["aggregate"]["baseline_candidate_bytes"])
+        self.assertLess(
+            report["aggregate"]["routed_candidate_bytes"],
+            report["aggregate"]["baseline_candidate_bytes"],
+        )

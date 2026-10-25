@@ -3,6 +3,7 @@
 Like ObaPick's fixed-fixture benchmark, compare the same eligible file pool against
 the linked files for three representative tasks. No Claude/Codex invocation occurs.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -69,11 +70,13 @@ def eligible_paths(root: Path) -> list[str]:
     ):
         area = root / directory
         if area.exists():
-            candidates.update(path for path in area.rglob("*")
-                              if path.is_file() and path.suffix == suffix)
+            candidates.update(
+                path for path in area.rglob("*") if path.is_file() and path.suffix == suffix
+            )
     candidates.update(path for path in (root / "docs").glob("*.md") if path.is_file())
-    candidates.update(path for path in (root / "tests/fixtures/project_json").glob("*.json")
-                      if path.is_file())
+    candidates.update(
+        path for path in (root / "tests/fixtures/project_json").glob("*.json") if path.is_file()
+    )
     if (root / "README.md").is_file():
         candidates.add(root / "README.md")
     return sorted(path.relative_to(root).as_posix() for path in candidates)
@@ -170,8 +173,7 @@ def build_report(root: Path, tasks: tuple[dict, ...] = TASKS) -> dict:
         if category not in routes:
             raise ValueError(f"missing task route: {category}")
         roles = routes[category]
-        selected = [path for role in ("source", "test", "contract")
-                    for path in roles[role]]
+        selected = [path for role in ("source", "test", "contract") for path in roles[role]]
         required = set(task["required_evidence"])
         missing = sorted(required.difference(selected))
         if missing:
@@ -182,18 +184,20 @@ def build_report(root: Path, tasks: tuple[dict, ...] = TASKS) -> dict:
         routed_metrics = measure_paths(root, selected)
         if routed_metrics["utf8_bytes"] >= broad_metrics["utf8_bytes"]:
             raise ValueError(f"{task['id']}: route offers no bounded full-file selection")
-        samples.append({
-            "id": task["id"],
-            "route": category,
-            "required_evidence": sorted(required),
-            "selected_paths": selected,
-            "required_evidence_complete": True,
-            "baseline": broad_metrics,
-            "routed": routed_metrics,
-            "reduction_percent_of_candidate_bytes": round(
-                (1 - routed_metrics["utf8_bytes"] / broad_metrics["utf8_bytes"]) * 100, 1
-            ),
-        })
+        samples.append(
+            {
+                "id": task["id"],
+                "route": category,
+                "required_evidence": sorted(required),
+                "selected_paths": selected,
+                "required_evidence_complete": True,
+                "baseline": broad_metrics,
+                "routed": routed_metrics,
+                "reduction_percent_of_candidate_bytes": round(
+                    (1 - routed_metrics["utf8_bytes"] / broad_metrics["utf8_bytes"]) * 100, 1
+                ),
+            }
+        )
     return {
         "schema_version": 1,
         "scope": "read-all eligible owned text vs read-all links in one task-map row",
@@ -228,7 +232,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     fmt = parser.add_mutually_exclusive_group()
     fmt.add_argument("--check", action="store_true", help="check evidence and print summary")
-    fmt.add_argument("--json", action="store_true", help="emit reproducible machine-readable report")
+    fmt.add_argument(
+        "--json", action="store_true", help="emit reproducible machine-readable report"
+    )
     args = parser.parse_args(argv)
     try:
         report = build_report(ROOT)
@@ -239,8 +245,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         for task in report["tasks"]:
-            print(f"[context-route] {task['id']}: {task['routed']['files']} files, "
-                  f"{task['routed']['utf8_bytes']} UTF-8 bytes; evidence complete")
+            print(
+                f"[context-route] {task['id']}: {task['routed']['files']} files, "
+                f"{task['routed']['utf8_bytes']} UTF-8 bytes; evidence complete"
+            )
         print("[context-route] OK: static candidates only; agent tokens/behavior NOT measured")
     return 0
 

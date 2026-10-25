@@ -1,4 +1,5 @@
 """Check agent-policy validation for both valid and invalid inputs."""
+
 from pathlib import Path
 import sys
 import tempfile
@@ -23,11 +24,13 @@ class AgentPolicyTests(unittest.TestCase):
     #   戻り値: [なし、不一致なら失敗]
     # }
     def test_pr_evidence(self):
-        valid = ("## Issue\nCloses #123; tested the issue scope.\n"
-                 "## Summary\nOne focused collaboration gate change.\n"
-                 "## Validation\npython scripts/check_agent_policy.py passed.\n"
-                 "## Risks\nNone for product data; only PR metadata validation.\n"
-                 "## Handoff\nCodex branch issue-123, ready for human review.\n")
+        valid = (
+            "## Issue\nCloses #123; tested the issue scope.\n"
+            "## Summary\nOne focused collaboration gate change.\n"
+            "## Validation\npython scripts/check_agent_policy.py passed.\n"
+            "## Risks\nNone for product data; only PR metadata validation.\n"
+            "## Handoff\nCodex branch issue-123, ready for human review.\n"
+        )
         self.assertEqual(check_pr_body(valid), [])
         self.assertTrue(check_pr_body("## Issue\n<!-- Closes #123 -->\n"))
 
@@ -41,9 +44,11 @@ class AgentPolicyTests(unittest.TestCase):
     #   戻り値: [なし、不一致なら失敗]
     # }
     def test_pr_rejects_duplicate_and_todo(self):
-        errors = check_pr_body("## Issue\nIssue #2 is tracked.\n"
-                               "## Issue\nIssue #3 is tracked.\n"
-                               "## Summary\nTODO placeholder text.\n")
+        errors = check_pr_body(
+            "## Issue\nIssue #2 is tracked.\n"
+            "## Issue\nIssue #3 is tracked.\n"
+            "## Summary\nTODO placeholder text.\n"
+        )
         self.assertTrue(any("exactly one ## Issue" in item for item in errors))
         self.assertTrue(any("concrete report" in item for item in errors))
 
@@ -153,11 +158,11 @@ class AgentPolicyTests(unittest.TestCase):
                 "[source](../../src/module.py) and [tests](../../tests/test_module.py)\n",
                 encoding="utf-8",
             )
-            self.assertTrue(any("task-map.md: broken/outside" in error
-                                for error in check_repository(root)))
+            self.assertTrue(
+                any("task-map.md: broken/outside" in error for error in check_repository(root))
+            )
             for relative in ("src/module.py", "tests/test_module.py"):
                 destination = root / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_text("# placeholder\n", encoding="utf-8")
             self.assertEqual(check_repository(root), [])
-

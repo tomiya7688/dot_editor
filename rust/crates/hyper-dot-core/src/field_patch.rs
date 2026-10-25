@@ -5,6 +5,9 @@ use crate::raster::{Color, Raster, RasterError};
 use crate::rational_coordinate::RationalCoordinate as Coordinate;
 use crate::resolution::Resolution;
 
+#[cfg(test)]
+mod tests;
+
 /// {
 ///   責務: [PatchSource: パッチの未補正色と元の画素境界を保持する]
 ///   フィールド: [
@@ -67,6 +70,7 @@ impl FieldPatch {
                 extent,
                 original_size,
             } => {
+                // 保存画像の端を元画像上の原点から求め、表示範囲では再補間しない。
                 let size = raster.resolution();
                 let extent = FieldBounds {
                     left: Coordinate::interpolate(
@@ -111,6 +115,7 @@ impl FieldPatch {
     ///   戻り値: [新しい保持パッチ]
     /// }
     pub(crate) fn from_raster(source: Raster) -> Self {
+        // 画像を共有しても元の寸法と単位領域の対応を保持する。
         let original_size = source.resolution();
         Self {
             bounds: FieldBounds::full(),
@@ -133,8 +138,8 @@ impl FieldPatch {
     ///     2: 元画像範囲とサイズを保持してラスタを共有する
     ///   ]
     ///   引数: [
-    ///     bounds: 処理する正規化長方形
-    ///     extent: 元画像に対応する空間範囲
+    ///     bounds: extent内の正の面積を持つ検証済み表示範囲
+    ///     extent: 正の面積を持つ検証済み元画像範囲
     ///     raster: 元となるRGBAラスタ
     ///     offset: RGBA成分の未飽和差分
     ///   ]
@@ -146,6 +151,7 @@ impl FieldPatch {
         raster: Raster,
         offset: [i64; 4],
     ) -> Self {
+        // 表示範囲ではなく元画像範囲から密度を求め、切り抜き後も標本を動かさない。
         let original_size = raster.resolution();
         let grid = Resolution::new(
             Coordinate::density(extent.left, extent.right, original_size.width()),
@@ -180,6 +186,7 @@ impl FieldPatch {
     ///   戻り値: [単色保持パッチ]
     /// }
     pub(crate) fn solid(bounds: FieldBounds, grid: Resolution, color: Color) -> Self {
+        // 単色は画像を確保せず、表示範囲と解像度だけを保持する。
         Self {
             bounds,
             grid,
@@ -196,12 +203,13 @@ impl FieldPatch {
     ///   ]
     ///   引数: [
     ///     self: 現在の値・状態
-    ///     x: 横座標
-    ///     y: 縦座標
+    ///     x: boundsの左端以上・右端未満の検証済み横座標
+    ///     y: boundsの上端以上・下端未満の検証済み縦座標
     ///   ]
     ///   戻り値: [範囲制限前のRGBA成分]
     /// }
     pub(crate) fn sample_raw(&self, x: Coordinate, y: Coordinate) -> [i64; 4] {
+        // 元画像座標で画素を決めてから切り抜き原点を引き、局所画像を参照する。
         let color = match &self.source {
             PatchSource::Solid(color) => *color,
             PatchSource::Raster {
@@ -217,6 +225,7 @@ impl FieldPatch {
                 )
                 .expect("patch clip lies inside the cropped source"),
         };
+        // 表示時の飽和をここへ持ち込まず、保持中の色差分をそのまま加える。
         std::array::from_fn(|channel| i64::from(color[channel]) + self.offset[channel])
     }
 
@@ -231,6 +240,7 @@ impl FieldPatch {
     ///   戻り値: [保持画素数]
     /// }
     pub(crate) fn stored_pixels(&self) -> usize {
+        // 予算は表示範囲の面積ではなく実際に保持する画素数で数える。
         match &self.source {
             PatchSource::Solid(_) => 1,
             PatchSource::Raster { raster, .. } => {
@@ -250,7 +260,7 @@ impl FieldPatch {
     ///   ]
     ///   引数: [
     ///     self: 現在の値・状態
-    ///     bounds: 処理する正規化長方形
+    ///     bounds: self.bounds内の正の面積を持つ切り抜き範囲。呼び出し元で検証する
     ///   ]
     ///   戻り値: [切り取り済みパッチまたはラスタ確保エラー]
     /// }
@@ -264,6 +274,7 @@ impl FieldPatch {
                 extent,
                 original_size,
             } => {
+                // 画素途中の境界では外向きに丸め、表示に必要な元画素を残す。
                 let x0 =
                     bounds
                         .left
@@ -286,8 +297,10 @@ impl FieldPatch {
                     && x1 == origin_x + size.width()
                     && y1 == origin_y + size.height()
                 {
+                    // 必要な元画素が変わらない場合は、再確保せず同じ画像を共有する。
                     self.source.clone()
                 } else {
+                    // 繰り返し切り抜いても、原点は最初の元画像の座標で保持する。
                     let size = Resolution::new(x1 - x0, y1 - y0)
                         .expect("positive patch bounds retain at least one source pixel");
                     let mut crop = Raster::new(size)?;

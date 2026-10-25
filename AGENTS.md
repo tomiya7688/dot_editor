@@ -1,9 +1,11 @@
-# Agent entrypoint: Claude Code and Codex
+# 担当者の入口
 
-This is for repository contributors, **never user-facing documentation**.
+開始時に [担当別ワークフロー](doc/ワークフロー/ワークフロー.md) を読み、今回の担当・対象・範囲を明記してください。
 
-- One Issue per branch/PR; do not overwrite another agent's work or push to `main`. See [collaboration rules](docs/agents/collaboration.md).
-- Rust Core is the product authority. Preserve Python 3.10–3.14 build/test support, JSON compatibility and retained detail.
-- Apply [R01–R20](コーディング規約.md) and the [development workflow](doc/ワークフロー/ワークフロー.md). No disabled tests, hidden failures or unverified claims.
-- Start with the [task-first context router](docs/agents/README.md). Search for relevant source and tests first; read only necessary original evidence. Widen scope when dependencies, failures or acceptance criteria require it.
-- Report changes, exact validation, uncertainty and handoff in the PR. Keep agent procedures out of user README, help and public API guides.
+- 機能追加・修正・通常の「次へ」は実装担当（implementer）です。自分の差分を毎回レビューし、問題を修正してください。必要な検証とCIが成功し、未解決の問題がなければ自分でPRをマージしてください。全体レビュアーの承認は待ちません。
+- リポジトリ全体のレビューを明示的に依頼された場合は全体レビュアー（repository-reviewer／単独レビュアー）です。横断的に調査し、改善案をIssueにしてください。PRの承認係ではありません。
+- Codex・Claude Codeなどのツール名から役割を決めないでください。直前に明示された担当を継続し、役割変更時は別の作業単位として宣言してください。
+- [R01〜R20](コーディング規約.md) を適用し、Rust正本とPython参照実装の互換性を保ってください。他者の作業を上書きしないでください。
+- 失敗・未確認・実行中を成功扱いせず、GitHubの保護設定を迂回・無断変更しないでください。利用者向けREADMEに担当者の作業手順を混在させないでください。
+- 作業前に [タスク別の案内](docs/agents/README.md) をたどり、関係するソースとテストから読んでください。依存・失敗・受け入れ条件が必要とするときだけ範囲を広げてください。
+- PRには変更内容・検証結果・未確認事項・引き継ぎを書いてください。担当者向けの手順を、利用者向けのREADME・ヘルプ・公開APIガイドへ入れないでください。

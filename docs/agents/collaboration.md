@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Prevent two agents from overwriting or unknowingly reviewing their own changes. An agent's report is not an approval; human review plus CI decide acceptance.
+Prevent two agents from overwriting each other's work. The implementer reviews their own diff as defined in [the role workflow](../../doc/ワークフロー/ワークフロー.md); an agent's self-review is not a GitHub approval, and required CI plus any review that branch protection actually requires decide acceptance.
 
 ## One work unit
 
@@ -31,4 +31,4 @@ Link to source documents rather than copying long requirements or logs. This is 
 
 For each handoff, record **Issue, agent, branch and SHA, owned files, finished work, exact test commands/results, risks/blockers, unresolved comments, next action** in the PR/Issue. The receiving agent must fetch and inspect the diff; previous checks do not prove the changed HEAD passes.
 
-Use the shared PR template. A skipped or unavailable GUI E2E must be marked **unverified**, never successful. Only merge after all required status checks pass and an independent reviewer checks intent, data safety, performance and human-language documentation. Failure, cancellation or pending status is not approval. Human authorization is required for destructive changes or CI policy relaxation.
+Use the shared PR template. A skipped or unavailable GUI E2E must be marked **unverified**, never successful. Merge only after all required status checks pass and the implementer's recorded self-review covers intent, data safety, performance and human-language documentation, following [the role workflow](../../doc/ワークフロー/ワークフロー.md). Do not wait for a repository-wide reviewer's approval, and never fake a GitHub approval. Failure, cancellation or pending status is not approval. Human authorization is required for destructive changes or CI policy relaxation.
