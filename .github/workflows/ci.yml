@@ -117,6 +117,8 @@ jobs:
 
       - name: Verify bidirectional project JSON compatibility
         run: python scripts/test_rust_json_compat.py
+      - name: Verify bidirectional layered project JSON compatibility
+        run: python scripts/test_rust_layered_json_compat.py
 
   evaluate:
     name: Python ${{ matrix.python-version }}

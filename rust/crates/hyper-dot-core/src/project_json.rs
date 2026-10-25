@@ -20,9 +20,8 @@ impl Canvas {
     /// {
     ///   責務: [to_json: 単一Canvasを互換version 2 JSONに書き出す]
     ///   処理: [
-    ///     1: 表示ラスタと保持元画像を取得する
-    ///     2: 分割記録を整列して子色を付ける
-    ///     3: version 2形式へ直列化する
+    ///     1: 単一Canvasのversion 2データ値を作る
+    ///     2: 値をJSON文字列へ直列化する
     ///   ]
     ///   引数: [
     ///     self: 現在の値・状態
@@ -30,6 +29,22 @@ impl Canvas {
     ///   戻り値: [JSON文字列または描画・座標・直列化エラー]
     /// }
     pub fn to_json(&self) -> Result<String, ProjectJsonError> {
+        Ok(serde_json::to_string(&self.to_source()?)?)
+    }
+
+    /// {
+    ///   責務: [to_source: 単一Canvasのversion 2データ値を作る]
+    ///   処理: [
+    ///     1: 表示ラスタと保持元画像を取得する
+    ///     2: 分割記録を整列して子色を付ける
+    ///     3: version 2形式のJSON値へまとめる
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///   ]
+    ///   戻り値: [JSON値または描画・座標エラー]
+    /// }
+    pub(crate) fn to_source(&self) -> Result<Value, ProjectJsonError> {
         let preview = self.render()?;
         let patches = self
             .field
@@ -82,7 +97,7 @@ impl Canvas {
         if !cells.is_empty() {
             source["refined_cells"] = Value::Array(cells);
         }
-        Ok(serde_json::to_string(&source)?)
+        Ok(source)
     }
 }
 
