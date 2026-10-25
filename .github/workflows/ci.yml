@@ -28,6 +28,16 @@ jobs:
           python scripts/python_trust.py
       - name: Test declaration comment checker
         run: python -m unittest discover -s tests -p test_declaration_comments.py
+      - name: Check formatting of committed Python changes
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python -m pip install -e '.[dev]'
+          python scripts/python_trust.py --check
+          if [ "$BASE_REVISION" = '0000000000000000000000000000000000000000' ]; then
+            BASE_REVISION=$(git merge-base HEAD origin/main)
+          fi
+          python scripts/format_python.py --check --base "$BASE_REVISION"
       - name: Audit migrated declarations
         run: python scripts/check_declaration_comments.py
       - name: Audit every declaration in changed owned sources

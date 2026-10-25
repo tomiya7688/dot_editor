@@ -43,8 +43,11 @@ class PythonTrustTests(unittest.TestCase):
     def test_bundle_checks_der_not_labels(self):
         # 公開CAの実PEMを使い、検出対象のhashだけをテスト内で差し替える。
         bundled = importlib.import_module("pip._vendor.certifi")
-        pem = re.search(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
-                        Path(bundled.where()).read_text(encoding="ascii"), re.S).group()
+        pem = re.search(
+            r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
+            Path(bundled.where()).read_text(encoding="ascii"),
+            re.S,
+        ).group()
         fingerprint = hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem)).hexdigest()
         with tempfile.TemporaryDirectory() as directory:
             bundle = Path(directory) / "ca.pem"
@@ -56,12 +59,16 @@ class PythonTrustTests(unittest.TestCase):
             bundle.write_text("no certificates", encoding="ascii")
             with self.assertRaisesRegex(ValueError, "no PEM"):
                 trust.inspect_ca_bundle(bundle)
-            bundle.write_text("-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----\n",
-                              encoding="ascii")
+            bundle.write_text(
+                "-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----\n", encoding="ascii"
+            )
             with self.assertRaises(ssl.SSLError):
                 trust.inspect_ca_bundle(bundle)
-            bundle.write_text(pem + "\n-----BEGIN TRUSTED CERTIFICATE-----\nYWJj\n"
-                              "-----END TRUSTED CERTIFICATE-----\n", encoding="ascii")
+            bundle.write_text(
+                pem + "\n-----BEGIN TRUSTED CERTIFICATE-----\nYWJj\n"
+                "-----END TRUSTED CERTIFICATE-----\n",
+                encoding="ascii",
+            )
             with self.assertRaisesRegex(ValueError, "Unsupported PEM label"):
                 trust.inspect_ca_bundle(bundle)
 
@@ -78,16 +85,22 @@ class PythonTrustTests(unittest.TestCase):
             for name in ("1234abcd.0", "1234abcd.1", "ignored.pem", "1234abcd.r0"):
                 (path / name).touch()
             paths = ssl.get_default_verify_paths()._replace(openssl_capath=directory)
-            with patch.dict(trust.os.environ, {}, clear=True), \
-                 patch.object(trust.ssl, "get_default_verify_paths", return_value=paths), \
-                 patch.object(trust.ssl, "create_default_context") as context, \
-                 patch.object(trust, "inspect_ca_bundle", return_value={"certificates": 1}) as inspect:
+            with (
+                patch.dict(trust.os.environ, {}, clear=True),
+                patch.object(trust.ssl, "get_default_verify_paths", return_value=paths),
+                patch.object(trust.ssl, "create_default_context") as context,
+                patch.object(
+                    trust, "inspect_ca_bundle", return_value={"certificates": 1}
+                ) as inspect,
+            ):
                 context.return_value.get_ca_certs.return_value = []
                 report = trust.inspect_default_roots()
                 self.assertEqual(report["loaded_certificates"], 0)
                 self.assertEqual(report["ca_directories"][0]["certificates"], 2)
-                self.assertEqual({call.args[0].name for call in inspect.call_args_list},
-                                 {"1234abcd.0", "1234abcd.1"})
+                self.assertEqual(
+                    {call.args[0].name for call in inspect.call_args_list},
+                    {"1234abcd.0", "1234abcd.1"},
+                )
                 inspect.side_effect = ValueError("Affected emSign root")
                 with self.assertRaisesRegex(ValueError, "Affected emSign root"):
                     trust.inspect_default_roots()
@@ -101,17 +114,31 @@ class PythonTrustTests(unittest.TestCase):
     def test_pip_upgrade_precedes_other_network_access(self):
         # ネットワークやインストールを実行せず、順序の契約を確認する。
         calls = []
-        with patch.object(trust, "installed_version", return_value="26.2.1"), \
-             patch.object(trust, "install_requirement", side_effect=lambda value: calls.append(value)), \
-             patch.object(trust, "inspect_pip_bundle", side_effect=lambda: calls.append("pip-check")), \
-             patch.object(trust, "inspect_default_roots", side_effect=lambda: calls.append("os-check")), \
-             patch.object(trust, "inspect_ca_overrides", side_effect=lambda: calls.append("overrides")), \
-             patch.object(trust, "audit_environment", side_effect=lambda: calls.append("audit")):
+        with (
+            patch.object(trust, "installed_version", return_value="26.2.1"),
+            patch.object(
+                trust, "install_requirement", side_effect=lambda value: calls.append(value)
+            ),
+            patch.object(
+                trust, "inspect_pip_bundle", side_effect=lambda: calls.append("pip-check")
+            ),
+            patch.object(
+                trust, "inspect_default_roots", side_effect=lambda: calls.append("os-check")
+            ),
+            patch.object(
+                trust, "inspect_ca_overrides", side_effect=lambda: calls.append("overrides")
+            ),
+            patch.object(trust, "audit_environment", side_effect=lambda: calls.append("audit")),
+        ):
             trust.bootstrap_environment()
-        self.assertEqual(calls, [trust.PIP_WHEEL, "pip-check", "os-check", "overrides",
-                                 "certifi>=2026.10.19", "audit"])
-        self.assertEqual(trust.PIP_WHEEL.rsplit("#sha256=", 1)[1],
-                         "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70")
+        self.assertEqual(
+            calls,
+            [trust.PIP_WHEEL, "pip-check", "os-check", "overrides", "certifi>=2026.10.19", "audit"],
+        )
+        self.assertEqual(
+            trust.PIP_WHEEL.rsplit("#sha256=", 1)[1],
+            "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70",
+        )
 
     # {
     #   責務: [test_failed_pip_validation_stops_installation: pip検証失敗後に追加パッケージを取得しないことを確認する]
@@ -121,9 +148,11 @@ class PythonTrustTests(unittest.TestCase):
     # }
     def test_failed_pip_validation_stops_installation(self):
         # 新しいpipを古い固定wheelへ戻す処理も発生させない。
-        with patch.object(trust, "installed_version", return_value="27.0"), \
-             patch.object(trust, "inspect_pip_bundle", side_effect=ValueError("unsafe")), \
-             patch.object(trust, "install_requirement") as install:
+        with (
+            patch.object(trust, "installed_version", return_value="27.0"),
+            patch.object(trust, "inspect_pip_bundle", side_effect=ValueError("unsafe")),
+            patch.object(trust, "install_requirement") as install,
+        ):
             with self.assertRaises(ValueError):
                 trust.bootstrap_environment()
             install.assert_not_called()
@@ -136,12 +165,14 @@ class PythonTrustTests(unittest.TestCase):
     # }
     def test_newer_pip_is_preserved_on_success(self):
         # pipを戻さないことと、必要なcertifi更新を省かないことを同時に確認する。
-        with patch.object(trust, "installed_version", return_value="27.0"), \
-             patch.object(trust, "inspect_pip_bundle"), \
-             patch.object(trust, "inspect_default_roots"), \
-             patch.object(trust, "inspect_ca_overrides"), \
-             patch.object(trust, "install_requirement") as install, \
-             patch.object(trust, "audit_environment", return_value={"verified": True}) as audit:
+        with (
+            patch.object(trust, "installed_version", return_value="27.0"),
+            patch.object(trust, "inspect_pip_bundle"),
+            patch.object(trust, "inspect_default_roots"),
+            patch.object(trust, "inspect_ca_overrides"),
+            patch.object(trust, "install_requirement") as install,
+            patch.object(trust, "audit_environment", return_value={"verified": True}) as audit,
+        ):
             self.assertEqual(trust.bootstrap_environment(), {"verified": True})
             install.assert_called_once_with("certifi>=2026.10.19")
             audit.assert_called_once_with()
@@ -155,13 +186,15 @@ class PythonTrustTests(unittest.TestCase):
     def test_old_pip_stops_at_each_failed_gate(self):
         # 各ゲートの失敗を独立させ、ネットワークにも実際の証明書にも依存させない。
         for failed_gate in ("inspect_pip_bundle", "inspect_default_roots", "inspect_ca_overrides"):
-            with self.subTest(gate=failed_gate), \
-                 patch.object(trust, "installed_version", return_value="26.2.1"), \
-                 patch.object(trust, "inspect_pip_bundle"), \
-                 patch.object(trust, "inspect_default_roots"), \
-                 patch.object(trust, "inspect_ca_overrides"), \
-                 patch.object(trust, failed_gate, side_effect=ValueError("unsafe")), \
-                 patch.object(trust, "install_requirement") as install:
+            with (
+                self.subTest(gate=failed_gate),
+                patch.object(trust, "installed_version", return_value="26.2.1"),
+                patch.object(trust, "inspect_pip_bundle"),
+                patch.object(trust, "inspect_default_roots"),
+                patch.object(trust, "inspect_ca_overrides"),
+                patch.object(trust, failed_gate, side_effect=ValueError("unsafe")),
+                patch.object(trust, "install_requirement") as install,
+            ):
                 with self.assertRaisesRegex(ValueError, "unsafe"):
                     trust.bootstrap_environment()
                 install.assert_called_once_with(trust.PIP_WHEEL)
@@ -174,8 +207,10 @@ class PythonTrustTests(unittest.TestCase):
     # }
     def test_check_mode_never_installs(self):
         # 検査モードの成功時も失敗時もインストールは行わない。
-        with patch.object(trust, "bootstrap_environment") as bootstrap, \
-             patch.object(trust, "audit_environment", return_value={}):
+        with (
+            patch.object(trust, "bootstrap_environment") as bootstrap,
+            patch.object(trust, "audit_environment", return_value={}),
+        ):
             self.assertEqual(trust.main(["--check"]), 0)
             bootstrap.assert_not_called()
         with patch.object(trust, "audit_environment", side_effect=ValueError("unsafe")):
@@ -197,7 +232,9 @@ class PythonTrustTests(unittest.TestCase):
                 self.assertIn(flag, command)
             self.assertNotIn("--trusted-host", command)
             self.assertEqual(run.call_args.kwargs, {"check": True, "timeout": 300})
-        with patch.object(trust.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "pip")):
+        with patch.object(
+            trust.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "pip")
+        ):
             with self.assertRaises(subprocess.CalledProcessError):
                 trust.install_requirement(trust.PIP_WHEEL)
 
@@ -209,8 +246,10 @@ class PythonTrustTests(unittest.TestCase):
     # }
     def test_ca_overrides_are_not_silently_ignored(self):
         # 利用者の実際の環境変数やCAファイルはテストから変更しない。
-        with patch.dict(trust.os.environ, {"REQUESTS_CA_BUNDLE": "extra.pem"}, clear=True), \
-             patch.object(trust, "inspect_ca_bundle", return_value={}) as inspect:
+        with (
+            patch.dict(trust.os.environ, {"REQUESTS_CA_BUNDLE": "extra.pem"}, clear=True),
+            patch.object(trust, "inspect_ca_bundle", return_value={}) as inspect,
+        ):
             self.assertEqual(trust.inspect_ca_overrides(), {"REQUESTS_CA_BUNDLE": {}})
             inspect.assert_called_once_with("extra.pem")
         with patch.dict(trust.os.environ, {"SSL_CERT_DIR": "unknown"}, clear=True):
@@ -226,8 +265,10 @@ class PythonTrustTests(unittest.TestCase):
     def test_outdated_optional_packages_fail_without_implicit_install(self):
         # 使っていないツールを導入せず、使っている古いツールは別途更新を要求する。
         versions = {"pip": "26.2.2", "certifi": "2026.10.19", "uv": "0.13.3", "sigstore": None}
-        with patch.object(trust, "installed_version", side_effect=versions.get), \
-             patch.object(trust, "install_requirement") as install:
+        with (
+            patch.object(trust, "installed_version", side_effect=versions.get),
+            patch.object(trust, "install_requirement") as install,
+        ):
             with self.assertRaisesRegex(ValueError, "uv must be"):
                 trust.audit_environment()
             install.assert_not_called()
@@ -245,13 +286,20 @@ class PythonTrustTests(unittest.TestCase):
         for name in ("declaration-comments", "rust-core", "evaluate"):
             job = jobs[name]
             self.assertIn("runs-on: ubuntu-latest", job)
-            self.assertLess(job.index("actions/setup-python"), job.index("scripts/prepare_ci_ca.py"))
-            self.assertLess(job.index("scripts/prepare_ci_ca.py"), job.index("python scripts/python_trust.py"))
+            self.assertLess(
+                job.index("actions/setup-python"), job.index("scripts/prepare_ci_ca.py")
+            )
+            self.assertLess(
+                job.index("scripts/prepare_ci_ca.py"), job.index("python scripts/python_trust.py")
+            )
         self.assertNotIn("sudo", jobs["windows-build"])
         self.assertNotIn("scripts/prepare_ci_ca.py", jobs["windows-build"])
-        self.assertLess(jobs["windows-build"].index("scripts/prepare_ci_windows_ca.ps1"),
-                        jobs["windows-build"].index("scripts/build_windows.ps1"))
-        self.assertEqual(workflow.count("python scripts/python_trust.py --check"), 2)
+        self.assertLess(
+            jobs["windows-build"].index("scripts/prepare_ci_windows_ca.ps1"),
+            jobs["windows-build"].index("scripts/build_windows.ps1"),
+        )
+        # 整形用の開発依存導入後も含め、3経路の証明書gateを維持する。
+        self.assertEqual(workflow.count("python scripts/python_trust.py --check"), 3)
         self.assertIn("run: ./scripts/build_windows.ps1", workflow)
         self.assertIn("python -m unittest discover -s tests", workflow)
         self.assertNotIn("actions/upload-artifact", workflow)
@@ -259,4 +307,6 @@ class PythonTrustTests(unittest.TestCase):
             content = (ROOT / "scripts" / name).read_text(encoding="utf-8")
             self.assertIn('"python_trust.py"', content)
             self.assertIn("--check", content)
-        self.assertIn("python scripts/python_trust.py", (ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertIn(
+            "python scripts/python_trust.py", (ROOT / "README.md").read_text(encoding="utf-8")
+        )

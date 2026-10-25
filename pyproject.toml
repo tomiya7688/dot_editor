@@ -11,6 +11,9 @@ requires-python = ">=3.10"
 license = "MIT"
 dependencies = ["Pillow>=10.0,<13"]
 
+[project.optional-dependencies]
+dev = ["ruff==0.17.2"]
+
 [project.scripts]
 pixel-cli = "pixel_cli:main"
 
@@ -20,3 +23,14 @@ dot-editor = "dot_editor:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 py-modules = ["dot_editor", "pixel_cli", "pixel_commands", "pixel_backend", "pixel_layers", "resolution_field"]
+
+[tool.ruff]
+required-version = "==0.17.2"
+target-version = "py310"
+line-length = 100
+force-exclude = true
+extend-exclude = ["tools", "build", "dist", "vendor", "generated", ".venv*", "*.egg-info"]
+
+[tool.ruff.format]
+line-ending = "lf"
+docstring-code-format = false
