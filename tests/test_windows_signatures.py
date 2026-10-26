@@ -125,6 +125,7 @@ class WindowsSignatureTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertIn("Invalid signature or missing timestamp", result.stderr)
+        self.assertIn("(Valid)", result.stderr)
 
     # {
     #   責務: [test_signed_system_file: 署名付きの実ファイルを検査する]
