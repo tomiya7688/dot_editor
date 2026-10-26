@@ -18,7 +18,7 @@ python scripts/check_declaration_comments.py
 python scripts/check_declaration_comments.py --changed-base origin/main
 python scripts/evaluate.py
 python -m unittest discover -s tests
-cargo fmt --manifest-path rust/Cargo.toml -- --check
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check
 cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features -- -D warnings
 cargo test --manifest-path rust/Cargo.toml --workspace
 cargo build --manifest-path rust/Cargo.toml --workspace --release

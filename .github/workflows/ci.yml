@@ -89,7 +89,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Check formatting
-        run: cargo fmt --manifest-path rust/Cargo.toml -- --check
+        run: cargo fmt --all --manifest-path rust/Cargo.toml -- --check
 
       - name: Run Clippy
         run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features -- -D warnings

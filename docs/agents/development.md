@@ -28,7 +28,7 @@
 Rustコアの開発には **Rust stableツールチェーン（cargo / rustfmt / clippy）** が別途必要です。Pythonのセットアップと混同しないよう、Rust workspaceの確認はリポジトリ直下から次を実行します。
 
 ```bash
-cargo fmt --manifest-path rust/Cargo.toml -- --check
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check
 cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features -- -D warnings
 cargo test --manifest-path rust/Cargo.toml --workspace
 cargo build --manifest-path rust/Cargo.toml --workspace
