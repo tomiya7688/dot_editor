@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/hyper-dot-core"]
+members = ["crates/hyper-dot-core", "crates/hyper-dot-cli"]
 resolver = "3"
 
 [workspace.package]

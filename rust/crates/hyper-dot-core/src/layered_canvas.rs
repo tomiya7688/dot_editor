@@ -97,6 +97,27 @@ impl LayeredCanvas {
     }
 
     /// {
+    ///   責務: [from_canvas: 単一Canvasを背景1層だけの作品として包む]
+    ///   処理: [
+    ///     1: Canvas内の履歴を破棄して保持状態だけを残す
+    ///     2: 背景として表示・選択した作品を作る
+    ///   ]
+    ///   引数: [
+    ///     canvas: 背景にするCanvas
+    ///   ]
+    ///   戻り値: [履歴のない作品]
+    /// }
+    pub fn from_canvas(mut canvas: Canvas) -> Self {
+        canvas.clear_history();
+        let background = LayerEntry {
+            name: BACKGROUND_NAME.to_owned(),
+            canvas,
+            visible: true,
+        };
+        Self::from_entries(vec![background], 0)
+    }
+
+    /// {
     ///   責務: [from_entries: 検証済みのレイヤー一覧から履歴のない作品を組み立てる]
     ///   処理: [
     ///     1: レイヤーと選択位置を格納する

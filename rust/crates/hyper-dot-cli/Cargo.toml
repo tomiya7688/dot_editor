@@ -1,0 +1,15 @@
+[package]
+name = "hyper-dot-cli"
+version = "0.1.0"
+description = "Shell-first command line for Hyper Dot projects, backed by the Rust core"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "pixel-cli"
+path = "src/main.rs"
+
+[dependencies]
+hyper-dot-core = { path = "../hyper-dot-core" }
+serde_json = "1.0"
