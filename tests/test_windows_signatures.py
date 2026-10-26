@@ -79,6 +79,54 @@ class WindowsSignatureTests(unittest.TestCase):
         self.assertIn("No executable files", result.stderr)
 
     # {
+    #   責務: [test_link_is_rejected: 配布物内のリンクをたどらず拒否する]
+    #   処理: [1: 一時領域内にリンクを作る, 2: 非0と理由を確認する]
+    #   引数: [self: テストインスタンス]
+    #   戻り値: [なし。リンク作成権限がない場合はskip]
+    # }
+    def test_link_is_rejected(self):
+        # 開発者モードなどの権限がないWindowsでは、権限変更せずskipを記録する。
+        target = self.directory / "original.txt"
+        target.write_text("fixture", encoding="utf-8")
+        try:
+            (self.directory / "linked.txt").symlink_to(target)
+        except OSError as error:
+            self.skipTest(f"Cannot create test symlink: {error}")
+        result = self.run_verifier()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("must not contain symbolic links", result.stderr)
+
+    # {
+    #   責務: [test_missing_timestamp_fails: 証明書がない署名を拒否する]
+    #   処理: [1: 署名APIの戻り値だけを模擬する, 2: タイムスタンプ欠落の非0を確認する]
+    #   引数: [self: テストインスタンス]
+    #   戻り値: [なし]
+    # }
+    def test_missing_timestamp_fails(self):
+        # 検査APIを模擬し、証明書を発行したり信頼ストアを書き換えたりしない。
+        (self.directory / "missing_timestamp.exe").write_bytes(b"fixture")
+        command = (
+            "function Get-AuthenticodeSignature { param($LiteralPath) "
+            "[pscustomobject]@{Status='Valid';SignerCertificate=1;TimeStamperCertificate=$null} }; "
+            "& $env:DOT_EDITOR_SIGNATURE_SCRIPT $env:DOT_EDITOR_SIGNATURE_DIRECTORY"
+        )
+        result = subprocess.run(
+            ["pwsh", "-NoProfile", "-NonInteractive", "-Command", command],
+            env={
+                **os.environ,
+                "DOT_EDITOR_SIGNATURE_SCRIPT": str(SCRIPT),
+                "DOT_EDITOR_SIGNATURE_DIRECTORY": str(self.directory),
+            },
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("Invalid signature or missing timestamp", result.stderr)
+
+    # {
     #   責務: [test_signed_system_file: 署名付きの実ファイルを検査する]
     #   処理: [1: Windows標準ファイルを検査用に複製する, 2: 署名と改変後の失敗を検査する]
     #   引数: [self: テストインスタンス]
