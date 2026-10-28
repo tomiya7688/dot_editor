@@ -188,6 +188,16 @@ jobs:
       - name: Prepare Windows runner trust
         shell: pwsh
         run: ./scripts/prepare_ci_windows_ca.ps1
+      - name: Test Windows signature inspection
+        shell: pwsh
+        env:
+          DOT_EDITOR_TEST_TEMP: ${{ runner.temp }}
+          DOT_EDITOR_REQUIRE_SIGNED_SAMPLE: '1'
+        run: |
+          & .venv/Scripts/python.exe -m unittest discover -s tests -p test_windows_signatures.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows signature inspection tests failed.' }
+          & .venv/Scripts/python.exe -m unittest discover -s tests -p test_signature_job.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows signature job tests failed.' }
       - name: Build and smoke-test distribution
         shell: pwsh
         run: ./scripts/build_windows.ps1
