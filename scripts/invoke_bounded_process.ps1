@@ -36,7 +36,9 @@ function Invoke-BoundedProcess {
         # 両ストリームを並行して読み、パイプ満杯による相互待ちを避ける。
         $OutputTask = $Process.StandardOutput.ReadToEndAsync()
         $ErrorTask = $Process.StandardError.ReadToEndAsync()
-        if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
+        # 起動にかかった時間も期限に含める。
+        $RemainingMilliseconds = [Math]::Max(0, ($TimeoutSeconds * 1000) - $Stopwatch.ElapsedMilliseconds)
+        if (-not $Process.WaitForExit([int]$RemainingMilliseconds)) {
             # 終了と競合する場合でも、期限切れを成功扱いしない。
             try {
                 $Process.Kill($true)

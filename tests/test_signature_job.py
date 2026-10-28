@@ -40,7 +40,8 @@ class SignatureJobTests(unittest.TestCase):
             command = (
                 "function Get-AuthenticodeSignature { param($LiteralPath) "
                 "$s=[Diagnostics.ProcessStartInfo]::new(); $s.FileName=$env:DOT_EDITOR_JOB_PYTHON; "
-                "$s.UseShellExecute=$false; [void]$s.ArgumentList.Add('-c'); "
+                "$s.UseShellExecute=$false; $s.RedirectStandardOutput=$true; "
+                "$s.RedirectStandardError=$true; [void]$s.ArgumentList.Add('-c'); "
                 "[void]$s.ArgumentList.Add($env:DOT_EDITOR_JOB_CODE); "
                 "[void][Diagnostics.Process]::Start($s); "
                 "for($i=0; $i -lt 1200 -and -not (Test-Path -LiteralPath $env:DOT_EDITOR_JOB_RELEASE); $i++) "

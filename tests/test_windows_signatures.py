@@ -109,11 +109,13 @@ class WindowsSignatureTests(unittest.TestCase):
     # }
     def test_ancestor_junction_is_rejected(self):
         # 対象とリンクの両方を一時領域に限定し、終了時はリンクだけを削除する。
-        target = self.directory / "real"
+        special_directory = self.directory / "space & special"
+        special_directory.mkdir()
+        target = special_directory / "real"
         (target / "nested").mkdir(parents=True)
-        junction = self.directory / "junction"
+        junction = special_directory / "junction"
         created = subprocess.run(
-            ["cmd", "/c", "mklink", "/J", str(junction), str(target)],
+            f'cmd /d /s /c "mklink /J "{junction}" "{target}""',
             capture_output=True,
             timeout=30,
         )

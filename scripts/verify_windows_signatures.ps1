@@ -8,6 +8,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Windows以外では子プロセスの起動前に対象外であることを伝える。
+if (-not $IsWindows) {
+    throw 'Windows is required for Authenticode signature verification.'
+}
+
 # ネイティブの署名APIが停止しても、呼び出し元で待機時間を制限する。
 . (Join-Path $PSScriptRoot 'invoke_bounded_process.ps1')
 $PowerShell = Join-Path $PSHOME 'pwsh.exe'
