@@ -196,6 +196,8 @@ jobs:
         run: |
           & .venv/Scripts/python.exe -m unittest discover -s tests -p test_windows_signatures.py
           if ($LASTEXITCODE -ne 0) { throw 'Windows signature inspection tests failed.' }
+          & .venv/Scripts/python.exe -m unittest discover -s tests -p test_signature_job.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows signature job tests failed.' }
       - name: Build and smoke-test distribution
         shell: pwsh
         run: ./scripts/build_windows.ps1
