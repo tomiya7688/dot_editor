@@ -58,6 +58,7 @@ Controller（TrainerまたはInferenceService）が処理順を管理する。Ac
   "prompt": "白い背景、赤いりんごが1個",
   "mode": "pixel64",
   "stage": "shape",
+  "base_revision": "runner-owned-revision",
   "catalog_id": "rust-pixel-cli-version-and-sha",
   "canvas": {"width": 16, "height": 16, "selected_layer": "main"},
   "budget_remaining": {"actions": 128, "evaluations": 3},
