@@ -17,6 +17,16 @@ rust/target/release/pixel-cli --json -p art.json export render -o art.png
 
 1回の実行は1つの操作です。標準入力を読みません。どの作業フォルダからでも実行できます。コマンド名`cli-anything-dot-editor`の別名は #32 で追加します。
 
+## 操作の発見性と同梱コマンド表
+
+本製品は人間のGUI/端末操作に加え、ゲームエンジンやDot Editor AIなどがsubprocessから使うことを正式な利用形態とします。**人間が理解しやすい軽量GUI・明瞭なshellコマンド・個別ヘルプ・検索できるコマンド説明表**を提供する要件は[利用インターフェース仕様](ユーザー操作インターフェース仕様.md)に定めます。
+
+**現在のRust CLI**は`--help`に全コマンドと共通オプション、`pixel-cli pixel paint --help`等に個別オプションの説明を表示します。実装・引数の正本は`command_table.rs`で、`help_text.rs`がそこから生成します。Python CLIは別の`argparse`文法を持つため、実行例と説明表でRust版と区別します。
+
+**目標・未実装（[#66](https://github.com/tomiya7688/dot_editor/issues/66)）**：実行したCLI自身のコマンド一覧をJSONで出す読取専用入口（案：`--commands-json`）を追加し、同じ定義から`COMMANDS.md`と`commands.json`を生成します。Windows GUI+Python CLI ZIP、Python wheel/sdist、将来のRust OS別アーカイブには、それぞれ**同梱されたCLI実装と版の一致する表**が自動的に入ります。最終配布物を展開して表・JSON・ヘルプを照合し、漏れや旧版があれば配布を停止します。署名・attestation要件は引き続き適用します。
+
+設計の生成/同梱経路は[コマンドカタログ設計](design/command-reference-delivery.md)に分割しています。操作表や将来の新オプションを、このv1の「実装済みコマンド」の一覧に先行記載しません。
+
 ## 共通オプション
 
 | オプション | 意味 |
