@@ -68,6 +68,7 @@ def check_repository(root: Path) -> list[str]:
         "docs/agents/development.md",
         "docs/agents/collaboration.md",
         "docs/agents/quality-gates.md",
+        "docs/design/README.md",
     ):
         path = root / relative
         if not path.is_file():
@@ -90,7 +91,35 @@ def check_repository(root: Path) -> list[str]:
                 f"{relative}: developer-only work rule/reference at char {match.start()}: "
                 f"{match.group()}"
             )
+    problems.extend(check_design_index(root))
     return problems
+
+
+# {
+#   責務: [check_design_index: 設計書がすべて設計書の一覧に載っていることを検査する]
+#   処理: [
+#     1: docs/designがなければ検査しない
+#     2: 一覧のREADME.mdが存在することを確認する
+#     3: 一覧以外のmdとjsonのファイル名が、一覧の本文にあることを確認する
+#   ]
+#   引数: [root: 対象リポジトリのルートパス]
+#   戻り値: [違反を表すメッセージのリスト]
+# }
+def check_design_index(root: Path) -> list[str]:
+    design = root / "docs" / "design"
+    if not design.is_dir():
+        return []
+    index = design / "README.md"
+    if not index.is_file():
+        return ["missing design index: docs/design/README.md"]
+    listing = index.read_text(encoding="utf-8")
+    documents = sorted([*design.glob("*.md"), *design.glob("*.json")])
+    # 一覧への追加漏れは、設計書が見つけられず重複や食い違いの原因になる。
+    return [
+        f"docs/design/README.md does not list {document.name}"
+        for document in documents
+        if document.name != "README.md" and document.name not in listing
+    ]
 
 
 # {
