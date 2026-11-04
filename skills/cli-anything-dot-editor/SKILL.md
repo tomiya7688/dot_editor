@@ -10,7 +10,7 @@ description: Hyper Dot Editorのドット絵プロジェクトを、画面を使
 ドット絵の作品（プロジェクトファイル）を、1回の起動で1つの操作として、作る・変える・調べる・PNGに書き出します。画面は使いません。Pythonも要りません。
 
 - 実行ファイルの名前は`pixel-cli`と`cli-anything-dot-editor`の2つで、動作はまったく同じです。
-- 入手: リポジトリで`cargo build --release --manifest-path rust/Cargo.toml -p hyper-dot-cli`を実行すると、`rust/target/release/`に2つの実行ファイルができます。配布物にも同じ名前で入っています。
+- 入手: リポジトリで`cargo build --release --manifest-path rust/Cargo.toml -p hyper-dot-cli`を実行すると、`rust/target/release/`に2つの実行ファイルができます。3つのOS向けの配布アーカイブへの同梱は、別のIssue（#38）で行います。
 - GUIの`dot-editor`（Python）とは別物です。Python版は参照実装で、正式な入口ではありません。
 
 ## 共通の約束

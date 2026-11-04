@@ -201,7 +201,7 @@ class Session:
         assert document["status"] == "ok", (step, document)
         # 作業フォルダの場所は名前ごとに違うので、比較用の記録では置き換える。
         folder_text = json.dumps(str(self.folder))[1:-1]
-        recorded = json.loads(json.dumps(document["result"]).replace(folder_text, "<dir>"))
+        recorded = json.loads(json.dumps(document).replace(folder_text, "<dir>"))
         self.log.append((step, recorded))
         return document["result"]
 
@@ -220,7 +220,7 @@ class Session:
         document = process.json()
         assert (document["status"], document["error"]) == ("error", error), (step, document)
         assert process.stderr.startswith("error: "), (step, process.stderr)
-        self.log.append((step, error))
+        self.log.append((step, error, process.stderr.replace(str(self.folder), "<dir>")))
 
     # {
     #   責務: [export: PNGを書き出し、検査して画素の行列を返す]
@@ -335,7 +335,9 @@ def check_help_and_skill(folder, suffix, skill, cwd):
     assert text.startswith("---\n") and f"name: {ALIAS}" in text.split("---")[1], (
         "SKILL.md frontmatter"
     )
-    missing = [path for path in command_paths(outputs[PRIMARY][0]) if path not in text]
+    paths = command_paths(outputs[PRIMARY][0])
+    assert paths, "no commands found in --help"
+    missing = [path for path in paths if path not in text]
     assert not missing, f"SKILL.md does not mention: {missing}"
 
 

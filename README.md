@@ -208,6 +208,8 @@ rust/target/release/pixel-cli --json -p art.json export render -o art.png --size
 {"status": "ok", "operation": "pixel.paint", "project": "art.json", "result": {"x": 3, "y": 4, "color": "#FF8800FF", "changed": true}, "dry_run": false, "saved": true}
 ```
 
+以降の例は、`pixel-cli` が PATH にある前提です。ビルドした実行ファイルのフォルダを PATH に加えるか（bash: `export PATH="$PWD/rust/target/release:$PATH"`、PowerShell: `$env:PATH = "$PWD\rust\target\release;$env:PATH"`。どちらも現在のシェルだけで有効です）、実行ファイルを使うフォルダへ置いてください。
+
 ```bash
 pixel-cli --json -p art.json status | jq '.result.resolution'
 pixel-cli --json --dry-run -p art.json pixel paint 0 0 "#000000"   # 保存せずに結果だけ確認
