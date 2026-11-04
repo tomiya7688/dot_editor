@@ -100,7 +100,7 @@ def check_repository(root: Path) -> list[str]:
 #   処理: [
 #     1: docs/designがなければ検査しない
 #     2: 一覧のREADME.mdが存在することを確認する
-#     3: 一覧以外のmdとjsonのファイル名が、一覧の本文にあることを確認する
+#     3: 一覧以外のmdとjsonが、一覧のリンク先として実在の文書を指していることを確認する
 #   ]
 #   引数: [root: 対象リポジトリのルートパス]
 #   戻り値: [違反を表すメッセージのリスト]
@@ -113,12 +113,18 @@ def check_design_index(root: Path) -> list[str]:
     if not index.is_file():
         return ["missing design index: docs/design/README.md"]
     listing = index.read_text(encoding="utf-8")
+    # ファイル名の部分一致では別の語に偶然含まれても通るため、リンク先の実体で照合する。
+    linked = {
+        (design / target.split("#", 1)[0]).resolve()
+        for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", listing)
+        if "://" not in target and not target.startswith("#")
+    }
     documents = sorted([*design.glob("*.md"), *design.glob("*.json")])
     # 一覧への追加漏れは、設計書が見つけられず重複や食い違いの原因になる。
     return [
-        f"docs/design/README.md does not list {document.name}"
+        f"docs/design/README.md does not link {document.name}"
         for document in documents
-        if document.name != "README.md" and document.name not in listing
+        if document.name != "README.md" and document.resolve() not in linked
     ]
 
 

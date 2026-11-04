@@ -103,6 +103,16 @@ class AgentPolicyTests(unittest.TestCase):
             (design / "README.md").write_text("# index\n", encoding="utf-8")
             (design / "new-design.md").write_text("# design\n", encoding="utf-8")
             self.assertTrue(any("new-design.md" in item for item in check_repository(root)))
+            # 文章中にファイル名があるだけ、別名の一部、別フォルダのリンクは載ったと見なさない。
+            for mention in (
+                "# index\nnew-design.md は後で載せる\n",
+                "# index\n[x](other-new-design.md)\n",
+                "# index\n[x](../new-design.md)\n",
+            ):
+                (design / "README.md").write_text(mention, encoding="utf-8")
+                self.assertTrue(
+                    any("new-design.md" in item for item in check_repository(root)), mention
+                )
             (design / "README.md").write_text("# index\n[x](new-design.md)\n", encoding="utf-8")
             self.assertEqual(check_repository(root), [])
 
