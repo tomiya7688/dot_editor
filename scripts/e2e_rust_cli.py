@@ -80,6 +80,8 @@ class Process:
 #   戻り値: [Process]
 # }
 def start(executable, arguments, cwd):
+    # 引数のリストで直接起動し（シェルを使わない）、渡す値は検査対象のフォルダと固定の語だけ。
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     result = subprocess.run(
         [str(executable), *arguments],
         cwd=cwd,
