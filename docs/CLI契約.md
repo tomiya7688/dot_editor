@@ -123,4 +123,4 @@ rust/target/release/pixel-cli --json -p art.json export render -o art.png
 - **依存順は #63 → #64**。作成競合やPOSIX/Windowsでの原子的な確定・確定状態が不明な場合の扱いを先に検証します。
 - #63の提案エラー`revision_conflict`、`project_busy`、`unsafe_path`、`commit_uncertain`と、#64の`invalid_batch`は**現行v1には存在しません**。追加する際は既存のerrorコード/終了値の意味を維持し、実バイナリE2Eで固定します。
 - バッチは`1プロセス = 1トランザクション`であり、常駐daemon・永続Undoやstdinの暗黙待機を追加するものではありません。`operations.json`の`version`は作品JSONの`version: 2`とは別です。
-- 詳細設計は[保存安全性](design/cli-concurrency.md)と[バッチAPI](design/cli-batch.md)へ分割します。内部の実装手順・エージェント共同作業ルールを利用者向けREADMEへ転載しません。
+- 詳細な契約案と受け入れ試験は[保存安全性](design/cli-concurrency.md)と[バッチAPI](design/cli-batch.md)で定義します。
