@@ -191,6 +191,40 @@ python -m pixel_cli export --project project.json --output detail.png --resoluti
 
 後者はプロジェクトの現在解像度を変更しません。JSONはレイヤー・保持中の細部・局所分割状態を残して編集を続けるための形式、PNGは合成済み画像です。
 
+### シェルから使う正式なCLI（Rust版 `pixel-cli`）
+
+ゲームエンジンやスクリプトから使う正式なCLIは、Rustで作った `pixel-cli` です（別名 `cli-anything-dot-editor`、動作は同じです）。Rust版が正本で、Python版は参照実装です。Pythonは不要で、1回の起動で1つの操作を行い、標準入力を待ちません。
+
+```bash
+cargo build --release --manifest-path rust/Cargo.toml -p hyper-dot-cli
+rust/target/release/pixel-cli --json -p art.json project new --size 16
+rust/target/release/pixel-cli --json -p art.json pixel paint 3 4 "#FF8800"
+rust/target/release/pixel-cli --json -p art.json export render -o art.png --size 64
+```
+
+`--json` を付けると、標準出力は次のような1つのJSONだけになります。説明やエラーは標準エラーに出ます。終了コードは、成功が0、実行時の失敗が1、使い方の誤りが2です。
+
+```json
+{"status": "ok", "operation": "pixel.paint", "project": "art.json", "result": {"x": 3, "y": 4, "color": "#FF8800FF", "changed": true}, "dry_run": false, "saved": true}
+```
+
+以降の例は、`pixel-cli` が PATH にある前提です。ビルドした実行ファイルのフォルダを PATH に加えるか（bash: `export PATH="$PWD/rust/target/release:$PATH"`、PowerShell: `$env:PATH = "$PWD\rust\target\release;$env:PATH"`。どちらも現在のシェルだけで有効です）、実行ファイルを使うフォルダへ置いてください。
+
+```bash
+pixel-cli --json -p art.json status | jq '.result.resolution'
+pixel-cli --json --dry-run -p art.json pixel paint 0 0 "#000000"   # 保存せずに結果だけ確認
+```
+
+別のプログラムからは、実行ファイルを起動して、標準出力のJSONと終了コードを読むだけで使えます。
+
+```python
+import json, subprocess
+run = subprocess.run(["pixel-cli", "--json", "-p", "art.json", "status"], capture_output=True, text=True)
+resolution = json.loads(run.stdout)["result"]["resolution"] if run.returncode == 0 else None
+```
+
+コマンドの一覧と約束事は [CLI契約](docs/CLI契約.md)、エージェント向けの手引きは [SKILL.md](skills/cli-anything-dot-editor/SKILL.md) にあります。
+
 ## 保存形式と安全上限
 
 JSONの重複キー、非標準数値（NaN・Infinity）、128階層を超えるオブジェクト・配列の入れ子は読込エラーとして拒否します。
