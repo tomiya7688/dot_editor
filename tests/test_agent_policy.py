@@ -78,6 +78,45 @@ class AgentPolicyTests(unittest.TestCase):
             self.assertTrue(any("only @AGENTS.md" in item for item in check_repository(root)))
 
     # {
+    #   責務: [test_design_index: 設計書の一覧に載っていない設計書を検出する]
+    #   処理: [
+    #     1: 設計書フォルダがない場合は検査されないことを確認する
+    #     2: 一覧がない、一覧に載らない設計書がある場合を拒否する
+    #     3: 一覧に載せると通過することを確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_design_index(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in REQUIRED:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("shared policy\n", encoding="utf-8")
+            (root / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+            (root / "README.md").write_text("# User guide\n", encoding="utf-8")
+            self.assertEqual(check_repository(root), [])
+            design = root / "docs" / "design"
+            design.mkdir(parents=True)
+            self.assertTrue(any("missing design index" in item for item in check_repository(root)))
+            (design / "README.md").write_text("# index\n", encoding="utf-8")
+            (design / "new-design.md").write_text("# design\n", encoding="utf-8")
+            self.assertTrue(any("new-design.md" in item for item in check_repository(root)))
+            # 文章中にファイル名があるだけ、別名の一部、別フォルダのリンクは載ったと見なさない。
+            for mention in (
+                "# index\nnew-design.md は後で載せる\n",
+                "# index\n[x](other-new-design.md)\n",
+                "# index\n[x](../new-design.md)\n",
+            ):
+                (design / "README.md").write_text(mention, encoding="utf-8")
+                self.assertTrue(
+                    any("new-design.md" in item for item in check_repository(root)), mention
+                )
+            (design / "README.md").write_text("# index\n[x](new-design.md)\n", encoding="utf-8")
+            self.assertEqual(check_repository(root), [])
+
+    # {
     #   責務: [test_broken_link: 参照切れのルール索引を拒否する]
     #   処理: [
     #     1: 一時リポジトリへ最小必須ファイルを作る

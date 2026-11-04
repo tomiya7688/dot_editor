@@ -6,9 +6,17 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "hyper_dot_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "pixel-cli"
 path = "src/main.rs"
+
+[[bin]]
+name = "cli-anything-dot-editor"
+path = "src/bin/cli-anything-dot-editor.rs"
 
 [dependencies]
 hyper-dot-core = { path = "../hyper-dot-core" }
