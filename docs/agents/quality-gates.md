@@ -1,5 +1,9 @@
 # Quality gates
 
+## Priority of the gates
+
+Rust is the source of truth, so a Rust failure (`Rust Core`) blocks the merge first, and the Python 3.10–3.14 jobs remain independent required checks for the reference implementation; neither is downgraded. The jobs run in parallel so that each failure keeps its own cause visible. Details, the compatibility matrix and the procedure for changing a gate are in [Rust canonical and gates](../design/rust-canonical-and-gates.md); the required-check names for branch protection are in the [protection runbook](../design/main-protection-runbook.md).
+
 ## Automated enforcement
 
 - **Agent policy:** small AGENTS.md, shared CLAUDE import, reachable context docs; PR Issue/Summary/Validation/Risks/Handoff reports; prevent developer workflow references in user README and public API guides; checker unit tests.
