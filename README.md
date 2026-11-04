@@ -215,6 +215,7 @@ GUIウィンドウを開かず起動状態を確認したい場合は `python -m
 - [共通Command API](docs/Command_API.md)
 - [非破壊解像度と保存形式](docs/Non_destructive_resolution.md)
 - [CLI細部編集の仕様](docs/CUI_detail_operations.md)
+- [GUI・Shell・ゲームエンジン・AI向けの操作仕様（今後の要件を含む）](docs/ユーザー操作インターフェース仕様.md)
 
 ## ライセンス
 
