@@ -19,51 +19,80 @@ from resolution_field import resolution
 # }
 def menu_spec():
     return (
-        ("ファイル (F)", "F", (
-            ("command", "画像を読み込む", "I", "import_image"),
-            ("command", "プロジェクトを読み込む", "O", "load_project"),
-            ("command", "プロジェクトを保存", "S", "save_project"),
-            ("command", "PNGを保存", "P", "save_image"),
-            ("separator",),
-            ("command", "作品をリセット", "R", "reset_canvas"),
-        )),
-        ("編集 (E)", "E", (
-            ("command", "元に戻す", "U", "undo", "Ctrl+Z"),
-            ("command", "やり直す", "R", "redo", "Ctrl+Y"),
-        )),
-        ("描画 (T)", "T", (
-            ("cascade", "描画ツール", "T", (
-                ("command", "ブラシ (B)", "B", "activate_brush"),
-                ("command", "塗りつぶし (F)", "F", "activate_fill"),
-                ("command", "消しゴム (E)", "E", "activate_eraser"),
-                ("command", "スポイト (P)", "P", "activate_eyedropper"),
-            )),
-            ("command", "選択セルを4分割", "S", "split_selected_cell"),
-            ("command", "選択セルを折りたたむ", "C", "collapse_selected_cell"),
-            ("command", "選択セルの細部を破棄", "D", "discard_selected_detail"),
-        )),
-        ("レイヤー (L)", "L", (
-            ("layer-list", "レイヤーを選択", "S"),
-            ("command", "追加", "A", "add_layer"),
-            ("command", "削除", "R", "remove_layer"),
-            ("command", "上へ移動", "U", "move_layer_up"),
-            ("command", "下へ移動", "D", "move_layer_down"),
-            ("command", "表示切替", "V", "toggle_layer_visibility"),
-            ("command", "名称変更", "N", "rename_layer"),
-        )),
-        ("色 (C)", "C", (
-            ("palette", "パレット色", "P"),
-            ("command", "任意の色を選ぶ", "C", "choose_color"),
-        )),
-        ("表示 (V)", "V", (
-            ("radio", "細部を保持", "P", "detail_policy", "preserve"),
-            ("radio", "細部を破棄", "D", "detail_policy", "discard"),
-            ("command", "論理解像度を変更", "R", "change_size"),
-            ("command", "表示サイズを変更", "C", "change_canvas_size"),
-            ("command", "解像度アップ", "U", "upscale_resolution"),
-            ("command", "ズームイン", "I", "zoom_in"),
-            ("command", "ズームアウト", "O", "zoom_out"),
-        )),
+        (
+            "ファイル (F)",
+            "F",
+            (
+                ("command", "画像を読み込む", "I", "import_image"),
+                ("command", "プロジェクトを読み込む", "O", "load_project"),
+                ("command", "プロジェクトを保存", "S", "save_project"),
+                ("command", "PNGを保存", "P", "save_image"),
+                ("separator",),
+                ("command", "作品をリセット", "R", "reset_canvas"),
+            ),
+        ),
+        (
+            "編集 (E)",
+            "E",
+            (
+                ("command", "元に戻す", "U", "undo", "Ctrl+Z"),
+                ("command", "やり直す", "R", "redo", "Ctrl+Y"),
+            ),
+        ),
+        (
+            "描画 (T)",
+            "T",
+            (
+                (
+                    "cascade",
+                    "描画ツール",
+                    "T",
+                    (
+                        ("command", "ブラシ (B)", "B", "activate_brush"),
+                        ("command", "塗りつぶし (F)", "F", "activate_fill"),
+                        ("command", "消しゴム (E)", "E", "activate_eraser"),
+                        ("command", "スポイト (P)", "P", "activate_eyedropper"),
+                    ),
+                ),
+                ("command", "選択セルを4分割", "S", "split_selected_cell"),
+                ("command", "選択セルを折りたたむ", "C", "collapse_selected_cell"),
+                ("command", "選択セルの細部を破棄", "D", "discard_selected_detail"),
+            ),
+        ),
+        (
+            "レイヤー (L)",
+            "L",
+            (
+                ("layer-list", "レイヤーを選択", "S"),
+                ("command", "追加", "A", "add_layer"),
+                ("command", "削除", "R", "remove_layer"),
+                ("command", "上へ移動", "U", "move_layer_up"),
+                ("command", "下へ移動", "D", "move_layer_down"),
+                ("command", "表示切替", "V", "toggle_layer_visibility"),
+                ("command", "名称変更", "N", "rename_layer"),
+            ),
+        ),
+        (
+            "色 (C)",
+            "C",
+            (
+                ("palette", "パレット色", "P"),
+                ("command", "任意の色を選ぶ", "C", "choose_color"),
+            ),
+        ),
+        (
+            "表示 (V)",
+            "V",
+            (
+                ("radio", "細部を保持", "P", "detail_policy", "preserve"),
+                ("radio", "細部を破棄", "D", "detail_policy", "discard"),
+                ("command", "論理解像度を変更", "R", "change_size"),
+                ("command", "表示サイズを変更", "C", "change_canvas_size"),
+                ("command", "解像度アップ", "U", "upscale_resolution"),
+                ("command", "ズームイン", "I", "zoom_in"),
+                ("command", "ズームアウト", "O", "zoom_out"),
+            ),
+        ),
     )
 
 
@@ -117,15 +146,21 @@ class PixelEditor:
         self.current_color = (255, 255, 255)
         self.selected_cell = None
         self.tool = "brush"
-        self.palette_colors = [(255, 255, 255), (0, 0, 0), (255, 80, 80), (255, 190, 70),
-                               (255, 240, 100), (90, 210, 130), (80, 180, 255), (170, 110, 255)]
+        self.palette_colors = [
+            (255, 255, 255),
+            (0, 0, 0),
+            (255, 80, 80),
+            (255, 190, 70),
+            (255, 240, 100),
+            (90, 210, 130),
+            (80, 180, 255),
+            (170, 110, 255),
+        ]
         self.history, self.future = [], []
         self.backend = LayeredPixelCanvas(2)
         self.zoom_factor = 1.0
         self.detail_policy = tk.StringVar(master=master, value="preserve")
-        self.layer_menu_selection = tk.StringVar(
-            master=master, value=self.backend.active_layer
-        )
+        self.layer_menu_selection = tk.StringVar(master=master, value=self.backend.active_layer)
         self.canvas = tk.Canvas(
             master,
             bg="#111820",
@@ -141,6 +176,24 @@ class PixelEditor:
         self.bind_focus_region_navigation()
         self.bind_global_shortcuts()
         self.build_menu_bar()
+        self.initialize_canvas_input()
+
+    # {
+    #   責務: [initialize_canvas_input: 初期表示を整え、キャンバスのマウス入力を登録する]
+    #   処理: [
+    #     1: キャンバス寸法とレイヤー一覧を現在のモデルに合わせる
+    #     2: 描画と中ボタン移動のマウス入力を登録する
+    #   ]
+    #   引数: []
+    #   戻り値: [なし。メニューを開かなくても起動直後から入力が有効になる]
+    # }
+    def initialize_canvas_input(self):
+        self.update_canvas_size()
+        self.refresh_layer_list()
+        self.canvas.bind("<Button-1>", self.paint_pixel)
+        self.canvas.bind("<B1-Motion>", self.paint_pixel)
+        self.canvas.bind("<ButtonPress-2>", self.begin_pan)
+        self.canvas.bind("<B2-Motion>", self.pan_canvas)
 
     # {
     #   責務: [access_label: メニュー表示名へアクセスキーと下線位置を反映する]
@@ -340,12 +393,6 @@ class PixelEditor:
                 str(index),
                 command=lambda selected=color: self.set_palette_color(selected),
             )
-        self.update_canvas_size()
-        self.refresh_layer_list()
-        self.canvas.bind("<Button-1>", self.paint_pixel)
-        self.canvas.bind("<B1-Motion>", self.paint_pixel)
-        self.canvas.bind("<ButtonPress-2>", self.begin_pan)
-        self.canvas.bind("<B2-Motion>", self.pan_canvas)
 
     # {
     #   責務: [build_sidebar: 描画・色・レイヤー・表示・ファイル操作欄を作る]
@@ -371,23 +418,39 @@ class PixelEditor:
         sidebar = tk.Frame(viewport, bg="#0b0f14")
         self.sidebar_frame = sidebar
         window = viewport.create_window((0, 0), window=sidebar, anchor="nw", width=240)
-        sidebar.bind("<Configure>", lambda event: viewport.configure(scrollregion=viewport.bbox("all")))
-        viewport.bind("<Configure>", lambda event: viewport.itemconfigure(window, width=event.width))
+        sidebar.bind(
+            "<Configure>", lambda event: viewport.configure(scrollregion=viewport.bbox("all"))
+        )
+        viewport.bind(
+            "<Configure>", lambda event: viewport.itemconfigure(window, width=event.width)
+        )
         tool_group = self.create_toolbar_group(sidebar, "描画ツール")
         tool_grid = tk.Frame(tool_group, bg="#101820")
         tool_grid.pack(fill="x", padx=6, pady=(0, 6))
         self.tool_buttons = {}
-        tools = [("brush", "ブラシ", "brush_button"), ("fill", "塗りつぶし", "fill_button"),
-                 ("eraser", "消しゴム", "eraser_button"), ("picker", "スポイト", "eyedropper_button")]
+        tools = [
+            ("brush", "ブラシ", "brush_button"),
+            ("fill", "塗りつぶし", "fill_button"),
+            ("eraser", "消しゴム", "eraser_button"),
+            ("picker", "スポイト", "eyedropper_button"),
+        ]
         for index, (name, title, attr) in enumerate(tools):
-            button = self.make_toolbar_button(tool_grid, title, lambda name=name: self.set_tool(name), False)
+            button = self.make_toolbar_button(
+                tool_grid, title, lambda name=name: self.set_tool(name), False
+            )
             button.grid(row=index // 2, column=index % 2, padx=2, pady=2, sticky="ew")
             tool_grid.grid_columnconfigure(index % 2, weight=1)
             self.tool_buttons[name] = button
             setattr(self, attr, button)
-        self.split_button = self.make_toolbar_button(tool_group, "選択セルを4分割", self.split_selected_cell)
-        self.collapse_button = self.make_toolbar_button(tool_group, "選択セルを折りたたむ", self.collapse_selected_cell)
-        self.discard_button = self.make_toolbar_button(tool_group, "選択セルの細部を破棄", self.discard_selected_detail)
+        self.split_button = self.make_toolbar_button(
+            tool_group, "選択セルを4分割", self.split_selected_cell
+        )
+        self.collapse_button = self.make_toolbar_button(
+            tool_group, "選択セルを折りたたむ", self.collapse_selected_cell
+        )
+        self.discard_button = self.make_toolbar_button(
+            tool_group, "選択セルの細部を破棄", self.discard_selected_detail
+        )
         self.tool_status_label = tk.Label(tool_group, bg="#101820", fg="#a9c7df", anchor="w")
         self.tool_status_label.pack(fill="x", padx=8, pady=(2, 6))
         color_group = self.create_toolbar_group(sidebar, "色")
@@ -396,14 +459,28 @@ class PixelEditor:
         palette.pack(padx=6, pady=(0, 6))
         self.palette_buttons = []
         for index, color in enumerate(self.palette_colors):
-            button = tk.Button(palette, width=2, height=1, bg=self.rgb_to_hex(color), relief="flat",
-                               command=lambda color=color: self.set_palette_color(color))
+            button = tk.Button(
+                palette,
+                width=2,
+                height=1,
+                bg=self.rgb_to_hex(color),
+                relief="flat",
+                command=lambda color=color: self.set_palette_color(color),
+            )
             self.register_sidebar_focus_target(button)
             button.grid(row=index // 4, column=index % 4, padx=1, pady=1)
             self.palette_buttons.append(button)
         layer_group = self.create_toolbar_group(sidebar, "レイヤー")
-        self.layer_list = tk.Listbox(layer_group, height=4, width=20, bg="#111820", fg="#f0f3f6",
-                                    selectbackground="#3f6685", highlightthickness=0, exportselection=False)
+        self.layer_list = tk.Listbox(
+            layer_group,
+            height=4,
+            width=20,
+            bg="#111820",
+            fg="#f0f3f6",
+            selectbackground="#3f6685",
+            highlightthickness=0,
+            exportselection=False,
+        )
         self.register_sidebar_focus_target(self.layer_list)
         self.layer_list.pack(fill="x", padx=6, pady=(0, 4))
         self.layer_list.bind("<<ListboxSelect>>", self.select_layer)
@@ -437,17 +514,27 @@ class PixelEditor:
             )
             self.register_sidebar_focus_target(button)
             button.pack(fill="x")
-        self.size_button = self.make_toolbar_button(view_group, "論理解像度を変更", self.change_size)
-        self.canvas_size_button = self.make_toolbar_button(view_group, "表示サイズを変更", self.change_canvas_size)
-        self.upscale_button = self.make_toolbar_button(view_group, "解像度アップ", self.upscale_resolution)
+        self.size_button = self.make_toolbar_button(
+            view_group, "論理解像度を変更", self.change_size
+        )
+        self.canvas_size_button = self.make_toolbar_button(
+            view_group, "表示サイズを変更", self.change_canvas_size
+        )
+        self.upscale_button = self.make_toolbar_button(
+            view_group, "解像度アップ", self.upscale_resolution
+        )
         self.zoom_out_button = self.make_toolbar_button(view_group, "ズーム−", self.zoom_out)
         self.zoom_in_button = self.make_toolbar_button(view_group, "ズーム＋", self.zoom_in)
         file_group = self.create_toolbar_group(sidebar, "ファイル・編集")
-        buttons = [("undo_button", "元に戻す", self.undo), ("redo_button", "やり直す", self.redo),
-                   ("import_button", "画像を読み込む", self.import_image), ("save_button", "PNG保存", self.save_image),
-                   ("save_project_button", "プロジェクト保存", self.save_project),
-                   ("load_project_button", "プロジェクト読込", self.load_project),
-                   ("reset_button", "作品をリセット", self.reset_canvas)]
+        buttons = [
+            ("undo_button", "元に戻す", self.undo),
+            ("redo_button", "やり直す", self.redo),
+            ("import_button", "画像を読み込む", self.import_image),
+            ("save_button", "PNG保存", self.save_image),
+            ("save_project_button", "プロジェクト保存", self.save_project),
+            ("load_project_button", "プロジェクト読込", self.load_project),
+            ("reset_button", "作品をリセット", self.reset_canvas),
+        ]
         for attr, title, command in buttons:
             setattr(self, attr, self.make_toolbar_button(file_group, title, command))
         self.refresh_tool_state()
@@ -459,8 +546,9 @@ class PixelEditor:
     #   戻り値: [生成した区画ウィジェット]
     # }
     def create_toolbar_group(self, parent, title):
-        group = tk.LabelFrame(parent, text=title, bg="#101820", fg="#cbd5df", bd=1,
-                              relief="solid", padx=2, pady=4)
+        group = tk.LabelFrame(
+            parent, text=title, bg="#101820", fg="#cbd5df", bd=1, relief="solid", padx=2, pady=4
+        )
         group.pack(fill="x", pady=(0, 8))
         return group
 
@@ -474,8 +562,16 @@ class PixelEditor:
     #   戻り値: [作成したボタンウィジェット]
     # }
     def make_toolbar_button(self, parent, text, command, use_pack=True):
-        button = tk.Button(parent, text=text, command=command, bg="#17212b", fg="#f0f3f6",
-                           activebackground="#263747", activeforeground="#ffffff", relief="flat")
+        button = tk.Button(
+            parent,
+            text=text,
+            command=command,
+            bg="#17212b",
+            fg="#f0f3f6",
+            activebackground="#263747",
+            activeforeground="#ffffff",
+            relief="flat",
+        )
         self.register_sidebar_focus_target(button)
         if use_pack:
             button.pack(fill="x", padx=6, pady=2)
@@ -745,10 +841,17 @@ class PixelEditor:
     #   戻り値: [なし。存在するツールUIだけを更新する]
     # }
     def refresh_tool_state(self):
-        names = {"brush": "ブラシ", "fill": "塗りつぶし", "eraser": "消しゴム", "picker": "スポイト"}
+        names = {
+            "brush": "ブラシ",
+            "fill": "塗りつぶし",
+            "eraser": "消しゴム",
+            "picker": "スポイト",
+        }
         for name, button in getattr(self, "tool_buttons", {}).items():
             selected = name == self.tool
-            button.configure(bg="#3f6685" if selected else "#17212b", relief="sunken" if selected else "flat")
+            button.configure(
+                bg="#3f6685" if selected else "#17212b", relief="sunken" if selected else "flat"
+            )
         label = getattr(self, "tool_status_label", None)
         if label is not None:
             label.configure(text=f"現在: {names[self.tool]}")
@@ -790,7 +893,9 @@ class PixelEditor:
     #   戻り値: [なし。self.imageを更新する]
     # }
     def refresh_composite(self):
-        self.image = self.backend.composite().resize((self.canvas_width, self.canvas_height), Image.Resampling.NEAREST)
+        self.image = self.backend.composite().resize(
+            (self.canvas_width, self.canvas_height), Image.Resampling.NEAREST
+        )
 
     # {
     #   責務: [refresh_layer_list: レイヤー一覧と選択状態を画面へ反映する]
@@ -993,7 +1098,9 @@ class PixelEditor:
         content_height = max(1, round(self.canvas_height * self.zoom_factor))
         self.canvas.configure(
             scrollregion=(
-                0, 0, max(viewport_width, content_width),
+                0,
+                0,
+                max(viewport_width, content_width),
                 max(viewport_height, content_height),
             )
         )
@@ -1029,12 +1136,12 @@ class PixelEditor:
         self.display_pixel_size = self.pixel_size * self.zoom_factor
         width = max(1, round(self.canvas_width * self.zoom_factor))
         height = max(1, round(self.canvas_height * self.zoom_factor))
-        self.canvas.config(width=min(self.canvas_width, width), height=min(self.canvas_height, height))
+        self.canvas.config(
+            width=min(self.canvas_width, width), height=min(self.canvas_height, height)
+        )
         viewport_width, viewport_height = self.viewport_size()
         self.canvas.configure(
-            scrollregion=(
-                0, 0, max(viewport_width, width), max(viewport_height, height)
-            )
+            scrollregion=(0, 0, max(viewport_width, width), max(viewport_height, height))
         )
         label = getattr(self, "resolution_label", None)
         if label is not None:
@@ -1086,7 +1193,9 @@ class PixelEditor:
     # }
     def resize_logical_canvas(self, size, height=None, detail_policy="preserve"):
         target = resolution(size, height)
-        changed = self.perform_edit(self.commands.set_resolution, *target, detail_policy=detail_policy)
+        changed = self.perform_edit(
+            self.commands.set_resolution, *target, detail_policy=detail_policy
+        )
         if changed:
             self.selected_cell = None
         return changed
@@ -1106,22 +1215,28 @@ class PixelEditor:
         height = max(1, round(self.canvas_height * self.zoom_factor))
         # 画面上で2表示画素未満になる格子線は省き、ポインター座標は正確な比率で換算する。
         viewport_width, viewport_height = self.viewport_size()
-        origin_x, origin_y = self.image_origin(
-            viewport_width, viewport_height, width, height
-        )
+        origin_x, origin_y = self.image_origin(viewport_width, viewport_height, width, height)
         if width / self.num_pixels_x >= 2:
             for x in range(self.num_pixels_x + 1):
                 px = origin_x + x * width / self.num_pixels_x
                 self.canvas.create_line(
-                    px, origin_y, px, origin_y + height,
-                    fill="#303945", tags="grid",
+                    px,
+                    origin_y,
+                    px,
+                    origin_y + height,
+                    fill="#303945",
+                    tags="grid",
                 )
         if height / self.num_pixels_y >= 2:
             for y in range(self.num_pixels_y + 1):
                 py = origin_y + y * height / self.num_pixels_y
                 self.canvas.create_line(
-                    origin_x, py, origin_x + width, py,
-                    fill="#303945", tags="grid",
+                    origin_x,
+                    py,
+                    origin_x + width,
+                    py,
+                    fill="#303945",
+                    tags="grid",
                 )
 
     # {
@@ -1199,7 +1314,7 @@ class PixelEditor:
     # }
     def hex_to_rgb(self, hex_color):
         hex_color = hex_color.lstrip("#")
-        return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+        return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
 
     # {
     #   責務: [begin_pan: キャンバスのパン操作開始位置を記録する]
@@ -1251,9 +1366,7 @@ class PixelEditor:
             round(self.canvas_width * self.zoom_factor),
             round(self.canvas_height * self.zoom_factor),
         )
-        origin_x, origin_y = self.image_origin(
-            viewport_width, viewport_height, *shape
-        )
+        origin_x, origin_y = self.image_origin(viewport_width, viewport_height, *shape)
         image_x = (self.canvas.canvasx(event.x) - origin_x) / self.zoom_factor
         image_y = (self.canvas.canvasy(event.y) - origin_y) / self.zoom_factor
         if not (0 <= image_x < self.canvas_width and 0 <= image_y < self.canvas_height):
@@ -1273,11 +1386,16 @@ class PixelEditor:
             self.set_tool("brush")
         else:
             command = self.commands.erase if self.tool == "eraser" else self.commands.paint
-            self.perform_edit(command, x, y, **(
-                {"child": child, "detail_policy": policy}
-                if self.tool == "eraser"
-                else {"color": color, "child": child, "detail_policy": policy}
-            ))
+            self.perform_edit(
+                command,
+                x,
+                y,
+                **(
+                    {"child": child, "detail_policy": policy}
+                    if self.tool == "eraser"
+                    else {"color": color, "child": child, "detail_policy": policy}
+                ),
+            )
 
     # {
     #   責務: [activate_eyedropper: スポイトツールを選択する]
@@ -1365,7 +1483,10 @@ class PixelEditor:
     #   戻り値: [なし。Tk画像参照を保持して表示を更新する]
     # }
     def update_canvas(self):
-        shape = max(1, round(self.canvas_width * self.zoom_factor)), max(1, round(self.canvas_height * self.zoom_factor))
+        shape = (
+            max(1, round(self.canvas_width * self.zoom_factor)),
+            max(1, round(self.canvas_height * self.zoom_factor)),
+        )
         self.photo = ImageTk.PhotoImage(self.image.resize(shape, Image.Resampling.NEAREST))
         viewport_width, viewport_height = self.viewport_size()
         origin = self.image_origin(viewport_width, viewport_height, *shape)
@@ -1384,7 +1505,9 @@ class PixelEditor:
     #   戻り値: [なし。キャンセル時は作品を変更しない]
     # }
     def import_image(self):
-        path = filedialog.askopenfilename(filetypes=[("画像ファイル", "*.png;*.jpg;*.jpeg;*.bmp"), ("すべて", "*.*")])
+        path = filedialog.askopenfilename(
+            filetypes=[("画像ファイル", "*.png;*.jpg;*.jpeg;*.bmp"), ("すべて", "*.*")]
+        )
         if not path:
             return
         self.perform_edit(self.commands.import_image, path)
@@ -1399,7 +1522,9 @@ class PixelEditor:
     #   戻り値: [なし。ダイアログをキャンセルした場合は保存しない]
     # }
     def save_project(self):
-        path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON project", "*.json")])
+        path = filedialog.asksaveasfilename(
+            defaultextension=".json", filetypes=[("JSON project", "*.json")]
+        )
         if path:
             try:
                 self.commands.save(Path(path))
@@ -1417,7 +1542,9 @@ class PixelEditor:
     #   戻り値: [なし。キャンセルまたは検証失敗時は既存作品を維持する]
     # }
     def load_project(self):
-        path = filedialog.askopenfilename(filetypes=[("JSON project", "*.json"), ("All files", "*.*")])
+        path = filedialog.askopenfilename(
+            filetypes=[("JSON project", "*.json"), ("All files", "*.*")]
+        )
         if not path:
             return
         try:
@@ -1447,7 +1574,9 @@ class PixelEditor:
     #   戻り値: [なし。ダイアログをキャンセルした場合は出力しない]
     # }
     def save_image(self):
-        path = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("PNG files", "*.png")])
+        path = filedialog.asksaveasfilename(
+            defaultextension=".png", filetypes=[("PNG files", "*.png")]
+        )
         if path:
             try:
                 self.commands.export_png(path)
@@ -1508,7 +1637,8 @@ class PixelEditor:
     def collapse_selected_cell(self):
         if self.selected_cell is not None:
             self.perform_edit(
-                self.commands.collapse, *self.selected_cell,
+                self.commands.collapse,
+                *self.selected_cell,
                 detail_policy=self.current_detail_policy(),
             )
 
@@ -1533,16 +1663,28 @@ class PixelEditor:
     #   戻り値: [なし。確認拒否や入力キャンセル時は作品を変更しない]
     # }
     def change_size(self):
-        width = simpledialog.askinteger("論理解像度", "横のセル数", initialvalue=self.backend.width,
-                                        minvalue=1, maxvalue=PixelCanvas.MAX_DIMENSION)
+        width = simpledialog.askinteger(
+            "論理解像度",
+            "横のセル数",
+            initialvalue=self.backend.width,
+            minvalue=1,
+            maxvalue=PixelCanvas.MAX_DIMENSION,
+        )
         if width is None:
             return
-        height = simpledialog.askinteger("論理解像度", "縦のセル数", initialvalue=self.backend.height,
-                                         minvalue=1, maxvalue=PixelCanvas.MAX_DIMENSION)
+        height = simpledialog.askinteger(
+            "論理解像度",
+            "縦のセル数",
+            initialvalue=self.backend.height,
+            minvalue=1,
+            maxvalue=PixelCanvas.MAX_DIMENSION,
+        )
         if height is None:
             return
         policy = self.current_detail_policy()
-        if policy == "discard" and not messagebox.askyesno("細部を破棄", "全レイヤーの細部を新しい解像度に統合しますか？"):
+        if policy == "discard" and not messagebox.askyesno(
+            "細部を破棄", "全レイヤーの細部を新しい解像度に統合しますか？"
+        ):
             return
         try:
             self.resize_logical_canvas(width, height, policy)
@@ -1556,10 +1698,14 @@ class PixelEditor:
     #   戻り値: [なし。作品モデルと編集履歴は変更しない]
     # }
     def change_canvas_size(self):
-        width = simpledialog.askinteger("キャンバス幅", "表示の横幅（ピクセル）", minvalue=100, maxvalue=5000)
+        width = simpledialog.askinteger(
+            "キャンバス幅", "表示の横幅（ピクセル）", minvalue=100, maxvalue=5000
+        )
         if width is None:
             return
-        height = simpledialog.askinteger("キャンバス高さ", "表示の縦幅（ピクセル）", minvalue=100, maxvalue=5000)
+        height = simpledialog.askinteger(
+            "キャンバス高さ", "表示の縦幅（ピクセル）", minvalue=100, maxvalue=5000
+        )
         if height is not None:
             self.set_display_size(width, height)
 
