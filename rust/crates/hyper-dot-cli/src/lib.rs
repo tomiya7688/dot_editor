@@ -64,7 +64,12 @@ pub fn run_from_environment() -> ExitCode {
         Ok(words) => runner::run(&words),
         Err(error) => report::failure(false, "usage", &error),
     };
-    let _ = std::io::stdout().write_all(outcome.stdout.as_bytes());
-    let _ = std::io::stderr().write_all(outcome.stderr.as_bytes());
+    // 親プロセスが出力の末尾を確実に受け取れるよう、終了前に明示的に書き出す。
+    let mut stdout = std::io::stdout();
+    let _ = stdout.write_all(outcome.stdout.as_bytes());
+    let _ = stdout.flush();
+    let mut stderr = std::io::stderr();
+    let _ = stderr.write_all(outcome.stderr.as_bytes());
+    let _ = stderr.flush();
     ExitCode::from(outcome.exit_code)
 }

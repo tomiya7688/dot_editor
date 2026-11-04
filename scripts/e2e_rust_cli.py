@@ -129,7 +129,10 @@ def decode_png(path):
     assert data[:8] == PNG_SIGNATURE, "not a PNG"
     position, header, compressed, kinds = 8, None, b"", []
     while position < len(data):
+        # 切り詰められたファイルや、チャンクの長さがファイルを超える壊れ方を先に拒否する。
+        assert position + 12 <= len(data), "truncated chunk header"
         (length,) = struct.unpack(">I", data[position : position + 4])
+        assert position + 12 + length <= len(data), "chunk runs past the end of the file"
         kind = data[position + 4 : position + 8]
         body = data[position + 8 : position + 8 + length]
         (stored,) = struct.unpack(">I", data[position + 8 + length : position + 12 + length])
@@ -139,8 +142,18 @@ def decode_png(path):
             header = struct.unpack(">IIBBBBB", body)
         elif kind == b"IDAT":
             compressed += body
+        elif kind == b"IEND":
+            assert length == 0, "IEND must be empty"
+            assert position + 12 == len(data), "extra data after IEND"
         position += 12 + length
     assert kinds[0] == b"IHDR" and kinds[-1] == b"IEND", kinds
+    assert kinds.count(b"IHDR") == 1 and kinds.count(b"IEND") == 1, kinds
+    idat_positions = [index for index, kind in enumerate(kinds) if kind == b"IDAT"]
+    assert idat_positions, "no IDAT chunk"
+    assert idat_positions == list(range(idat_positions[0], idat_positions[-1] + 1)), (
+        "IDAT chunks must be contiguous"
+    )
+    assert header is not None, "missing IHDR"
     width, height, depth, color_type, _, _, interlace = header
     assert (depth, color_type, interlace) == (8, 6, 0), header
     raw = zlib.decompress(compressed)
@@ -231,21 +244,25 @@ class Session:
 #   戻り値: [手順ごとの結果と、PNGのSHA-256の一覧]
 # }
 def scenario(session):
-    session.run("new", "project", "new", "--size", "4")
+    created = session.run("new", "project", "new", "--size", "4")
+    assert created["resolution"]["width"] == 4 and created["layer_count"] == 1, created
     assert session.run("status", "status")["resolution"]["width"] == 4
-    session.run("paint", "pixel", "paint", "1", "1", "#FF0000")
+    assert session.run("paint", "pixel", "paint", "1", "1", "#FF0000")["changed"] is True
     assert session.run("sample", "pixel", "sample", "1", "1")["color"] == "#FF0000FF"
-    session.run("split", "detail", "split", "1", "1")
+    assert session.run("split", "detail", "split", "1", "1")["changed"] is True
     assert session.run("detail info", "detail", "info", "1", "1")["split"] is True
-    session.run("shrink", "canvas", "resolution", "set", "2", "2")
+    shrunk = session.run("shrink", "canvas", "resolution", "set", "2", "2")
+    assert shrunk["resolution"]["width"] == 2 and shrunk["changed"] is True, shrunk
     _, _, rows = session.export("detail.png", "--resolution", "4", "4")
     assert rows[1][1] == [255, 0, 0, 255] and rows[0][0] == [0, 0, 0, 0], "detail was not kept"
-    session.run("discard", "detail", "discard", "0", "0")
+    assert session.run("discard", "detail", "discard", "0", "0")["changed"] is True
     _, _, rows = session.export("discarded.png", "--resolution", "4", "4")
     assert rows[0][0] == [255, 0, 0, 255], "the cell color was not kept after discarding detail"
-    session.run("restore", "canvas", "resolution", "set", "4", "4")
-    session.run("layer add", "layer", "add", "上")
-    session.run("paint on layer", "pixel", "paint", "3", "3", "#00FF0080")
+    restored = session.run("restore", "canvas", "resolution", "set", "4", "4")
+    assert restored["resolution"]["width"] == 4 and restored["changed"] is True, restored
+    added = session.run("layer add", "layer", "add", "上")
+    assert len(added["layers"]) == 2 and added["changed"] is True, added
+    assert session.run("paint on layer", "pixel", "paint", "3", "3", "#00FF0080")["changed"] is True
     layers = session.run("layer list", "layer", "list")["layers"]
     assert [layer["name"] for layer in layers] == ["背景", "上"] and layers[1]["active"]
     assert session.run("reload", "status")["layer_count"] == 2
