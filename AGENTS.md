@@ -5,9 +5,9 @@
 ## 最初に（全作業）
 
 1. 担当を決める: [担当別ワークフロー](doc/ワークフロー/ワークフロー.md)。通常の開発は`implementer`、全体の調査依頼は`repository-reviewer`
-2. 設計書を探す: [設計書の一覧](docs/design/README.md)。無ければ[書き方](doc/ワークフロー/設計書.md)で先に書く
+2. 設計書を探す: `python scripts/task_brief.py 番号`（[一覧](docs/design/README.md)）。無ければ[書き方](doc/ワークフロー/設計書.md)で先に書く
 3. 手戻りを防ぐ: [チェック表](doc/ワークフロー/実装前チェック.md)
-4. 読む文書を選ぶ: [作業別の案内](docs/agents/README.md)
+4. 読む文書を選ぶ: [作業別の案内](docs/agents/README.md)。場所探しは[よく触る場所](docs/agents/hotspots.md)
 
 ## 常に守る
 
