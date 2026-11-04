@@ -337,6 +337,8 @@ def main():
     parser.add_argument("folder", type=Path, help="folder holding the executables")
     parser.add_argument("--skill", type=Path, default=DEFAULT_SKILL, help="path of SKILL.md")
     arguments = parser.parse_args()
+    # 子プロセスは別の作業フォルダで動くため、相対パスのままでは実行ファイルを見失う。
+    arguments.folder = arguments.folder.resolve()
     suffix = ".exe" if sys.platform == "win32" else ""
     for name in (PRIMARY, ALIAS):
         assert (arguments.folder / f"{name}{suffix}").is_file(), (
