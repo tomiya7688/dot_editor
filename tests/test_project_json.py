@@ -1,4 +1,5 @@
 """Issue #7: reject ambiguous/malformed JSON without losing editor state."""
+
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -9,6 +10,33 @@ import unittest
 from unittest.mock import Mock, patch
 
 from pixel_commands import PixelCommandAPI, load_project
+import os
+
+
+_CONFIG = None
+
+
+# {
+#   責務: [setUpModule: このテストが本物の設定フォルダへ書かないよう、一時フォルダへ向ける]
+#   処理: [最近使った作品の設定フォルダを、このモジュールの間だけ一時フォルダにする]
+#   引数: []
+#   戻り値: [なし]
+# }
+def setUpModule():
+    global _CONFIG
+    _CONFIG = tempfile.TemporaryDirectory()
+    os.environ["HYPER_DOT_EDITOR_CONFIG_DIR"] = _CONFIG.name
+
+
+# {
+#   責務: [tearDownModule: 設定フォルダの向け先を元に戻し、一時フォルダを消す]
+#   処理: [環境変数を外し、一時フォルダを片付ける]
+#   引数: []
+#   戻り値: [なし]
+# }
+def tearDownModule():
+    os.environ.pop("HYPER_DOT_EDITOR_CONFIG_DIR", None)
+    _CONFIG.cleanup()
 
 
 # {
@@ -38,9 +66,11 @@ class ProjectJsonTests(unittest.TestCase):
     #   戻り値: [なし、重複キーの処理やファイル保持が期待と異なればassertionで失敗する]
     # }
     def test_duplicate_keys_at_any_depth_are_rejected(self):
-        for text in ('{"layers":[],"layers":[]}',
-                     '{"extra":{"name":"first","name":"second"}}',
-                     '{"name":1,"na\\u006de":2}'):
+        for text in (
+            '{"layers":[],"layers":[]}',
+            '{"extra":{"name":"first","name":"second"}}',
+            '{"name":1,"na\\u006de":2}',
+        ):
             with self.subTest(text=text):
                 self.path.write_text(text, encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "duplicate JSON key"):
@@ -56,7 +86,7 @@ class ProjectJsonTests(unittest.TestCase):
     def test_nonstandard_numbers_are_rejected_even_in_unknown_fields(self):
         for constant in ("NaN", "Infinity", "-Infinity"):
             with self.subTest(constant=constant):
-                self.path.write_text('{"extra":' + constant + '}', encoding="utf-8")
+                self.path.write_text('{"extra":' + constant + "}", encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "non-standard JSON constant"):
                     load_project(self.path)
 
@@ -76,8 +106,19 @@ class ProjectJsonTests(unittest.TestCase):
             load_project(self.path)
         output = self.path.with_suffix(".png")
         result = subprocess.run(
-            [sys.executable, "-m", "pixel_cli", "export", "--project", str(self.path),
-             "--output", str(output)], capture_output=True, text=True, timeout=20,
+            [
+                sys.executable,
+                "-m",
+                "pixel_cli",
+                "export",
+                "--project",
+                str(self.path),
+                "--output",
+                str(output),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20,
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn("nesting is too deep", result.stderr)
@@ -151,7 +192,6 @@ class ProjectJsonTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "maximum 128"):
             load_project(self.path)
 
-
     # {
     #   責務: [test_layered_validation_through_cli_and_gui: レイヤーJSONの異常をAPI・CUI・GUIで共通して拒否する]
     #   処理: [
@@ -191,7 +231,10 @@ class ProjectJsonTests(unittest.TestCase):
             ("empty name", lambda s: s["layers"][1].__setitem__("name", "")),
             ("whitespace name", lambda s: s["layers"][1].__setitem__("name", "   ")),
             ("non-string name", lambda s: s["layers"][1].__setitem__("name", 123)),
-            ("mismatched resolution", lambda s: s["layers"][1].__setitem__("source", invalid_resolution)),
+            (
+                "mismatched resolution",
+                lambda s: s["layers"][1].__setitem__("source", invalid_resolution),
+            ),
             ("mismatched canvas size", lambda s: s.__setitem__("canvas_size", 5)),
             ("mismatched declared resolution", lambda s: s.__setitem__("resolution", [4, 4])),
             ("invalid active layer", lambda s: s.__setitem__("active_layer", "不存在")),
@@ -217,9 +260,20 @@ class ProjectJsonTests(unittest.TestCase):
                     load_project(self.path)
 
                 result = subprocess.run(
-                    [sys.executable, "-m", "pixel_cli", "export", "--project",
-                     str(self.path), "--output", str(image)],
-                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20,
+                    [
+                        sys.executable,
+                        "-m",
+                        "pixel_cli",
+                        "export",
+                        "--project",
+                        str(self.path),
+                        "--output",
+                        str(image),
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
                 )
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
                 self.assertIn("error:", result.stderr)
@@ -283,7 +337,10 @@ class ProjectJsonTests(unittest.TestCase):
 
                 command = subprocess.run(
                     [sys.executable, "-m", "pixel_cli", "inspect", "--project", str(self.path)],
-                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20,
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
                 )
                 self.assertEqual(command.returncode, 0, command.stdout + command.stderr)
                 self.assertEqual(json.loads(command.stdout)["active_layer"], "人物")

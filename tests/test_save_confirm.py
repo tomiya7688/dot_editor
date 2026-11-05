@@ -9,6 +9,7 @@ from unittest.mock import patch
 from dot_editor import PixelEditor
 from pixel_commands import PixelCommandAPI
 from pixel_layers import LayeredPixelCanvas
+import os
 
 
 # {
@@ -31,6 +32,32 @@ def make_editor():
         setattr(editor, name, lambda: None)
     editor.mark_saved()
     return editor
+
+
+_CONFIG = None
+
+
+# {
+#   責務: [setUpModule: このテストが本物の設定フォルダへ書かないよう、一時フォルダへ向ける]
+#   処理: [最近使った作品の設定フォルダを、このモジュールの間だけ一時フォルダにする]
+#   引数: []
+#   戻り値: [なし]
+# }
+def setUpModule():
+    global _CONFIG
+    _CONFIG = tempfile.TemporaryDirectory()
+    os.environ["HYPER_DOT_EDITOR_CONFIG_DIR"] = _CONFIG.name
+
+
+# {
+#   責務: [tearDownModule: 設定フォルダの向け先を元に戻し、一時フォルダを消す]
+#   処理: [環境変数を外し、一時フォルダを片付ける]
+#   引数: []
+#   戻り値: [なし]
+# }
+def tearDownModule():
+    os.environ.pop("HYPER_DOT_EDITOR_CONFIG_DIR", None)
+    _CONFIG.cleanup()
 
 
 # {

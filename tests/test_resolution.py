@@ -1,4 +1,5 @@
 """解像度変更・保存形式・CLI・GUIの非破壊性を検証する回帰テスト。"""
+
 from __future__ import annotations
 
 import copy
@@ -23,6 +24,32 @@ from resolution_field import ResolutionField, cell_box
 ROOT = Path(__file__).resolve().parents[1] / "src"
 
 
+_CONFIG = None
+
+
+# {
+#   責務: [setUpModule: このテストが本物の設定フォルダへ書かないよう、一時フォルダへ向ける]
+#   処理: [最近使った作品の設定フォルダを、このモジュールの間だけ一時フォルダにする]
+#   引数: []
+#   戻り値: [なし]
+# }
+def setUpModule():
+    global _CONFIG
+    _CONFIG = tempfile.TemporaryDirectory()
+    os.environ["HYPER_DOT_EDITOR_CONFIG_DIR"] = _CONFIG.name
+
+
+# {
+#   責務: [tearDownModule: 設定フォルダの向け先を元に戻し、一時フォルダを消す]
+#   処理: [環境変数を外し、一時フォルダを片付ける]
+#   引数: []
+#   戻り値: [なし]
+# }
+def tearDownModule():
+    os.environ.pop("HYPER_DOT_EDITOR_CONFIG_DIR", None)
+    _CONFIG.cleanup()
+
+
 # {
 #   責務: [ResolutionTests: 解像度変更・細部保持・保存互換・CLI・GUIの回帰動作を検証する]
 #   フィールド: [なし、各テストと補助関数がCanvas・一時ファイル・GUIモックを個別に作る]
@@ -37,8 +64,13 @@ class ResolutionTests(unittest.TestCase):
     def patterned(self, width=16, height=None):
         height = width if height is None else height
         image = Image.new("RGBA", (width, height))
-        image.putdata([(70 + x % 40, 90 + y % 40, 110 + (x + y) % 40, 150 + (x * y) % 70)
-                       for y in range(height) for x in range(width)])
+        image.putdata(
+            [
+                (70 + x % 40, 90 + y % 40, 110 + (x + y) % 40, 150 + (x * y) % 70)
+                for y in range(height)
+                for x in range(width)
+            ]
+        )
         model = PixelCanvas(width, height)
         model.import_image(image)
         return model, image
@@ -50,10 +82,15 @@ class ResolutionTests(unittest.TestCase):
     #   戻り値: [標準出力・標準エラー・終了値を含むCompletedProcess]
     # }
     def cli(self, *arguments, code=0):
-        result = subprocess.run([sys.executable, str(ROOT / "pixel_cli.py"), *map(str, arguments)],
-                                stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                                encoding="utf-8", timeout=30,
-                                env={**os.environ, "PYTHONIOENCODING": "utf-8", "NO_COLOR": "1"})
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "pixel_cli.py"), *map(str, arguments)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8", "NO_COLOR": "1"},
+        )
         self.assertEqual(result.returncode, code, result.stdout + result.stderr)
         self.assertNotIn("Traceback", result.stdout + result.stderr)
         return result
@@ -66,6 +103,7 @@ class ResolutionTests(unittest.TestCase):
     # }
     def fake_editor(self, backend=None):
         from dot_editor import PixelEditor
+
         editor = PixelEditor.__new__(PixelEditor)
         editor.backend = LayeredPixelCanvas(16) if backend is None else backend
         editor.num_pixels_x, editor.num_pixels_y = editor.backend.resolution
@@ -163,10 +201,12 @@ class ResolutionTests(unittest.TestCase):
         model.set_resolution(16)
         for y in range(16):
             for x in range(16):
-                inside = 2 <= Fraction(2*x+1, 32)*7 < 3 and 3 <= Fraction(2*y+1, 32)*7 < 4
+                inside = (
+                    2 <= Fraction(2 * x + 1, 32) * 7 < 3 and 3 <= Fraction(2 * y + 1, 32) * 7 < 4
+                )
                 expected = original.getpixel((x, y))
                 if inside:
-                    expected = tuple(c+d for c, d in zip(expected, delta))
+                    expected = tuple(c + d for c, d in zip(expected, delta))
                 self.assertEqual(model.sample(x, y), expected, (x, y))
 
     # {
@@ -177,7 +217,7 @@ class ResolutionTests(unittest.TestCase):
     # }
     def test_coarse_edit_retains_unclipped_samples(self):
         image = Image.new("RGBA", (16, 16))
-        image.putdata([(240+x, 80+y, 100, 255) for y in range(16) for x in range(16)])
+        image.putdata([(240 + x, 80 + y, 100, 255) for y in range(16) for x in range(16)])
         model = PixelCanvas(16)
         model.import_image(image)
         model.set_resolution(7)
@@ -188,7 +228,7 @@ class ResolutionTests(unittest.TestCase):
         self.assertEqual(model.sample(1, 1), (200, 100, 120, 255))
         model.set_resolution(16)
         for x in (2, 3, 4):
-            self.assertEqual(model.sample(x, 3)[0], image.getpixel((x, 3))[0]+200-anchor[0])
+            self.assertEqual(model.sample(x, 3)[0], image.getpixel((x, 3))[0] + 200 - anchor[0])
 
     # {
     #   責務: [test_coarse_edit_discards_detail: discard編集の範囲だけを粗い色へ置き換えることを検証する]
@@ -205,8 +245,12 @@ class ResolutionTests(unittest.TestCase):
         model.set_resolution(16)
         for y in range(16):
             for x in range(16):
-                inside = 1 <= Fraction(2*x+1, 32)*7 < 2 and 1 <= Fraction(2*y+1, 32)*7 < 2
-                self.assertEqual(model.sample(x, y), replacement if inside else original.getpixel((x, y)))
+                inside = (
+                    1 <= Fraction(2 * x + 1, 32) * 7 < 2 and 1 <= Fraction(2 * y + 1, 32) * 7 < 2
+                )
+                self.assertEqual(
+                    model.sample(x, y), replacement if inside else original.getpixel((x, y))
+                )
 
     # {
     #   責務: [test_discard_detail_is_local: 矩形細部破棄が対象範囲だけに作用することを検証する]
@@ -223,8 +267,12 @@ class ResolutionTests(unittest.TestCase):
         result = model.render_resolution(79, 53)
         for y in range(53):
             for x in range(79):
-                gx, gy = Fraction(2*x+1, 2*79)*7, Fraction(2*y+1, 2*53)*7
-                expected = coarse.getpixel((int(gx), int(gy))) if 1 <= gx < 3 and 2 <= gy < 3 else reference.getpixel((x, y))
+                gx, gy = Fraction(2 * x + 1, 2 * 79) * 7, Fraction(2 * y + 1, 2 * 53) * 7
+                expected = (
+                    coarse.getpixel((int(gx), int(gy)))
+                    if 1 <= gx < 3 and 2 <= gy < 3
+                    else reference.getpixel((x, y))
+                )
                 self.assertEqual(result.getpixel((x, y)), expected)
 
     # {
@@ -315,7 +363,7 @@ class ResolutionTests(unittest.TestCase):
         model.set_resolution(7)
         model.set_resolution(23, 17)
         with tempfile.TemporaryDirectory() as d:
-            p = Path(d)/"p.json"
+            p = Path(d) / "p.json"
             save_project(model, p)
             restored = load_project(p)
             restored.set_resolution(16)
@@ -356,6 +404,7 @@ class ResolutionTests(unittest.TestCase):
         history = len(layers._history)
         original = PixelCanvas.set_resolution
         calls = 0
+
         # {
         #   責務: [fail_second: 2回目のPixelCanvas解像度変更だけを予算超過例外にする]
         #   処理: [呼出回数を数え、2回目はValueErrorを送出し、それ以外は元の処理へ委譲する]
@@ -368,6 +417,7 @@ class ResolutionTests(unittest.TestCase):
             if calls == 2:
                 raise ValueError("simulated allocation limit")
             return original(canvas, *args, **kwargs)
+
         with patch.object(PixelCanvas, "set_resolution", fail_second):
             with self.assertRaises(ValueError):
                 layers.set_resolution(7, detail_policy="discard")
@@ -443,9 +493,18 @@ class ResolutionTests(unittest.TestCase):
     #   戻り値: [なし、旧形式の子画素または展開状態が失われればassertionで失敗する]
     # }
     def test_legacy_project_migrates_and_retains_children(self):
-        old = {"canvas_size": 2, "pixels": [["#FF0000", None], [None, None]],
-               "refined_cells": [{"x": 0, "y": 0, "expanded": False,
-                                  "children": [["#FF0000", "#0000FF"], [None, "#FF0000"]]}]}
+        old = {
+            "canvas_size": 2,
+            "pixels": [["#FF0000", None], [None, None]],
+            "refined_cells": [
+                {
+                    "x": 0,
+                    "y": 0,
+                    "expanded": False,
+                    "children": [["#FF0000", "#0000FF"], [None, "#FF0000"]],
+                }
+            ],
+        }
         model = PixelCanvas.from_source(old)
         model.set_resolution(7, 3)
         model = PixelCanvas.from_source(model.to_source())
@@ -463,12 +522,24 @@ class ResolutionTests(unittest.TestCase):
         model, _ = self.patterned()
         source = model.to_source()
         variants = []
-        value = copy.deepcopy(source); value["version"] = 99; variants.append(value)
-        value = copy.deepcopy(source); value["resolution"] = [True, 16]; variants.append(value)
-        value = copy.deepcopy(source); value["pixels"][0][0] = None; variants.append(value)
-        value = copy.deepcopy(source); value["retained_field"][0]["offset"][0] = 1_000_001; variants.append(value)
-        value = copy.deepcopy(source); value["retained_field"][0]["clip"][0] = [0, 0]; variants.append(value)
-        value = copy.deepcopy(source); value["retained_field"].append(value["retained_field"][0]); variants.append(value)
+        value = copy.deepcopy(source)
+        value["version"] = 99
+        variants.append(value)
+        value = copy.deepcopy(source)
+        value["resolution"] = [True, 16]
+        variants.append(value)
+        value = copy.deepcopy(source)
+        value["pixels"][0][0] = None
+        variants.append(value)
+        value = copy.deepcopy(source)
+        value["retained_field"][0]["offset"][0] = 1_000_001
+        variants.append(value)
+        value = copy.deepcopy(source)
+        value["retained_field"][0]["clip"][0] = [0, 0]
+        variants.append(value)
+        value = copy.deepcopy(source)
+        value["retained_field"].append(value["retained_field"][0])
+        variants.append(value)
         for value in variants:
             with self.subTest(value=value.get("version")), self.assertRaises(ValueError):
                 PixelCanvas.from_source(value)
@@ -497,7 +568,7 @@ class ResolutionTests(unittest.TestCase):
     # }
     def test_cli_complete_non_interactive_scenario(self):
         with tempfile.TemporaryDirectory() as d:
-            path, output = Path(d)/"art.json", Path(d)/"out.png"
+            path, output = Path(d) / "art.json", Path(d) / "out.png"
             self.cli("new", "--size", 16, "--layered", "--output", path)
             for x, y, color in ((2, 2, "#FF0000"), (3, 3, "#0000FF"), (14, 14, "#00FF00")):
                 self.cli("edit", "--project", path, "--paint", x, y, color)
@@ -527,14 +598,16 @@ class ResolutionTests(unittest.TestCase):
     # }
     def test_cli_preserve_and_discard_match_backend(self):
         with tempfile.TemporaryDirectory() as d:
-            path = Path(d)/"art.json"
+            path = Path(d) / "art.json"
             for policy in ("preserve", "discard"):
                 model, _ = self.patterned()
                 model.set_resolution(7)
                 save_project(model, path)
                 expected = PixelCanvas.from_source(model.to_source())
                 expected.paint(1, 2, (120, 130, 140, 255), detail_policy=policy)
-                self.cli("edit", "--project", path, "--paint", 1, 2, "#78828C", "--detail-policy", policy)
+                self.cli(
+                    "edit", "--project", path, "--paint", 1, 2, "#78828C", "--detail-policy", policy
+                )
                 self.assertEqual(load_project(path).to_source(), expected.to_source())
 
     # {
@@ -545,7 +618,7 @@ class ResolutionTests(unittest.TestCase):
     # }
     def test_cli_rectangular_new_and_bounds(self):
         with tempfile.TemporaryDirectory() as d:
-            path = Path(d)/"art.json"
+            path = Path(d) / "art.json"
             self.cli("new", "--resolution", 3, 5, "--output", path)
             self.cli("edit", "--project", path, "--paint", 2, 4, "#123456")
             self.assertEqual(load_project(path).sample(2, 4), (18, 52, 86, 255))
@@ -562,12 +635,25 @@ class ResolutionTests(unittest.TestCase):
     # }
     def test_cli_invalid_following_edit_does_not_save_resolution_change(self):
         with tempfile.TemporaryDirectory() as d:
-            path, output = Path(d)/"art.json", Path(d)/"out.json"
+            path, output = Path(d) / "art.json", Path(d) / "out.json"
             save_project(self.patterned()[0], path)
             before = path.read_bytes()
             output.write_text("keep", encoding="utf-8")
-            self.cli("edit", "--project", path, "--resolution", 7, 7,
-                     "--paint", 7, 0, "#FFFFFF", "--output", output, code=2)
+            self.cli(
+                "edit",
+                "--project",
+                path,
+                "--resolution",
+                7,
+                7,
+                "--paint",
+                7,
+                0,
+                "#FFFFFF",
+                "--output",
+                output,
+                code=2,
+            )
             self.assertEqual(path.read_bytes(), before)
             self.assertEqual(output.read_text(), "keep")
             self.cli("edit", "--project", path, "--resolution", 16, 16)
@@ -581,7 +667,7 @@ class ResolutionTests(unittest.TestCase):
     # }
     def test_cli_export_resolution_is_read_only(self):
         with tempfile.TemporaryDirectory() as d:
-            path, output = Path(d)/"art.json", Path(d)/"out.png"
+            path, output = Path(d) / "art.json", Path(d) / "out.png"
             model, original = self.patterned()
             model.set_resolution(7)
             save_project(model, path)
@@ -615,8 +701,8 @@ class ResolutionTests(unittest.TestCase):
     def test_gui_pointer_after_zoom_and_pan(self):
         editor = self.fake_editor(LayeredPixelCanvas(23, 17))
         editor.zoom_factor = 2
-        editor.canvas.canvasx.side_effect = lambda x: x+1000
-        editor.canvas.canvasy.side_effect = lambda y: y+800
+        editor.canvas.canvasx.side_effect = lambda x: x + 1000
+        editor.canvas.canvasy.side_effect = lambda y: y + 800
         editor.paint_pixel(SimpleNamespace(x=279, y=159))
         self.assertEqual(editor.backend.sample(22, 16), (255, 128, 64, 255))
 
@@ -679,11 +765,12 @@ class ResolutionTests(unittest.TestCase):
     # }
     def test_gui_and_cli_project_roundtrip(self):
         from dot_editor import filedialog
+
         editor = self.fake_editor(LayeredPixelCanvas(23, 17))
         editor.backend.paint(22, 16, (12, 34, 56, 128))
         editor.backend.split_cell(22, 16)
         with tempfile.TemporaryDirectory() as d:
-            path = Path(d)/"art.json"
+            path = Path(d) / "art.json"
             with patch.object(filedialog, "asksaveasfilename", return_value=str(path)):
                 editor.save_project()
             self.assertEqual(load_project(path).to_source(), editor.backend.to_source())
@@ -725,7 +812,9 @@ class ResolutionTests(unittest.TestCase):
         with patch("resolution_field.MAX_TILES", 1):
             model.paint(1, 1, (12, 34, 56, 255), detail_policy="discard")
         self.assertEqual(model.retained_patch_count, 1)
-        self.assertEqual(model.render_resolution(37, 31).tobytes(), expected.render_resolution(37, 31).tobytes())
+        self.assertEqual(
+            model.render_resolution(37, 31).tobytes(), expected.render_resolution(37, 31).tobytes()
+        )
 
     # {
     #   責務: [test_field_rejects_resource_limit_without_partial_mutation: 保持フィールドの予算超過を拒否しCanvasを部分変更しないことを検証する]
@@ -737,7 +826,9 @@ class ResolutionTests(unittest.TestCase):
         model, _ = self.patterned()
         model.set_resolution(7)
         before = model.to_source()
-        with patch.object(ResolutionField, "_checked", side_effect=ValueError("simulated patch budget")):
+        with patch.object(
+            ResolutionField, "_checked", side_effect=ValueError("simulated patch budget")
+        ):
             with self.assertRaises(ValueError):
                 model.paint(1, 1, (12, 34, 56, 255))
         self.assertEqual(model.to_source(), before)
