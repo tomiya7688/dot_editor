@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -202,6 +203,69 @@ def check_version(executable: Path, version: str) -> None:
 
 
 # {
+#   責務: [clean_environment: Pythonも検索パスも使わない最小の環境変数を作る]
+#   処理: [PATHを空にし、Windowsの起動に必要なSystemRootだけを引き継ぐ]
+#   引数: []
+#   戻り値: [環境変数の辞書]
+# }
+def clean_environment() -> dict[str, str]:
+    environment = {"PATH": ""}
+    for name in ("SystemRoot", "SYSTEMROOT"):
+        if name in os.environ:
+            environment[name] = os.environ[name]
+    return environment
+
+
+# {
+#   責務: [check_bundled_catalog: 展開した配布物の表が、同梱した実行ファイル自身の出力と一致するか確認する]
+#   処理: [
+#     1: 任意の作業フォルダから、PATHを空にして実行ファイルに--commands-jsonを実行させる
+#     2: 同梱のcommands.jsonとCOMMANDS.mdが、その出力から作り直した内容と同じかを比べる
+#     3: --helpもPythonなしで実行できることを確認する
+#   ]
+#   引数: [unpacked: 展開した配布フォルダ, suffix: 実行ファイルの拡張子]
+#   戻り値: [なし、不一致や欠落なら例外]
+# }
+def check_bundled_catalog(unpacked: Path, suffix: str) -> None:
+    executable = unpacked / f"pixel-cli{suffix}"
+    with tempfile.TemporaryDirectory() as elsewhere:
+        shown = subprocess.run(
+            [str(executable), "--commands-json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=elsewhere,
+            env=clean_environment(),
+            check=False,
+            timeout=60,
+        )
+        helped = subprocess.run(
+            [str(executable), "--help"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=elsewhere,
+            env=clean_environment(),
+            check=False,
+            timeout=60,
+        )
+    if shown.returncode != 0 or shown.stderr or helped.returncode != 0:
+        raise SystemExit("the extracted executable cannot print its catalog or help without Python")
+    try:
+        live = json.loads(shown.stdout)
+    except ValueError as error:
+        raise SystemExit(
+            f"the executable printed invalid JSON for --commands-json: {error}"
+        ) from error
+    bundled_dir = unpacked / "docs" / "cli" / "rust"
+    bundled = json.loads((bundled_dir / "commands.json").read_text(encoding="utf-8"))
+    if bundled != live:
+        raise SystemExit("the bundled commands.json differs from the executable's own catalog")
+    if (bundled_dir / "COMMANDS.md").read_bytes() != render_markdown(live).encode("utf-8"):
+        raise SystemExit("the bundled COMMANDS.md differs from a fresh render")
+
+
+# {
 #   責務: [main: 配布フォルダの作成・アーカイブ化・展開後のE2Eを行い、大きさとSHA-256を記録する]
 #   処理: [
 #     1: 版を照合し、フォルダを作ってコマンド表を同梱する
@@ -235,6 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(extracted)
     extract_archive(archive, extracted)
     unpacked = extracted / name
+    check_bundled_catalog(unpacked, suffix)
     run = subprocess.run(
         [
             sys.executable,
