@@ -1586,7 +1586,7 @@ class PixelEditor:
     # }
     def leave_child_cell(self):
         if self.cursor.leave_child():
-            self.draw_cursor()
+            self.scroll_cursor_into_view(self.draw_cursor())
         return "break"
 
     # {
