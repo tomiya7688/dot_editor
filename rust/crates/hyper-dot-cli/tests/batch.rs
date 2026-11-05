@@ -394,3 +394,183 @@ fn batch_respects_if_revision() {
     );
     assert_eq!(fs::read(&project).unwrap(), before);
 }
+
+/// {
+///   責務: [failing_cases_keep_the_project_byte_identical: 存在しないレイヤー・無効な子セル・予算超過で全体が失敗し、作品が1バイトも変わらないことを検証する]
+///   処理: [
+///     1: 先頭の操作は有効で、後ろの操作が失敗するバッチを3種類実行する
+///     2: 終了値1、期待するエラー種別、失敗位置、プロジェクトのバイト列不変を確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
+#[test]
+fn failing_cases_keep_the_project_byte_identical() {
+    let folder = workspace("failing");
+    let project = new_project(&folder, "art.json");
+    let before = fs::read(&project).unwrap();
+    let ok = r##"{"op":"pixel.paint","x":1,"y":1,"color":"#FF0000"}"##;
+    let cases = [
+        (r#"{"op":"layer.select","name":"nope"}"#, "no_such_layer"),
+        (
+            r##"{"op":"pixel.paint","x":0,"y":0,"child":[1,1],"color":"#FF0000"}"##,
+            "cell_not_split",
+        ),
+        (
+            r#"{"op":"canvas.resolution.set","width":4096,"height":4096}"#,
+            "resource_limit",
+        ),
+    ];
+    for (bad, expected) in cases {
+        let batch = write_batch(
+            &folder,
+            &format!(r#"{{"version":1,"operations":[{ok},{bad}]}}"#),
+        );
+        let (code, json) = cli(&["--json", "-p", &project, "batch", "apply", "--file", &batch]);
+        assert_eq!(code, 1, "{bad}: {json}");
+        assert_eq!(json["error"], expected, "{bad}: {json}");
+        if expected != "resource_limit" {
+            assert_eq!(json["details"]["failed_index"], 1, "{bad}");
+        }
+        assert_eq!(fs::read(&project).unwrap(), before, "{bad}");
+    }
+}
+
+/// {
+///   責務: [non_square_transparent_and_repeats_match_single_edits: 非正方形・透明色・同じセルの繰り返しが、単独の編集と同じ結果になることを検証する]
+///   処理: [
+///     1: 5x3の2つの作品へ、バッチと単独の編集で、同じセルへの塗りと透明色の塗りを繰り返す
+///     2: 全セルの色が一致することを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
+#[test]
+fn non_square_transparent_and_repeats_match_single_edits() {
+    let folder = workspace("shape");
+    let make = |name: &str| {
+        let project = folder.join(name).to_string_lossy().into_owned();
+        let (code, _) = cli(&[
+            "--json",
+            "-p",
+            &project,
+            "project",
+            "new",
+            "--resolution",
+            "5",
+            "3",
+        ]);
+        assert_eq!(code, 0);
+        project
+    };
+    let batched = make("batched.json");
+    let stepped = make("stepped.json");
+    let batch = write_batch(
+        &folder,
+        r##"{"version":1,"operations":[
+          {"op":"pixel.paint","x":4,"y":2,"color":"#112233"},
+          {"op":"pixel.paint","x":4,"y":2,"color":"#112233"},
+          {"op":"pixel.paint","x":0,"y":0,"color":"#FF000000"},
+          {"op":"pixel.paint","x":1,"y":1,"color":"#445566AA"},
+          {"op":"pixel.fill","x":2,"y":0,"color":"#778899"}]}"##,
+    );
+    let (code, _) = cli(&["--json", "-p", &batched, "batch", "apply", "--file", &batch]);
+    assert_eq!(code, 0);
+    for step in [
+        ["pixel", "paint", "4", "2", "#112233"],
+        ["pixel", "paint", "4", "2", "#112233"],
+        ["pixel", "paint", "0", "0", "#FF000000"],
+        ["pixel", "paint", "1", "1", "#445566AA"],
+        ["pixel", "fill", "2", "0", "#778899"],
+    ] {
+        let mut arguments = vec!["-p", stepped.as_str()];
+        arguments.extend(step);
+        assert_eq!(cli(&arguments).0, 0);
+    }
+    for x in 0..5 {
+        for y in 0..3 {
+            let (x, y) = (x.to_string(), y.to_string());
+            let (code_a, a) = cli(&["--json", "-p", &batched, "pixel", "sample", &x, &y]);
+            let (code_b, b) = cli(&["--json", "-p", &stepped, "pixel", "sample", &x, &y]);
+            assert_eq!((code_a, code_b), (0, 0), "sample {x},{y}");
+            assert!(a["result"] == b["result"], "cell {x},{y} differs");
+        }
+    }
+}
+
+/// {
+///   責務: [every_edit_command_is_a_batch_operation: 編集コマンドがすべてバッチのopとして受け付けられ、dry-runがフォルダを変えないことを検証する]
+///   処理: [
+///     1: コマンド表から編集コマンドの一覧を取得する
+///     2: 各idをopにしたバッチが「未知のop」で拒否されないことを確認する
+///     3: dry-runの前後でフォルダの内容が同じで、sidecarや一時ファイルが増えないことを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
+#[test]
+fn every_edit_command_is_a_batch_operation() {
+    let folder = workspace("coverage");
+    let project = new_project(&folder, "art.json");
+    let (_, catalog) = cli(&["--commands-json"]);
+    let mut seen = 0;
+    for command in catalog["commands"].as_array().unwrap() {
+        if command["effect"] != "edit" || command["id"] == "batch.apply" {
+            continue;
+        }
+        let id = command["id"].as_str().unwrap();
+        let batch = write_batch(
+            &folder,
+            &format!(r#"{{"version":1,"operations":[{{"op":"{id}"}}]}}"#),
+        );
+        // 必須フィールドの無いopは、opとしては受理され、欠けたフィールドだけを理由に拒否される。
+        let (code, json) = cli(&["--json", "-p", &project, "batch", "apply", "--file", &batch]);
+        let message = json["message"].as_str().unwrap_or_default();
+        let takes_no_fields = command["positionals"].as_array().unwrap().is_empty();
+        if takes_no_fields {
+            // 位置引数の無いop（layer.remove）は、そのまま有効に実行されうる。
+            assert!(code == 0 || json["error"] == "last_layer", "{id}: {json}");
+        } else {
+            assert_eq!(
+                (code, json["error"].as_str()),
+                (1, Some("invalid_batch")),
+                "{id}: {json}"
+            );
+            assert!(message.contains("needs"), "{id}: {message}");
+        }
+        assert!(!message.contains("unknown op"), "{id}: {message}");
+        seen += 1;
+    }
+    assert_eq!(seen, 13);
+    // 名前と大きさの一覧。dry-runの前後で同じであることを確認する。
+    let names = |path: &Path| {
+        let mut list: Vec<_> = fs::read_dir(path)
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                (entry.file_name(), entry.metadata().unwrap().len())
+            })
+            .collect();
+        list.sort();
+        list
+    };
+    let batch = write_batch(
+        &folder,
+        r##"{"version":1,"operations":[{"op":"pixel.paint","x":1,"y":1,"color":"#FF0000"}]}"##,
+    );
+    let listed = names(&folder);
+    let project_bytes = fs::read(&project).unwrap();
+    let (code, _) = cli(&[
+        "--json",
+        "--dry-run",
+        "-p",
+        &project,
+        "batch",
+        "apply",
+        "--file",
+        &batch,
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(names(&folder), listed);
+    assert_eq!(fs::read(&project).unwrap(), project_bytes);
+}
