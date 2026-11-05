@@ -1,6 +1,7 @@
 """Headless checks for menu access-key uniqueness and live editor actions."""
 
 import inspect
+import tkinter as tk
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -245,6 +246,12 @@ class MenuStructureTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             editor.run_dialog(lambda **kw: (_ for _ in ()).throw(ValueError("boom")))
         self.assertEqual(focused, ["canvas"])
+        broken = SimpleNamespace(
+            winfo_exists=lambda: True,
+            focus_set=lambda: (_ for _ in ()).throw(tk.TclError("gone")),
+        )
+        editor.master = SimpleNamespace(focus_get=lambda: broken)
+        self.assertEqual(editor.run_dialog(lambda **kw: "kept"), "kept")
 
     # {
     #   責務: [test_no_dialog_bypasses_run_dialog: すべてのダイアログがrun_dialog経由であることを検証する]

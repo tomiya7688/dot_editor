@@ -967,15 +967,19 @@ class PixelEditor:
     #   責務: [restore_focus: 保存した要素、なければキャンバスへフォーカスを戻す]
     #   処理: [
     #     1: 保存した要素とキャンバスのうち使用可能な方を決める
-    #     2: 決まった要素へフォーカスを設定する
+    #     2: 決まった要素へフォーカスを設定し、失敗してもダイアログの結果を妨げない
     #   ]
     #   引数: [saved: ダイアログを開く前のフォーカス要素]
     #   戻り値: [なし。フォーカスを設定する]
     # }
     def restore_focus(self, saved):
-        target = choose_restore_target(saved, (), self.canvas, widget_exists)
+        canvas = getattr(self, "canvas", None)
+        target = choose_restore_target(saved, (), canvas, widget_exists)
         if target is not None:
-            target.focus_set()
+            try:
+                target.focus_set()
+            except tk.TclError:
+                pass
 
     # {
     #   責務: [report_error: 操作失敗を利用者へ通知する]
