@@ -139,6 +139,74 @@ fn resolved(path: &Path) -> Option<PathBuf> {
 }
 
 /// {
+///   責務: [ensure_safe_target: 書き込み先が、同一性を安全に判定できる通常のファイルか確かめる]
+///   処理: [
+///     1: 存在しなければ安全とする
+///     2: シンボリックリンクと通常でないもの（フォルダなど）を拒否する
+///     3: Unixでは、ハードリンクが複数あるファイルを拒否する
+///   ]
+///   引数: [
+///     path: 書き込み先のパス
+///   ]
+///   戻り値: [安全なら単位値、危険ならunsafe_path]
+/// }
+pub fn ensure_safe_target(path: &Path) -> Result<(), CliError> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(io_failure("inspect", path, &error)),
+    };
+    let reason = if metadata.file_type().is_symlink() {
+        Some("is a symbolic link")
+    } else if !metadata.is_file() {
+        Some("is not a regular file")
+    } else if has_other_hard_links(&metadata) {
+        Some("has more than one hard link")
+    } else {
+        None
+    };
+    match reason {
+        Some(reason) => Err(CliError::failure(
+            "unsafe_path",
+            format!("refusing to write {}: it {reason}", path.display()),
+        )),
+        None => Ok(()),
+    }
+}
+
+/// {
+///   責務: [has_other_hard_links: ファイルに他のハードリンクがあるかを調べる]
+///   処理: [
+///     1: Unixではリンク数が2以上かを返す
+///     2: それ以外のOSでは標準ライブラリで判定できないため偽を返す（文書に未対応と記載）
+///   ]
+///   引数: [
+///     metadata: ファイルのメタデータ
+///   ]
+///   戻り値: [他のハードリンクがあれば真]
+/// }
+#[cfg(unix)]
+fn has_other_hard_links(metadata: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    metadata.nlink() > 1
+}
+
+/// {
+///   責務: [has_other_hard_links: ファイルに他のハードリンクがあるかを調べる]
+///   処理: [
+///     1: Unix以外では標準ライブラリで判定できないため偽を返す
+///   ]
+///   引数: [
+///     metadata: ファイルのメタデータ
+///   ]
+///   戻り値: [常に偽]
+/// }
+#[cfg(not(unix))]
+fn has_other_hard_links(_metadata: &fs::Metadata) -> bool {
+    false
+}
+
+/// {
 ///   責務: [current_revision: ファイルがあれば、その生バイト列のrevisionを返す]
 ///   処理: [
 ///     1: 存在しなければNoneにする

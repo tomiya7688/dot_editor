@@ -58,6 +58,7 @@ fn create(
     let target = Path::new(path);
     let (document, result) = build(command)?;
     let _lock = lock_for(options, path)?;
+    project_file::ensure_safe_target(target)?;
     let current = project_file::current_revision(target)?;
     if options.if_revision.is_some() {
         check_revision(options, path, current.as_deref())?;
@@ -241,6 +242,7 @@ fn edit(
         ));
     }
     let _lock = lock_for(options, path)?;
+    project_file::ensure_safe_target(Path::new(path))?;
     let mut snapshot = load_checked(options, path)?;
     let revision_before = snapshot.revision.clone();
     let (result, changed) = apply(command, &mut snapshot.canvas)?;
@@ -288,6 +290,7 @@ fn export(
             "the output file must differ from the project file",
         ));
     }
+    project_file::ensure_safe_target(&planned.path)?;
     if !options.dry_run {
         project_file::write_atomic(&planned.path, &planned.bytes)?;
     }
