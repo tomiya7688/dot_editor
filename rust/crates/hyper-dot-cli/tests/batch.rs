@@ -490,8 +490,9 @@ fn non_square_transparent_and_repeats_match_single_edits() {
     for x in 0..5 {
         for y in 0..3 {
             let (x, y) = (x.to_string(), y.to_string());
-            let (_, a) = cli(&["--json", "-p", &batched, "pixel", "sample", &x, &y]);
-            let (_, b) = cli(&["--json", "-p", &stepped, "pixel", "sample", &x, &y]);
+            let (code_a, a) = cli(&["--json", "-p", &batched, "pixel", "sample", &x, &y]);
+            let (code_b, b) = cli(&["--json", "-p", &stepped, "pixel", "sample", &x, &y]);
+            assert_eq!((code_a, code_b), (0, 0), "sample {x},{y}");
             assert!(a["result"] == b["result"], "cell {x},{y} differs");
         }
     }
@@ -522,26 +523,43 @@ fn every_edit_command_is_a_batch_operation() {
             &folder,
             &format!(r#"{{"version":1,"operations":[{{"op":"{id}"}}]}}"#),
         );
-        let (_, json) = cli(&["--json", "-p", &project, "batch", "apply", "--file", &batch]);
+        // 必須フィールドの無いopは、opとしては受理され、欠けたフィールドだけを理由に拒否される。
+        let (code, json) = cli(&["--json", "-p", &project, "batch", "apply", "--file", &batch]);
         let message = json["message"].as_str().unwrap_or_default();
+        let takes_no_fields = command["positionals"].as_array().unwrap().is_empty();
+        if takes_no_fields {
+            // 位置引数の無いop（layer.remove）は、そのまま有効に実行されうる。
+            assert!(code == 0 || json["error"] == "last_layer", "{id}: {json}");
+        } else {
+            assert_eq!(
+                (code, json["error"].as_str()),
+                (1, Some("invalid_batch")),
+                "{id}: {json}"
+            );
+            assert!(message.contains("needs"), "{id}: {message}");
+        }
         assert!(!message.contains("unknown op"), "{id}: {message}");
         seen += 1;
     }
     assert_eq!(seen, 13);
+    // 名前と大きさの一覧。dry-runの前後で同じであることを確認する。
     let names = |path: &Path| {
         let mut list: Vec<_> = fs::read_dir(path)
             .unwrap()
-            .map(|entry| entry.unwrap().file_name())
+            .map(|entry| {
+                let entry = entry.unwrap();
+                (entry.file_name(), entry.metadata().unwrap().len())
+            })
             .collect();
         list.sort();
         list
     };
-    let before = names(&folder);
     let batch = write_batch(
         &folder,
         r##"{"version":1,"operations":[{"op":"pixel.paint","x":1,"y":1,"color":"#FF0000"}]}"##,
     );
     let listed = names(&folder);
+    let project_bytes = fs::read(&project).unwrap();
     let (code, _) = cli(&[
         "--json",
         "--dry-run",
@@ -554,5 +572,5 @@ fn every_edit_command_is_a_batch_operation() {
     ]);
     assert_eq!(code, 0);
     assert_eq!(names(&folder), listed);
-    assert!(before.len() <= listed.len());
+    assert_eq!(fs::read(&project).unwrap(), project_bytes);
 }
