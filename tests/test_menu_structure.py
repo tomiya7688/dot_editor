@@ -1,10 +1,11 @@
 """Headless checks for menu access-key uniqueness and live editor actions."""
 
 import inspect
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
-from dot_editor import PixelEditor, menu_spec
+from dot_editor import CELL_MENU_ACTIONS, KEY_BINDINGS, PixelEditor, menu_spec
 
 
 # {
@@ -146,6 +147,50 @@ class MenuStructureTests(unittest.TestCase):
             sorted(["<Button-1>", "<B1-Motion>", "<ButtonPress-2>", "<B2-Motion>"]),
         )
         self.assertIn("self.initialize_canvas_input()", inspect.getsource(PixelEditor.__init__))
+
+    # {
+    #   責務: [test_cell_items_follow_selection_and_actions_resolve_by_name: 選択セルの有無で項目が切り替わることを検証する]
+    #   処理: [
+    #     1: 偽のメニューへ動作名と位置を登録した編集部を作る
+    #     2: 選択セルなしで3項目が無効、ありで有効になることを確認する
+    #     3: 履歴が空なら元に戻す・やり直しが無効、レイヤーが1枚なら削除が無効になることを確認する
+    #   ]
+    #   引数: [self: テスト対象のMenuStructureTestsケース]
+    #   戻り値: [なし、状態の切り替えが誤っていればassertionで失敗する]
+    # }
+    def test_cell_items_follow_selection_and_actions_resolve_by_name(self):
+        states = {}
+        menu = SimpleNamespace(entryconfigure=lambda index, state: states.__setitem__(index, state))
+        names = list(CELL_MENU_ACTIONS) + ["undo", "redo", "remove_layer"]
+        editor = PixelEditor.__new__(PixelEditor)
+        editor.menu_command_entries = {name: (menu, i) for i, name in enumerate(names)}
+        editor.history, editor.future = [], []
+        editor.backend = SimpleNamespace(layers=["a"])
+        editor.selected_cell = None
+        editor.update_menu_state()
+        self.assertEqual(set(states.values()), {"disabled"})
+        editor.selected_cell = (1, 2)
+        editor.history = [object()]
+        editor.backend = SimpleNamespace(layers=["a", "b"])
+        editor.update_menu_state()
+        enabled = {names[i] for i, state in states.items() if state == "normal"}
+        self.assertEqual(enabled, set(CELL_MENU_ACTIONS) | {"undo", "remove_layer"})
+        for action in CELL_MENU_ACTIONS:
+            self.assertTrue(hasattr(PixelEditor, action))
+
+    # {
+    #   責務: [test_key_bindings_listed_in_readme: キー割当表の各キーが利用者向け案内に載っていることを検証する]
+    #   処理: [
+    #     1: READMEを読み込む
+    #     2: KEY_BINDINGSの各キーの表記が含まれることを確認する
+    #   ]
+    #   引数: [self: テスト対象のMenuStructureTestsケース]
+    #   戻り値: [なし、載っていないキーがあればassertionで失敗する]
+    # }
+    def test_key_bindings_listed_in_readme(self):
+        readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+        for key, _ in KEY_BINDINGS:
+            self.assertIn(key, readme)
 
 
 if __name__ == "__main__":

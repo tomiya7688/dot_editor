@@ -11,6 +11,24 @@ from pixel_layers import LayeredPixelCanvas
 from resolution_field import resolution
 
 
+# 選択セルがないと実行しても何も起きないため、無効にするメニュー動作。
+CELL_MENU_ACTIONS = (
+    "split_selected_cell",
+    "collapse_selected_cell",
+    "discard_selected_detail",
+)
+
+# キーボード操作の正本。READMEの操作表と一致することをテストで確認する。
+KEY_BINDINGS = (
+    ("Alt", "メニューバーに入る"),
+    ("F6", "キャンバスとサイドバーを切り替える"),
+    ("Shift+F6", "逆向きに切り替える"),
+    ("Ctrl+Z", "元に戻す"),
+    ("Ctrl+Y", "やり直す"),
+    ("Ctrl+ホイール", "拡大・縮小"),
+)
+
+
 # {
 #   責務: [menu_spec: メニューバーと各操作項目の構造を一元定義する]
 #   処理: [ファイル・編集・描画・レイヤー・色・表示メニューをアクセスキーと操作名付きで返す]
@@ -235,6 +253,7 @@ class PixelEditor:
     def build_menu_bar(self):
         self.menu_bar = tk.Menu(self.master, tearoff=False)
         self.editor_menus = {}
+        self.menu_command_entries = {}
         self.layer_select_menu = None
         self.palette_menu = None
         for label, access_key, entries in menu_spec():
@@ -274,6 +293,7 @@ class PixelEditor:
                     command=getattr(self, action),
                     accelerator=accelerator[0] if accelerator else "",
                 )
+                self.menu_command_entries[action] = (menu, menu.index(tk.END))
             elif kind == "cascade":
                 _, label, access_key, children = entry
                 submenu = tk.Menu(menu, tearoff=False)
@@ -322,21 +342,32 @@ class PixelEditor:
 
     # {
     #   責務: [update_menu_state: 操作対象がないメニュー項目を無効化する]
-    #   処理: [Undo/Redo履歴とレイヤー数を確認して編集・レイヤー操作の状態を設定する]
+    #   処理: [履歴・レイヤー数・選択セルの有無を確認し、動作名で各項目の状態を設定する]
     #   引数: []
     #   戻り値: [なし。既存メニューの有効状態を更新する]
     # }
     def update_menu_state(self):
-        edit = self.editor_menus.get("編集 (E)")
-        if edit is not None:
-            edit.entryconfigure(0, state="normal" if self.history else "disabled")
-            edit.entryconfigure(1, state="normal" if self.future else "disabled")
-        layers = self.editor_menus.get("レイヤー (L)")
-        if layers is not None:
-            layers.entryconfigure(
-                2,
-                state="normal" if len(self.backend.layers) > 1 else "disabled",
-            )
+        self.set_menu_command_state("undo", bool(self.history))
+        self.set_menu_command_state("redo", bool(self.future))
+        self.set_menu_command_state("remove_layer", len(self.backend.layers) > 1)
+        has_cell = self.selected_cell is not None
+        for action in CELL_MENU_ACTIONS:
+            self.set_menu_command_state(action, has_cell)
+
+    # {
+    #   責務: [set_menu_command_state: 動作名で指定したメニュー項目の有効状態を設定する]
+    #   処理: [
+    #     1: 動作名から登録済みのメニューと項目位置を引く
+    #     2: 未登録なら何もせず、登録済みなら有効または無効にする
+    #   ]
+    #   引数: [action: メニュー定義の動作名, enabled: 実行可能なら真]
+    #   戻り値: [なし。項目の状態を更新する]
+    # }
+    def set_menu_command_state(self, action, enabled):
+        entry = self.menu_command_entries.get(action)
+        if entry is not None:
+            menu, index = entry
+            menu.entryconfigure(index, state="normal" if enabled else "disabled")
 
     # {
     #   責務: [populate_layer_menu: 現在のレイヤー一覧を選択メニューへ反映する]
