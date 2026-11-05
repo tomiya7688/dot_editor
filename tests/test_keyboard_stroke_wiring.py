@@ -5,6 +5,7 @@ import unittest
 
 from canvas_cursor import CanvasCursor
 from dot_editor import PixelEditor
+from pixel_commands import PixelCommandAPI
 from pixel_layers import LayeredPixelCanvas
 from stroke import StrokeSession
 
@@ -121,6 +122,84 @@ class StrokeWiringTests(unittest.TestCase):
         editor.on_space_down()
         editor.move_cursor(1, 0)
         self.assertEqual(len(editor.history), 1)
+
+    # {
+    #   責務: [test_scenario_undo_redo_and_child_cell: Issue #30のK3: 折れ線の取り消し・やり直しと子セルへの描画を検証する]
+    #   処理: [
+    #     1: 右と下へ動かして折れ線を描き、1回の取り消しで全体が消え、やり直しで戻ることを確認する
+    #     2: 分割済みセルの子セルへ描くと親セルでなく子セルだけが変わることを確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_scenario_undo_redo_and_child_cell(self):
+        jobs = []
+        editor = make_editor(jobs)
+        editor.on_space_down()
+        editor.move_cursor(1, 0)
+        editor.move_cursor(0, 1)
+        editor.cancel_stroke()
+        painted = [(0, 0), (1, 0), (1, 1)]
+        for cell in painted:
+            self.assertEqual(editor.commands.sample(*cell)[3], 255)
+        editor.undo()
+        for cell in painted:
+            self.assertEqual(editor.commands.sample(*cell)[3], 0)
+        editor.redo()
+        for cell in painted:
+            self.assertEqual(editor.commands.sample(*cell)[3], 255)
+        editor.commands.split(3, 3)
+        editor.select_cell(3, 3)
+        editor.draw_cursor = lambda: None
+        editor.enter_child_cell()
+        editor.current_color = (0, 0, 255)
+        editor.on_space_down()
+        editor.cancel_stroke()
+        self.assertEqual(editor.commands.sample(3, 3, child=(0, 0))[:3], (0, 0, 255))
+        self.assertEqual(editor.commands.sample(3, 3, child=(1, 1))[3], 0)
+
+    # {
+    #   責務: [test_scenario_focus_loss_stops_drawing: Issue #30のK9: フォーカス喪失で描画が止まり暴走しないことを検証する]
+    #   処理: [
+    #     1: ストローク中にフォーカス喪失相当の取消を行う
+    #     2: 取消後の移動と再度のキーリピートで勝手に描かれないことを確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_scenario_focus_loss_stops_drawing(self):
+        jobs = []
+        editor = make_editor(jobs)
+        editor.on_space_down()
+        editor.cancel_stroke()
+        editor.move_cursor(1, 0)
+        editor.move_cursor(1, 0)
+        self.assertEqual(editor.commands.sample(2, 0)[3], 0)
+        self.assertFalse(editor.stroke.active)
+        self.assertEqual(len(editor.history), 1)
+
+    # {
+    #   責務: [test_scenario_save_reload_matches: Issue #30のK6: 保存データの再読込で描画が一致することを検証する]
+    #   処理: [
+    #     1: ストロークで描いた作品のデータを取り出す
+    #     2: 再構築した作品の全セルが元と同じ色であることを確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_scenario_save_reload_matches(self):
+        jobs = []
+        editor = make_editor(jobs)
+        editor.on_space_down()
+        editor.move_cursor(1, 0)
+        editor.move_cursor(0, 1)
+        editor.cancel_stroke()
+        reloaded = LayeredPixelCanvas.from_source(editor.backend.to_source())
+        for x in range(4):
+            for y in range(4):
+                self.assertEqual(
+                    PixelCommandAPI(reloaded).sample(x, y), editor.commands.sample(x, y)
+                )
 
 
 if __name__ == "__main__":
