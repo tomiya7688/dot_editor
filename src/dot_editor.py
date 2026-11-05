@@ -6,6 +6,7 @@ from tkinter.colorchooser import askcolor
 from PIL import Image, ImageTk
 
 import help_content
+import recent_files
 from canvas_cursor import CanvasCursor, cell_bounds, scroll_offset
 from stroke import StrokeSession
 from pixel_backend import PixelCanvas
@@ -83,6 +84,7 @@ def menu_spec():
                 ("command", "画像を読み込む", "I", "import_image"),
                 ("command", "プロジェクトを読み込む", "O", "load_project"),
                 ("command", "プロジェクトを保存", "S", "save_project"),
+                ("recent", "最近使った作品", "E"),
                 ("command", "PNGを保存", "P", "save_image"),
                 ("separator",),
                 ("command", "作品をリセット", "R", "reset_canvas"),
@@ -403,6 +405,16 @@ class PixelEditor:
                     postcommand=lambda target=submenu: self.populate_palette_menu(target),
                 )
                 self.palette_menu = submenu
+            elif kind == "recent":
+                _, label, access_key = entry
+                submenu = tk.Menu(menu, tearoff=False)
+                visible_label, underline = self.access_label(label, access_key)
+                menu.add_cascade(
+                    label=visible_label,
+                    underline=underline,
+                    menu=submenu,
+                    postcommand=lambda target=submenu: self.populate_recent_menu(target),
+                )
             else:
                 raise ValueError(f"unknown menu entry type: {kind}")
 
@@ -2131,7 +2143,40 @@ class PixelEditor:
             self.report_error(error)
             return False
         self.mark_saved()
+        recent_files.remember(path)
         return True
+
+    # {
+    #   責務: [populate_recent_menu: 最近使った作品の一覧をメニューへ反映する]
+    #   処理: [
+    #     1: 古い項目を消し、設定フォルダの一覧から項目を作る
+    #     2: 一覧が空なら、選べない説明の項目を1つ置く
+    #   ]
+    #   引数: [menu: 項目を表示するTkメニュー]
+    #   戻り値: [なし。メニュー内容を更新する]
+    # }
+    def populate_recent_menu(self, menu):
+        menu.delete(0, tk.END)
+        paths = recent_files.load_recent()
+        if not paths:
+            menu.add_command(label="（まだありません）", state="disabled")
+            return
+        for index, path in enumerate(paths, start=1):
+            menu.add_command(
+                label=f"{index}  {Path(path).name}　{path}",
+                command=lambda selected=path: self.open_recent(selected),
+            )
+
+    # {
+    #   責務: [open_recent: 最近使った作品を、保存確認のうえで開く]
+    #   処理: [未保存の変更を確認し、続行できるときだけ指定の作品を読み込む]
+    #   引数: [path: 開く作品のパス]
+    #   戻り値: [なし。キャンセルや読み込み失敗では既存の作品を維持する]
+    # }
+    def open_recent(self, path):
+        if not self.confirm_discard("別の作品を開く"):
+            return
+        self.open_project_path(path)
 
     # {
     #   責務: [load_project: JSONプロジェクトを検証後に作品へ読み込む]
@@ -2151,6 +2196,19 @@ class PixelEditor:
         )
         if not path:
             return
+        self.open_project_path(path)
+
+    # {
+    #   責務: [open_project_path: 指定のJSONプロジェクトを検証して作品へ読み込む]
+    #   処理: [
+    #     1: 共有APIで一時的に読み込み、単一キャンバス形式は背景レイヤーへ包む
+    #     2: 失敗時は既存状態を保って通知し、最近の一覧から外す（ファイルは削除しない）
+    #     3: 成功後に作品・履歴・表示を置き換え、保存済みの基準を更新し、最近の一覧へ加える
+    #   ]
+    #   引数: [path: 読み込むプロジェクトのパス]
+    #   戻り値: [読み込めたら真。失敗時は既存の作品を維持して偽]
+    # }
+    def open_project_path(self, path):
         try:
             loaded = PixelCommandAPI.load(Path(path)).canvas
             if isinstance(loaded, PixelCanvas):
@@ -2159,7 +2217,8 @@ class PixelEditor:
                 loaded = layered
         except (OSError, UnicodeError, ValueError, TypeError, KeyError) as error:
             self.report_error(error)
-            return
+            recent_files.forget(path)
+            return False
         self.backend = loaded
         self.num_pixels_x, self.num_pixels_y = loaded.resolution
         self.selected_cell = None
@@ -2168,6 +2227,8 @@ class PixelEditor:
         self.refresh_layer_list()
         self.update_canvas_size()
         self.mark_saved()
+        recent_files.remember(path)
+        return True
 
     # {
     #   責務: [save_image: 現在の合成画像をPNGで書き出す]
