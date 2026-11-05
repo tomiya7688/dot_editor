@@ -126,6 +126,48 @@ jobs:
       - name: Generate and check the command catalog from the release binary
         run: python scripts/render_command_catalog.py rust/target/release/pixel-cli --out "$RUNNER_TEMP/catalog"
 
+  rust-release:
+    name: Rust release (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - label: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - label: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Add the Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: matrix.label == 'linux-x86_64'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Run Rust tests for the target
+        run: cargo test --manifest-path rust/Cargo.toml --workspace --locked --target ${{ matrix.target }}
+
+      - name: Build the release binaries
+        run: cargo build --manifest-path rust/Cargo.toml --workspace --release --locked --target ${{ matrix.target }}
+
+      - name: Set up Python to drive the checks
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Package, extract and run the end-to-end check on the archive
+        run: python scripts/package_rust_cli.py --target ${{ matrix.target }} --build-dir rust/target/${{ matrix.target }}/release --out "${{ runner.temp }}/rust-release"
+
   evaluate:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
