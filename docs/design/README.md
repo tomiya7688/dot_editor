@@ -22,7 +22,7 @@
 | #38 | 3 OSの単体実行ファイル配布 | [配布の設計](release-distribution.md) | 設計案 |
 | #63 | 同時編集の保護（revisionと排他保存） | [保存安全性](cli-concurrency.md) | 一部実装（revision・ロック・置換禁止の新規作成） |
 | #64 | 順序付きの原子的バッチ編集 | [バッチAPI](cli-batch.md) | 設計案 |
-| #66 | コマンド表の自動生成と同梱 | [コマンド表の同梱](command-reference-delivery.md)、[スキーマ](catalog-schema-v1.json) | 設計案 |
+| #66 | コマンド表の自動生成と同梱 | [コマンド表の同梱](command-reference-delivery.md)、[スキーマ](catalog-schema-v1.json) | 一部実装（#66-A: Rustの`--commands-json`と生成器。同梱は未実装） |
 | #26 〜 #30 | GUIのキーボード操作 | [キーボード操作](keyboard-operation.md) | 設計案 |
 | #67 | 軽量GUIとオフラインヘルプ | [軽量GUI](lightweight-gui.md)、[画面の操作仕様](../ユーザー操作インターフェース仕様.md) | 設計案 |
 | #75 | GUIのキャンバス入力が起動直後に登録されない | [キーボード操作](keyboard-operation.md)の「現状」 | 不具合（先に修正） |

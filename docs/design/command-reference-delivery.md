@@ -14,7 +14,7 @@
 
 ## 3. Rust側の出力
 
-- **追加予定**：`pixel-cli --commands-json`（あるいは同等の文書化した安定入口）を設け、`--project`/GUI/ネット接続不要で上のカタログを返す。成功時`stdout`は1つのJSON、exit 0。バージョンはビルド済みバイナリの`CARGO_PKG_VERSION`と一致させます。
+- **実装済み（#66-A）**：`pixel-cli --commands-json`が`catalog.rs`（`COMMANDS`と`command_docs.rs`の日本語説明）から、プロジェクト・GUI・ネット接続なしでカタログを返します。成功時`stdout`は1つのJSONとLF、exit 0。バージョンはビルド済みバイナリの`CARGO_PKG_VERSION`と一致します。
 - `--help`と`pixel-cli pixel paint --help`は従来どおり人が読める文章を返し、カタログと同じ`COMMANDS`定義を参照する。説明表の追加で引数パーサーやエラーの契約を壊しません。
 - 生成器は**実際にビルドしたバイナリのカタログJSON**を入力として`COMMANDS.md`を生成する。Rustソースのregexでコマンド名を抽出する脆い方式や、PythonのCLI一覧をRust版へ転用する方式は採用しません。
 - 生成順序は既存`COMMANDS`順、Markdown/JSONはUTF-8 LFで同じ入力ならbyte-identical。JSON`schema_version`と`cli_version`を記録します。
@@ -131,7 +131,7 @@ GitHub CIが必要な検証を実行しない場合は実装済みとしない�
 
 ## 9. カタログ取得時のCLI挙動と競合優先順位
 
-Rustの追加予定入口は`pixel-cli --commands-json`。GUI、作品ファイル、ネット接続は不要。成功時`stdout`には**JSON値一個とLF**だけ、`stderr`は空、exit 0。`--json`を同時指定しても同一のJSON一個だけを返す。
+Rustの入口は実装済みの`pixel-cli --commands-json`（#66-A）。GUI、作品ファイル、ネット接続は不要。成功時`stdout`には**JSON値一個とLF**だけ、`stderr`は空、exit 0。`--json`を同時指定しても同一のJSON一個だけを返す。Python版と配布物への同梱（#66-B/C）は未実装。
 
 - `--commands-json`と編集サブコマンドを同時指定した場合は**usage（exit 2）**。表示だけ要求して編集部分を黙って無視しない。
 - `--commands-json`と`--project`、`--dry-run`、`--help`、`--version`の併用はusage（exit 2）で拒否する。利用者が意図せず引数を捨てたまま成功することを防ぐ。

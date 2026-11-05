@@ -12,6 +12,7 @@ use crate::cli_error::CliError;
 ///     version: バージョンを表示するか
 ///     if_revision: 保存の前提とするrevision（sha256:付き）。違えば競合として失敗する
 ///     lock_timeout_ms: 作品のロックを待つ最長時間（ミリ秒）
+///     commands_json: コマンド表をJSONで表示するか（他の引数とは併用できない）
 ///   ]
 /// }
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,10 +24,11 @@ pub struct GlobalOptions {
     pub version: bool,
     pub if_revision: Option<String>,
     pub lock_timeout_ms: u64,
+    pub commands_json: bool,
 }
 
 /// ロックを待つ既定の時間（ミリ秒）。
-const DEFAULT_LOCK_TIMEOUT_MS: u64 = 5000;
+pub const DEFAULT_LOCK_TIMEOUT_MS: u64 = 5000;
 
 /// ロックを待つ時間として指定できる上限（ミリ秒）。
 const MAX_LOCK_TIMEOUT_MS: u64 = 60000;
@@ -49,6 +51,7 @@ impl Default for GlobalOptions {
             version: false,
             if_revision: None,
             lock_timeout_ms: DEFAULT_LOCK_TIMEOUT_MS,
+            commands_json: false,
         }
     }
 }
@@ -75,6 +78,7 @@ impl GlobalOptions {
                 "--dry-run" => options.dry_run = true,
                 "--help" | "-h" => options.help = true,
                 "--version" | "-V" => options.version = true,
+                "--commands-json" => options.commands_json = true,
                 "--project" | "-p" => {
                     let value = words
                         .next()

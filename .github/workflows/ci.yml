@@ -123,6 +123,8 @@ jobs:
         run: python scripts/test_rust_cli_compat.py
       - name: Run the release Rust CLI end-to-end in separate processes
         run: python scripts/e2e_rust_cli.py rust/target/release
+      - name: Generate and check the command catalog from the release binary
+        run: python scripts/render_command_catalog.py rust/target/release/pixel-cli --out "$RUNNER_TEMP/catalog"
 
   evaluate:
     name: Python ${{ matrix.python-version }}
