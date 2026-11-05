@@ -147,7 +147,8 @@ jobs:
             target: x86_64-unknown-linux-musl
             archive: hyper-dot-cli-*-x86_64-unknown-linux-musl.tar.gz
           - label: macos-arm64
-            os: macos-14
+            # macos-14は廃止されたため、arm64のmacos-latestを使う（targetはaarch64-apple-darwinのまま）。
+            os: macos-latest
             target: aarch64-apple-darwin
             archive: hyper-dot-cli-*-aarch64-apple-darwin.tar.gz
     steps:
