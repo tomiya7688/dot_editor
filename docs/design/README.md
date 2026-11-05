@@ -21,7 +21,7 @@
 | #32 #33 | 別名、SKILL.md、リリースバイナリのE2E | [別名・SKILL.md・E2E](cli-alias-skill-e2e.md) | 実装済み |
 | #38 | 3 OSの単体実行ファイル配布 | [配布の設計](release-distribution.md) | 一部実装（3 OSのビルド・アーカイブ・展開後E2Eまで。署名・公開・サイズ測定は未実装） |
 | #63 | 同時編集の保護（revisionと排他保存） | [保存安全性](cli-concurrency.md) | 一部実装（revision・ロック・置換禁止の新規作成・unsafe_path） |
-| #64 | 順序付きの原子的バッチ編集 | [バッチAPI](cli-batch.md) | 実装済み（B1〜B4。速度比較B5は未測定） |
+| #64 | 順序付きの原子的バッチ編集 | [バッチAPI](cli-batch.md) | 実装済み（B1〜B5。メモリは未測定） |
 | #66 | コマンド表の自動生成と同梱 | [コマンド表の同梱](command-reference-delivery.md)、[スキーマ](catalog-schema-v1.json) | 一部実装（Rust表・Python表・Windows ZIP同梱。wheel/sdist内の生成済み資料とRust各OS配布は未実装） |
 | #26 〜 #30 | GUIのキーボード操作 | [キーボード操作](keyboard-operation.md) | 設計案 |
 | #67 | 軽量GUIとオフラインヘルプ | [軽量GUI](lightweight-gui.md)、[画面の操作仕様](../ユーザー操作インターフェース仕様.md) | 一部実装（ヘルプ (H) メニューの4項目のみ。固定ツールバー、最近の作品、保存確認とdirty状態は未実装） |
