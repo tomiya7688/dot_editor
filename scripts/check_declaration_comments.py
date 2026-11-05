@@ -289,6 +289,7 @@ def default_paths():
         ROOT / "tests" / "test_resolution_field.py",
         ROOT / "tests" / "test_canvas_cursor.py",
         ROOT / "tests" / "test_stroke.py",
+        ROOT / "tests" / "test_mouse_stroke.py",
         ROOT / "tests" / "test_python_command_catalog.py",
         ROOT / "tests" / "test_help_content.py",
         ROOT / "tests" / "test_command_catalog.py",
