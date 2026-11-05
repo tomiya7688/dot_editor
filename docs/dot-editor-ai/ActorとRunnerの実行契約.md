@@ -112,7 +112,7 @@ Controller（TrainerまたはInferenceService）が処理順を管理する。Ac
 
 `project new`、`export render`、`--project`、`--output`、`--force` などのファイル操作権限はRunnerだけが持つ。`pixel sample` が自分で塗った色を読む用途でも、画像非参照の監査を単純化するためActorには与えない。存在しない `rectangle` や `gradient` のCLIを既存機能として扱わない。
 
-**同一プロセスで複数コマンドを原子的に送る機能は本体 #64 の設計/実装待ち**。それまでは1呼び出し1操作で一時複製を用い、全体を一つの成功として扱う。#63（revision/排他）の完了を前提とし、現在のCLIが既にバッチ/競合制御を持つとは仮定しない。
+**同一プロセスで複数コマンドを原子的に送る機能は本体 #64 で実装済み**（`batch apply --file`、13種の編集op、0〜10,000件・8MiBまで、全件成功時のみ1回保存、失敗時は `details.failed_index` と `op`、`--dry-run`、`--if-revision`）。Runnerは1ステップの `ops` をこのバッチへ変換して送る。Actorに渡すのは構造化状態だけで、バッチファイルのパスや `--file` の権限はRunnerだけが持つ。#63 の revision・排他ロックにより、`base_revision` の不一致は `revision_conflict` で保存されない。ただし本体のバッチは、Actorの行動スキーマ（`dot-ai.action.v1`）をそのまま受け付けるものではなく、Runnerが検証したopだけを変換して渡す。
 
 ### 高水準マクロの扱い
 
