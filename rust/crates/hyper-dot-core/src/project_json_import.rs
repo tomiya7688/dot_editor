@@ -191,7 +191,7 @@ fn color(value: &Value) -> Result<Color> {
         return Err(invalid("pixel must use #RRGGBB or #RRGGBBAA"));
     }
     let mut channels = [0, 0, 0, 255];
-    for (index, pair) in bytes[1..].chunks_exact(2).enumerate() {
+    for (index, pair) in bytes[1..].chunks(2).enumerate() {
         let nibble = |c: u8| {
             if c.is_ascii_digit() {
                 c - b'0'

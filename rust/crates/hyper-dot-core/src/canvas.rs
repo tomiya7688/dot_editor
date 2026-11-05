@@ -246,14 +246,14 @@ impl Canvas {
     ///   戻り値: [RGBA色または座標範囲エラー]
     /// }
     pub fn sample(&self, x: u32, y: u32) -> Result<Color, RasterError> {
-        if x < self.resolution.width() && y < self.resolution.height() {
-            if let Some(split) = self
+        if x < self.resolution.width()
+            && y < self.resolution.height()
+            && let Some(split) = self
                 .splits
                 .iter()
                 .find(|split| split.matches(self.resolution, x, y))
-            {
-                return Ok(split.base);
-            }
+        {
+            return Ok(split.base);
         }
         self.field.sample(self.resolution, x, y)
     }
@@ -857,12 +857,12 @@ impl Canvas {
         color: Color,
         policy: DetailPolicy,
     ) -> Result<bool, CanvasError> {
-        if policy == DetailPolicy::Preserve {
-            if let Some(split) = splits.iter_mut().find(|split| split.matches(grid, x, y)) {
-                let changed = split.base != color;
-                split.base = color;
-                return Ok(changed);
-            }
+        if policy == DetailPolicy::Preserve
+            && let Some(split) = splits.iter_mut().find(|split| split.matches(grid, x, y))
+        {
+            let changed = split.base != color;
+            split.base = color;
+            return Ok(changed);
         }
         let raw = field.sample_raw_cell(grid, x, y)?;
         let delta = std::array::from_fn(|i| i64::from(color[i]) - raw[i]);
