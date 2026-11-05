@@ -22,7 +22,7 @@ dot-editor = "dot_editor:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["dot_editor", "pixel_cli", "pixel_commands", "pixel_backend", "pixel_layers", "resolution_field", "canvas_cursor", "stroke"]
+py-modules = ["dot_editor", "pixel_cli", "pixel_commands", "pixel_backend", "pixel_layers", "resolution_field", "canvas_cursor", "stroke", "command_catalog"]
 
 [tool.ruff]
 required-version = "==0.17.2"

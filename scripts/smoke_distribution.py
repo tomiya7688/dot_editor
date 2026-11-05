@@ -1,4 +1,5 @@
 """Validate packaged executables without opening the editor GUI."""
+
 from __future__ import annotations
 
 import json
@@ -34,8 +35,14 @@ def main() -> int:
         #   戻り値: [標準出力・標準エラーを含むCompletedProcess、失敗や60秒超過時は例外]
         # }
         def run(*arguments):
-            return subprocess.run([str(cli), *map(str, arguments)], cwd=root,
-                                  check=True, capture_output=True, text=True, timeout=60)
+            return subprocess.run(
+                [str(cli), *map(str, arguments)],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
 
         # 配布CLIに小さなレイヤー付きプロジェクトを新規作成させる。
         run("new", "--size", 2, "--layered", "--output", "project.json")
@@ -45,10 +52,22 @@ def main() -> int:
         assert json.loads(result.stdout)["sample"]["rgba"] == [255, 0, 0, 255]
         run("export", "--project", "project.json", "--output", "image.png", "--size", 2)
         from PIL import Image
+
         # PNGの寸法と代表画素を読み、JSONの編集結果と照合する。
         with Image.open(root / "image.png") as image:
             assert image.size == (2, 2)
             assert image.getpixel((0, 0)) == (255, 0, 0, 255)
+        # 同梱したコマンド表が、配布CLI自身の実コマンドと一致することを確認する。
+        catalog_dir = distribution / "docs" / "cli" / "python"
+        catalog = json.loads((catalog_dir / "commands.json").read_text(encoding="utf-8"))
+        assert catalog["cli_implementation"] == "python"
+        assert (catalog_dir / "COMMANDS.md").read_text(encoding="utf-8").startswith("# ")
+        for command in catalog["commands"]:
+            shown = run(command["id"], "--help").stdout
+            for option in command["options"]:
+                assert option["name"] in shown, (command["id"], option["name"])
+        ids = {command["id"] for command in catalog["commands"]}
+        assert {"new", "edit", "inspect", "export", "palette"} == ids, ids
         # GUIはウィンドウを開かない専用モードで配布物として起動する。
         subprocess.run([str(gui), "--smoke-test"], cwd=root, check=True, timeout=60)
     print("Packaged CLI and GUI headless smoke passed (no GUI window opened).")
