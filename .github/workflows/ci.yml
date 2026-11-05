@@ -165,7 +165,9 @@ jobs:
       - name: Install wheel and verify imports
         run: |
           python -m pip install --force-reinstall --no-deps dist/python-${{ matrix.python-version }}/*.whl
-          python -c "import pixel_backend, pixel_commands, pixel_cli, pixel_layers, resolution_field, canvas_cursor, stroke"
+          python -c "import pixel_backend, pixel_commands, pixel_cli, pixel_layers, resolution_field, canvas_cursor, stroke, command_catalog"
+      - name: Generate the Python command catalog from the installed wheel
+        run: python scripts/render_command_catalog.py python --out "$RUNNER_TEMP/catalog-py"
 
       - name: Run evaluation
         run: python scripts/evaluate.py

@@ -24,17 +24,32 @@ REQUIRED_COMMAND_KEYS = (
 
 
 # {
-#   責務: [fetch_catalog: 実際の実行ファイルにコマンド表を出させてJSONとして読む]
+#   責務: [catalog_command: コマンド表を出させる実行コマンドを決める]
 #   処理: [
-#     1: 実行ファイルへ--commands-jsonを渡して実行する
+#     1: 「python」と書かれたときは、Python CLIのcommand_catalogモジュールを使う
+#     2: それ以外は、Rustの実行ファイルへ--commands-jsonを渡す
+#   ]
+#   引数: [source: 実行ファイルのパス、または「python」]
+#   戻り値: [実行するコマンドの語のリスト]
+# }
+def catalog_command(source: str) -> list[str]:
+    if source == "python":
+        return [sys.executable, "-m", "command_catalog"]
+    return [source, "--commands-json"]
+
+
+# {
+#   責務: [fetch_catalog: 実際のCLIにコマンド表を出させてJSONとして読む]
+#   処理: [
+#     1: 決めた実行コマンドを実行する
 #     2: 終了値0・標準エラーなし・JSON1個とLFであることを確認する
 #   ]
-#   引数: [binary: pixel-cliの実行ファイル]
+#   引数: [source: 実行ファイルのパス、または「python」]
 #   戻り値: [カタログのJSON値、条件に反すれば例外]
 # }
-def fetch_catalog(binary: Path) -> dict:
+def fetch_catalog(source: str) -> dict:
     run = subprocess.run(
-        [str(binary), "--commands-json"],
+        catalog_command(source),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -182,12 +197,12 @@ def render_markdown(catalog: dict) -> str:
 # }
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("binary", type=Path)
+    parser.add_argument("source", help="path to pixel-cli, or the word python")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
-    first = fetch_catalog(args.binary)
+    first = fetch_catalog(args.source)
     validate_catalog(first)
-    second = fetch_catalog(args.binary)
+    second = fetch_catalog(args.source)
     markdown = render_markdown(first)
     if markdown != render_markdown(second) or first != second:
         raise SystemExit("catalog generation is not deterministic")
