@@ -1,6 +1,6 @@
 # Rust CLIの単体実行ファイル配布（3 OS）の詳細設計（一部実装）
 
-対象: [Issue #38](https://github.com/tomiya7688/dot_editor/issues/38)。先行する[#32/#33の設計](cli-alias-skill-e2e.md)（別名・SKILL.md・E2E）と、署名・出所の[供給網の設計](supply-chain-security.md)（#55）に依存します。状態: **一部実装。** CIに`Rust release (windows-x86_64 / linux-x86_64 / macos-arm64)`の3行があり、`scripts/package_rust_cli.py`が版の照合・アーカイブ作成・新しい空のフォルダへの展開・展開後のE2E・大きさとSHA-256の記録を行います。**未実装**: サイズ最適化の測定、出所情報（attestation）、署名、公開（#55待ち。未署名の成果物はアップロードしません）。 現行の`windows-build`ジョブはPython製のGUI/CLI配布物（PyInstaller）で、Rust CLIの配布物ではありません。
+対象: [Issue #38](https://github.com/tomiya7688/dot_editor/issues/38)。先行する[#32/#33の設計](cli-alias-skill-e2e.md)（別名・SKILL.md・E2E）と、署名・出所の[供給網の設計](supply-chain-security.md)（#55）に依存します。状態: **一部実装。** CIに`Rust release (windows-x86_64 / linux-x86_64 / macos-arm64)`の3行があり、`scripts/package_rust_cli.py`が版の照合・アーカイブ作成・新しい空のフォルダへの展開・展開後のE2E・大きさとSHA-256の記録を行います。サイズ最適化は測定のうえ採用済みです（下記）。**未実装**: 出所情報（attestation）、署名、公開（#55待ち。未署名の成果物はアップロードしません）。 現行の`windows-build`ジョブはPython製のGUI/CLI配布物（PyInstaller）で、Rust CLIの配布物ではありません。
 
 ## 背景・目的・入口
 
@@ -36,6 +36,25 @@ README-CLI.md                       # 配置・起動・JSON出力・終了コ�
 ## サイズ方針
 
 最初は既定のreleaseの大きさ（現状、1つあたり約0.6 MB）を記録し、次の設定を1つずつ測ります: `lto`、`strip`、`codegen-units=1`、`opt-level`（`s`/`3`）、`panic="abort"`。採用の条件は(1)全テストとE2Eが通る、(2)大きさが10%以上小さくなる、(3)通しシナリオの実行時間が20%を超えて悪化しない、です。`panic="abort"`は、失敗時の巻き戻しの挙動に影響するため、保存の安全性のテストが通ることを確認します。設定は`[profile.release]`に置き、測定結果をPRに記録します。サイズのために正しさを下げません。
+
+### 測定結果（2026-11-05、Windows x86_64 msvc、`pixel-cli.exe`）
+
+大きさは1回のビルド結果、時間は6,000件の`pixel.paint`を`batch apply`で適用するプロセスのCPU時間（4回のうち最小。この機は他の処理で高負荷だったため、実時間ではなくCPU時間で比べました）です。
+
+| 設定 | 大きさ（バイト） | 基準比 | CPU時間（ms） |
+| --- | --- | --- | --- |
+| 基準（既定のrelease） | 734,208 | — | 1,219 |
+| `lto` のみ | 696,320 | −5% | — |
+| `codegen-units=1` のみ | 681,472 | −7% | — |
+| `opt-level="s"` のみ | 610,304 | −17% | — |
+| `panic="abort"` のみ | 613,888 | −16% | — |
+| `strip`のみ | 734,208 | 0%（msvcではシンボルが別ファイルのため効かない） | — |
+| lto + cgu1 + strip | 668,672 | −9% | 766 |
+| 上 + `opt-level="s"` | 531,968 | −27.5% | 1,172 |
+| lto + cgu1 + strip + `panic="abort"`（opt-level 3） | 539,136 | −26.6% | 812 |
+| 上 + `opt-level="s"` | 409,088 | −44% | 1,156 |
+
+**採用**: `lto = true`、`codegen-units = 1`、`strip = true`、`panic = "abort"`（opt-levelは既定の3のまま）。採用条件の(2)大きさが10%以上小さい（−26.6%）、(3)通しシナリオが20%を超えて遅くならない（むしろ−33%）を満たします。`opt-level="s"`を足すと更に小さくなりますが、速度の利点を失うため採りません。`panic="abort"`は、パニックで巻き戻さず即座に終了します。このコードには`catch_unwind`がなく、保存は一時ファイルへの書き込み後の置換で、ロックはOSが自動解放するため、保存の安全性（元ファイルが壊れない）には影響しません。パニックし得る箇所（`unwrap`・`expect`・`panic!`）は、Coreの編集処理とコマンド表の生成にあり、保存処理（`project_file.rs`）と`runner.rs`には**ありません**。編集と直列化はメモリ上で保存の書き込みより前に終わるので、パニックが起きるのは常にファイルへ書き始める前で、元のファイルは巻き戻しの有無にかかわらず無傷です。パニックは不変条件の違反でだけ起き、その場合の終了値は以前も契約外（101）でした。Linux musl・macOSの大きさはCIの`Rust release`ジョブの要約に記録されます（この表はWindowsのみ）。
 
 ## CIの構成
 
