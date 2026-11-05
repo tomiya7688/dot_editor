@@ -34,6 +34,8 @@ rust/target/release/pixel-cli --json -p art.json export render -o art.png
 | `-p`, `--project PATH` | 対象のプロジェクトファイル。すべてのコマンドで必須です。 |
 | `--json` | 標準出力を、1つのJSONだけにします。 |
 | `--dry-run` | ファイルを保存・書き出さずに、結果だけを評価します。 |
+| `--if-revision REV` | `status`の`result.revision`と同じ値のときだけ保存します。違えば`revision_conflict`で何も保存しません。 |
+| `--lock-timeout-ms N` | 同じ作品のロックを待つ最長時間（0〜60000、既定5000ミリ秒）。超えると`project_busy`。 |
 | `-h`, `--help` | ヘルプを表示します。`<コマンド> --help`でコマンドごとの説明を表示します。 |
 | `-V`, `--version` | バージョンを表示します。 |
 
@@ -111,7 +113,7 @@ rust/target/release/pixel-cli --json -p art.json export render -o art.png
 | 項目 | 決定 |
 | --- | --- |
 | Undo/Redoと履歴 | v1では`session undo/redo/history`を**公開しません**。1回の実行は別のプロセスで、プロジェクトJSONは履歴を保存しないため、前回の操作を取り消せません。実態と矛盾するコマンドは出しません。履歴を扱う方法は、常駐プロセスまたは履歴の保存を設計する別Issueで決めます。 |
-| 同時更新 | **未対応（#63）**。複数プロセスが同じ作品を編集すると後から保存した結果が残ります。現時点では呼び出し側で順番に実行してください。排他ロックと版照合の追加設計は[保存安全性の詳細設計](design/cli-concurrency.md)を参照してください。 |
+| 同時更新 | **協調するpixel-cli同士は保護されます（#63）**。変更コマンドは作品ごとのsidecarロック（`.<名前>.lock`）を取ってから読み込み、保存まで保持します。`--lock-timeout-ms`（0〜60000、既定5000）までに取れなければ`project_busy`。`status`と`project info`の`result.revision`（ファイルの生バイト列のSHA-256、`sha256:`+小文字16進64文字）を`--if-revision`で渡すと、違う場合は`revision_conflict`で何も保存しません。変更コマンドの成功結果にも、保存後の`revision`が入ります。ロックを使わない外部のプログラムが同時に書き換える場合の防止は保証しません。残りの項目（`unsafe_path`の網羅、`commit_uncertain`、OS別の耐久性検証）は[保存安全性の詳細設計](design/cli-concurrency.md)に残っています。 |
 | 一括編集 | **未対応（#64）**。1操作が1プロセスです。多数の画素操作を1トランザクションにする追加設計は[バッチAPIの詳細設計](design/cli-batch.md)を参照してください。#63の安全な保存処理が先行します。 |
 | dry-runと原子性 | 上記のとおり、dry-run前後でファイルのバイト列は変わりません。失敗時の副作用もありません。 |
 
