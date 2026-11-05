@@ -25,3 +25,5 @@ pub mod resolution;
 pub mod resolution_field;
 mod split_cell;
 mod strict_json;
+
+pub use strict_json::parse_strict_json;

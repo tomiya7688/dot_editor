@@ -17,7 +17,7 @@ pub struct CommandDoc {
 }
 
 /// すべてのコマンドの日本語説明。コマンドとの過不足はテストで検査する。
-pub static DOCS: [CommandDoc; 22] = [
+pub static DOCS: [CommandDoc; 23] = [
     CommandDoc {
         id: "project.new",
         summary_ja: "新しい空のプロジェクトを作る。既存のファイルは--forceなしでは置き換えない",
@@ -150,6 +150,12 @@ pub static DOCS: [CommandDoc; 22] = [
         example: &["status"],
         example_ja: "状態をまとめて見る",
     },
+    CommandDoc {
+        id: "batch.apply",
+        summary_ja: "ファイルに書いた複数の編集を、順番に1つの取り消せない操作として適用する。1件でも失敗したら何も保存しない",
+        example: &["batch", "apply", "--file", "operations.json"],
+        example_ja: "operations.jsonの編集をまとめて適用する",
+    },
 ];
 
 /// {
@@ -217,6 +223,7 @@ pub fn option_ja(name: &str) -> Option<(&'static str, &'static str)> {
         "--size" => ("integer", "1辺のセル数（正方形）"),
         "--resolution" => ("integer", "横と縦のセル数（W H）"),
         "--output" => ("path", "書き出すPNGファイル（必須）"),
+        "--file" => ("path", "編集の一覧を書いたJSONファイル（必須）"),
         _ => return None,
     })
 }

@@ -139,7 +139,7 @@ fn usage(spec: &CommandSpec) -> String {
     }
     for flag in spec.flags {
         let values = " <v>".repeat(flag.values);
-        if flag.name == "--output" {
+        if matches!(flag.name, "--output" | "--file") {
             line.push_str(&format!(" {}{values}", flag.name));
         } else {
             line.push_str(&format!(" [{}{values}]", flag.name));
@@ -167,7 +167,7 @@ fn flag_entry(flag: &FlagSpec) -> Value {
         flag.short,
         flag.values,
         kind,
-        flag.name == "--output",
+        matches!(flag.name, "--output" | "--file"),
         description,
     )
 }

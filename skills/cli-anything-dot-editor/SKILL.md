@@ -56,6 +56,7 @@ description: Hyper Dot Editorのドット絵プロジェクトを、画面を使
 | `layer list` | 下の層から順に一覧する。 |
 | `export render -o PATH [--size N \| --resolution W H]` | 見えている層を重ねてPNGにする。 |
 | `status` | 解像度・選択中の層・層の一覧をまとめて見る。 |
+| `batch apply --file PATH` | JSONに書いた複数の編集（`pixel.paint`など）を順に適用し、全部成功したときだけ1回保存する。1件でも失敗したら何も保存せず、`details.failed_index`で場所を返す。 |
 
 ## 作品の考え方
 

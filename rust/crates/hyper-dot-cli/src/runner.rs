@@ -228,8 +228,21 @@ fn edit(
     apply: EditHandler,
 ) -> Result<Outcome, CliError> {
     let path = project_path(options)?;
+    let is_batch = command.spec.path == ["batch", "apply"];
+    if is_batch
+        && let Some(file) = command
+            .flag_values("--file")
+            .and_then(|values| values.first())
+        && project_file::same_target(Path::new(file), Path::new(path))
+    {
+        return Err(CliError::failure(
+            "invalid_batch",
+            "the batch file must differ from the project file",
+        ));
+    }
     let _lock = lock_for(options, path)?;
     let mut snapshot = load_checked(options, path)?;
+    let revision_before = snapshot.revision.clone();
     let (result, changed) = apply(command, &mut snapshot.canvas)?;
     let saved = changed && !options.dry_run;
     let revision = if saved {
@@ -237,7 +250,13 @@ fn edit(
     } else {
         snapshot.revision
     };
-    let result = with_revision(result, &revision);
+    let mut result = with_revision(result, &revision);
+    if is_batch && let Value::Object(map) = &mut result {
+        map.insert("revision_before".to_owned(), json!(revision_before));
+        if saved {
+            map.insert("revision_after".to_owned(), json!(revision));
+        }
+    }
     Ok(finish(options, command, Some(path), saved, result))
 }
 

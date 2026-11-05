@@ -2,8 +2,8 @@
 
 use crate::command_spec::{CommandSpec, FlagSpec, Handler};
 use crate::{
-    canvas_commands, detail_commands, export_commands, layer_commands, pixel_commands,
-    project_commands, status_command,
+    batch_commands, canvas_commands, detail_commands, export_commands, layer_commands,
+    pixel_commands, project_commands, status_command,
 };
 
 const DISCARD: FlagSpec = FlagSpec {
@@ -61,8 +61,15 @@ const RESOLUTION_EXPORT: FlagSpec = FlagSpec {
     summary: "render retained detail directly at W x H",
 };
 
+const FILE: FlagSpec = FlagSpec {
+    name: "--file",
+    short: None,
+    values: 1,
+    summary: "batch file listing the edits to apply (required)",
+};
+
 /// 受け付けるすべてのコマンド。語の並びが長く一致したものが選ばれる。
-pub static COMMANDS: [CommandSpec; 22] = [
+pub static COMMANDS: [CommandSpec; 23] = [
     CommandSpec {
         path: &["project", "new"],
         summary: "create an empty project file",
@@ -216,5 +223,12 @@ pub static COMMANDS: [CommandSpec; 22] = [
         positionals: &[],
         flags: &[],
         handler: Handler::Read(status_command::status),
+    },
+    CommandSpec {
+        path: &["batch", "apply"],
+        summary: "apply an ordered list of edits from a file, all or nothing",
+        positionals: &[],
+        flags: &[FILE],
+        handler: Handler::Edit(batch_commands::apply_batch),
     },
 ];

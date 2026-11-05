@@ -1,6 +1,6 @@
-# Rust CLI 原子的バッチ編集APIの詳細設計（未実装）
+# Rust CLI 原子的バッチ編集APIの詳細設計（実装済み）
 
-対象: [Issue #64](https://github.com/tomiya7688/dot_editor/issues/64)。**先行 #63 の保存安全性が完了してから実装します。** 現行CLIの契約は[CLI契約](../CLI契約.md)が正本です。本書はv1既存コマンドを置換するものではありません。
+対象: [Issue #64](https://github.com/tomiya7688/dot_editor/issues/64)。**実装済み（B1〜B4）**。#63の第1段階（revision・ロック）の上に載っています。速度とメモリの測定（B5）は未実施で、改善率は主張しません。 現行CLIの契約は[CLI契約](../CLI契約.md)が正本です。本書はv1既存コマンドを置換するものではありません。
 
 ## 背景・操作の入口
 

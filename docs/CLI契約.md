@@ -114,7 +114,7 @@ rust/target/release/pixel-cli --json -p art.json export render -o art.png
 | --- | --- |
 | Undo/Redoと履歴 | v1では`session undo/redo/history`を**公開しません**。1回の実行は別のプロセスで、プロジェクトJSONは履歴を保存しないため、前回の操作を取り消せません。実態と矛盾するコマンドは出しません。履歴を扱う方法は、常駐プロセスまたは履歴の保存を設計する別Issueで決めます。 |
 | 同時更新 | **協調するpixel-cli同士は保護されます（#63）**。変更コマンドは作品ごとのsidecarロック（`.<名前>.lock`）を取ってから読み込み、保存まで保持します。`--lock-timeout-ms`（0〜60000、既定5000）までに取れなければ`project_busy`。`status`と`project info`の`result.revision`（ファイルの生バイト列のSHA-256、`sha256:`+小文字16進64文字）を`--if-revision`で渡すと、違う場合は`revision_conflict`で何も保存しません。変更コマンドの成功結果にも、保存後の`revision`が入ります。ロックを使わない外部のプログラムが同時に書き換える場合の防止は保証しません。残りの項目（`unsafe_path`の網羅、`commit_uncertain`、OS別の耐久性検証）は[保存安全性の詳細設計](design/cli-concurrency.md)に残っています。 |
-| 一括編集 | **未対応（#64）**。1操作が1プロセスです。多数の画素操作を1トランザクションにする追加設計は[バッチAPIの詳細設計](design/cli-batch.md)を参照してください。#63の安全な保存処理が先行します。 |
+| 一括編集 | **実装済み（#64）**。`batch apply --file operations.json`が、ファイルに書いた複数の編集（`pixel.paint`など13種）を順に同じ作品へ適用し、全件成功して変更があるときだけ1回保存します。1件でも失敗すると何も保存せず、`details.failed_index`（0始まり）と`details.op`を付けて失敗します。ファイルの不備は`invalid_batch`（終了値1）、`--file`の欠落は`usage`（終了値2）です。`--dry-run`は保存せず、`--if-revision`は全操作の前に照合します。入力は8MiBまで、操作は0〜10,000件、重複キー・未知のop・未知のフィールド・負数や小数の座標を拒否します。結果の`revision_before`と、保存した場合の`revision_after`を返します。詳しくは[バッチAPIの詳細設計](design/cli-batch.md)。 |
 | dry-runと原子性 | 上記のとおり、dry-run前後でファイルのバイト列は変わりません。失敗時の副作用もありません。 |
 
 ## 期待される結果と確認方法
@@ -133,6 +133,6 @@ rust/target/release/pixel-cli --json -p art.json export render -o art.png
 | [#64 原子的バッチ編集](https://github.com/tomiya7688/dot_editor/issues/64) | `batch apply --file operations.json`、`--dry-run`、`--if-revision` | 順序付きの編集操作群を一度だけ保存。途中失敗では確定前の作品を保存しない |
 
 - **依存順は #63 → #64**。作成競合やPOSIX/Windowsでの原子的な確定・確定状態が不明な場合の扱いを先に検証します。
-- #63の提案エラー`revision_conflict`、`project_busy`、`unsafe_path`、`commit_uncertain`と、#64の`invalid_batch`は**現行v1には存在しません**。追加する際は既存のerrorコード/終了値の意味を維持し、実バイナリE2Eで固定します。
+- #63の`revision_conflict`・`project_busy`と、#64の`invalid_batch`は実装済みです。`unsafe_path`の網羅と`commit_uncertain`は未実装で、追加する際は既存のerrorコード/終了値の意味を維持し、実バイナリE2Eで固定します。
 - バッチは`1プロセス = 1トランザクション`であり、常駐daemon・永続Undoやstdinの暗黙待機を追加するものではありません。`operations.json`の`version`は作品JSONの`version: 2`とは別です。
 - 詳細な契約案と受け入れ試験は[保存安全性](design/cli-concurrency.md)と[バッチAPI](design/cli-batch.md)で定義します。
