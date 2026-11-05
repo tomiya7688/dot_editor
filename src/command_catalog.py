@@ -22,6 +22,14 @@ SUMMARY_JA = {
     "inspect": "プロジェクトの状態をJSONで読む（変更しない）",
     "export": "見えている層を重ねてPNGに書き出す",
 }
+# 実行方法に依存しない英語の概要（argparseのprogは実行ファイル名で変わるため使わない）。
+SUMMARY_EN = {
+    "new": "create a new project",
+    "palette": "keep a project open for interactive editing",
+    "edit": "edit a project",
+    "inspect": "read-only project state as JSON",
+    "export": "render the visible layers to a PNG",
+}
 EFFECT = {
     "new": "create",
     "palette": "interactive",
@@ -218,7 +226,7 @@ def command_entry(name: str, parser: argparse.ArgumentParser) -> dict[str, Any]:
         "id": name,
         "path": [name],
         "usage": usage_of(name, parser),
-        "summary": (parser.description or parser.prog),
+        "summary": SUMMARY_EN[name],
         "summary_ja": SUMMARY_JA[name],
         "effect": EFFECT[name],
         "requires_project": name != "new",
@@ -246,7 +254,7 @@ def build_catalog() -> dict[str, Any]:
         action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
     )
     names = set(subparsers.choices)
-    for table in (SUMMARY_JA, EFFECT, SIDE_EFFECTS, EXAMPLES):
+    for table in (SUMMARY_JA, SUMMARY_EN, EFFECT, SIDE_EFFECTS, EXAMPLES):
         if set(table) != names:
             raise SystemExit(
                 f"documentation tables do not match the commands: {sorted(set(table) ^ names)}"

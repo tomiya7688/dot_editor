@@ -1,6 +1,7 @@
 """Check that the Python CLI catalog matches the real argparse parser and `--help`."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -91,6 +92,33 @@ class PythonCatalogTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn(f'version = "{cli_version()}"', pyproject)
+
+    # {
+    #   責務: [test_catalog_does_not_depend_on_how_it_is_run: 実行方法が違っても同じ内容になることを検証する]
+    #   処理: [
+    #     1: python -m command_catalog の出力と、同じプロセス内で作った内容が一致することを確認する
+    #     2: 実行ファイル名（python.exeや-c）が内容に混ざらないことを確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_catalog_does_not_depend_on_how_it_is_run(self):
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"))
+        run = subprocess.run(
+            [sys.executable, "-m", "command_catalog"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=env,
+            check=False,
+        )
+        self.assertEqual(run.returncode, 0)
+        self.assertEqual(json.loads(run.stdout), build_catalog())
+        for command in build_catalog()["commands"]:
+            for field in (command["usage"], command["summary"]):
+                self.assertNotIn("python", field)
+                self.assertNotIn(".exe", field)
+                self.assertNotIn("-c ", field)
 
 
 if __name__ == "__main__":

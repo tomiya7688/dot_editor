@@ -6,6 +6,9 @@ build/
 dist/
 *.egg-info/
 /rust/target/
+# ビルド前に生成するコマンド表（wheel・sdistへ同梱する）。
+/src/hyper_dot_editor_help/COMMANDS.md
+/src/hyper_dot_editor_help/commands.json
 .venv-atlas/
 docs/atlas/
 

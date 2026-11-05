@@ -17,6 +17,14 @@ try {
         & $Python (Join-Path $PSScriptRoot "python_trust.py") --check
         if ($LASTEXITCODE -ne 0) { throw "Python trust verification failed after installation." }
     }
+    $previousPythonPath = $env:PYTHONPATH
+    try {
+        $env:PYTHONPATH = "src"
+        & $Python scripts/render_command_catalog.py python --out src/hyper_dot_editor_help
+        if ($LASTEXITCODE -ne 0) { throw "Command reference generation failed." }
+    } finally {
+        $env:PYTHONPATH = $previousPythonPath
+    }
     & $Python -m build
     if ($LASTEXITCODE -ne 0) { throw "Python package build failed." }
     foreach ($Target in @(@("DotEditor", "--windowed", "src/dot_editor.py"), @("DotEditorCLI", "--console", "src/pixel_cli.py"))) {
