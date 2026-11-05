@@ -1,4 +1,7 @@
 """Headless checks for menu access-key uniqueness and live editor actions."""
+
+import inspect
+from types import SimpleNamespace
 import unittest
 
 from dot_editor import PixelEditor, menu_spec
@@ -103,12 +106,46 @@ class MenuStructureTests(unittest.TestCase):
     def test_palette_menu_covers_all_current_palette_slots(self):
         editor = PixelEditor.__new__(PixelEditor)
         editor.palette_colors = [
-            (255, 255, 255), (0, 0, 0), (255, 80, 80), (255, 190, 70),
-            (255, 240, 100), (90, 210, 130), (80, 180, 255), (170, 110, 255),
+            (255, 255, 255),
+            (0, 0, 0),
+            (255, 80, 80),
+            (255, 190, 70),
+            (255, 240, 100),
+            (90, 210, 130),
+            (80, 180, 255),
+            (170, 110, 255),
         ]
         self.assertEqual(len(editor.palette_colors), 8)
         for color in editor.palette_colors:
             self.assertEqual(len(editor.rgb_to_hex(color)), 7)
+
+    # {
+    #   責務: [test_canvas_input_registered_at_startup_not_by_palette_menu: キャンバス入力が起動時に登録されることを検証する]
+    #   処理: [
+    #     1: 偽のキャンバスと初期化の副作用を差し替えた編集部を作る
+    #     2: initialize_canvas_inputが4つのマウス入力を登録することを確認する
+    #     3: __init__がそれを呼び、パレットメニューの作成は入力を登録しないことを確認する
+    #   ]
+    #   引数: [self: テスト対象のMenuStructureTestsケース]
+    #   戻り値: [なし、登録の位置が誤っていればassertionで失敗する]
+    # }
+    def test_canvas_input_registered_at_startup_not_by_palette_menu(self):
+        events = []
+        canvas = SimpleNamespace(bind=lambda event, handler, add=None: events.append(event))
+        menu = SimpleNamespace(delete=lambda *args: None)
+        editor = PixelEditor.__new__(PixelEditor)
+        editor.canvas = canvas
+        editor.palette_colors = []
+        editor.update_canvas_size = lambda: None
+        editor.refresh_layer_list = lambda: None
+        editor.populate_palette_menu(menu)
+        self.assertEqual(events, [])
+        editor.initialize_canvas_input()
+        self.assertEqual(
+            sorted(events),
+            sorted(["<Button-1>", "<B1-Motion>", "<ButtonPress-2>", "<B2-Motion>"]),
+        )
+        self.assertIn("self.initialize_canvas_input()", inspect.getsource(PixelEditor.__init__))
 
 
 if __name__ == "__main__":
