@@ -24,6 +24,7 @@ mod project_commands;
 mod project_file;
 mod report;
 mod runner;
+mod sha256;
 mod status_command;
 
 use std::io::Write;

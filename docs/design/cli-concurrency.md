@@ -1,6 +1,6 @@
-# Rust CLI 同時更新・保存安全性の詳細設計（未実装）
+# Rust CLI 同時更新・保存安全性の詳細設計（一部実装）
 
-対象: [Issue #63](https://github.com/tomiya7688/dot_editor/issues/63)。本書は実装のための**次期契約案**であり、現行v1が実現済みであることを意味しません。外部CLIの既存契約は[CLI契約](../CLI契約.md)を正本とします。ここでは複数ゲーム開発ツールが同じJSON作品を操作するときの更新消失を防ぎます。
+対象: [Issue #63](https://github.com/tomiya7688/dot_editor/issues/63)。本書は実装のための契約案です。**実装済み**: `result.revision`、`--if-revision`（`revision_conflict`）、`--lock-timeout-ms`（`project_busy`）、sidecarロック、一意な一時ファイル、置換禁止の原子的な新規作成、同一ファイル判定による書き出し拒否。**未実装**: `unsafe_path`の網羅（symlink・hardlinkの書込経路の拒否）、`commit_uncertain`、OS別の耐久性（親フォルダ同期）と権限の検証、障害注入テスト、macOS/Windowsでの実機確認。外部CLIの既存契約は[CLI契約](../CLI契約.md)を正本とします。ここでは複数ゲーム開発ツールが同じJSON作品を操作するときの更新消失を防ぎます。
 
 ## 背景・入口・非対象
 
