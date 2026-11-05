@@ -251,6 +251,17 @@ fn rejects_malformed_batches() {
         assert_eq!(json["error"], "invalid_batch", "{text}: {json}");
         assert_eq!(fs::read(&project).unwrap(), before, "{text}");
     }
+    let located = write_batch(
+        &folder,
+        r##"{"version":1,"operations":[
+          {"op":"pixel.paint","x":1,"y":1,"color":"#FF0000"},
+          {"op":"pixel.paint","x":-1,"y":1,"color":"#FF0000"}]}"##,
+    );
+    let (_, json) = cli(&[
+        "--json", "-p", &project, "batch", "apply", "--file", &located,
+    ]);
+    assert_eq!(json["details"]["failed_index"], 1);
+    assert_eq!(json["details"]["op"], "pixel.paint");
     let (code, json) = cli(&["--json", "-p", &project, "batch", "apply"]);
     assert_eq!((code, json["error"].as_str()), (2, Some("usage")));
     let (code, json) = cli(&[

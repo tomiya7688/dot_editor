@@ -278,7 +278,11 @@ fn read_batch(path: &Path) -> Result<Vec<(&'static CommandSpec, Vec<String>)>, C
     operations
         .iter()
         .enumerate()
-        .map(|(index, entry)| operation_words(index, entry))
+        .map(|(index, entry)| {
+            operation_words(index, entry).map_err(|error| {
+                error.with_details(json!({"failed_index": index, "op": entry.get("op")}))
+            })
+        })
         .collect()
 }
 
