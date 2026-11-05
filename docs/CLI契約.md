@@ -23,7 +23,7 @@ rust/target/release/pixel-cli --json -p art.json export render -o art.png
 
 **現在のRust CLI**は`--help`に全コマンドと共通オプション、`pixel-cli pixel paint --help`等に個別オプションの説明を表示します。実装・引数の正本は`command_table.rs`で、`help_text.rs`がそこから生成します。Python CLIは別の`argparse`文法を持つため、実行例と説明表でRust版と区別します。
 
-**一部実装（[#66](https://github.com/tomiya7688/dot_editor/issues/66)）**：Rust CLIは`pixel-cli --commands-json`で、実行したCLI自身の全コマンド・引数・日本語説明・使用例をJSON（schema v1）で出します（他の引数とは併用できず、使用すると終了値2）。Python CLIは`python -m command_catalog`（wheelに同梱）で、argparseの定義から同じ形式の表を出します。`python scripts/render_command_catalog.py <実行ファイル|python> --out <フォルダ>`が、そのJSONから`COMMANDS.md`と`commands.json`を決定的に生成します。CIは、Rust Coreで実バイナリ、Python各版でインストール済みwheelに対して実行し、Windows ZIPには`docs/cli/python/`として同梱して、配布した`DotEditorCLI.exe`の`--help`と照合します。**未実装**: Python wheel/sdistの中への生成済み資料の同梱、Rust OS別アーカイブへの同梱（#38）、署名後の最終配布物の照合です。署名・attestation要件は引き続き適用します。
+**一部実装（[#66](https://github.com/tomiya7688/dot_editor/issues/66)）**：Rust CLIは`pixel-cli --commands-json`で、実行したCLI自身の全コマンド・引数・日本語説明・使用例をJSON（schema v1）で出します（他の引数とは併用できず、使用すると終了値2）。Python CLIは`python -m command_catalog`で、argparseの定義から同じ形式の表を出します。`python scripts/render_command_catalog.py <実行ファイル|python> --out <フォルダ>`が、そのJSONから`COMMANDS.md`と`commands.json`を決定的に生成します。同梱: Rustは配布アーカイブの`docs/cli/rust/`（#38）、Windows ZIPは`docs/cli/python/`、Python wheel・sdistはパッケージ`hyper_dot_editor_help`の中（`import hyper_dot_editor_help as h; h.read_text("COMMANDS.md")`）。CIは、ビルドの前に生成し、ビルド後にwheelとsdistを開いて今のソースから作り直した内容と一致するかを照合し（`scripts/verify_package_catalog.py`）、Windows ZIPは配布した`DotEditorCLI.exe`の`--help`と照合します。**未実装**: 署名・attestation後の最終配布物の照合（#55待ち）。
 
 設計の生成/同梱経路は[コマンドカタログ設計](design/command-reference-delivery.md)に分割しています。操作表や将来の新オプションを、このv1の「実装済みコマンド」の一覧に先行記載しません。
 

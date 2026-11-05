@@ -22,7 +22,12 @@ dot-editor = "dot_editor:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+packages = ["hyper_dot_editor_help"]
 py-modules = ["dot_editor", "pixel_cli", "pixel_commands", "pixel_backend", "pixel_layers", "resolution_field", "canvas_cursor", "stroke", "command_catalog", "help_content"]
+
+# 生成済みのコマンド表。ビルドの前に scripts/render_command_catalog.py python --out src/hyper_dot_editor_help で作る。
+[tool.setuptools.package-data]
+hyper_dot_editor_help = ["COMMANDS.md", "commands.json"]
 
 [tool.ruff]
 required-version = "==0.17.2"

@@ -259,6 +259,8 @@ def default_paths():
         ROOT / "src" / "stroke.py",
         ROOT / "src" / "command_catalog.py",
         ROOT / "src" / "help_content.py",
+        ROOT / "src" / "hyper_dot_editor_help" / "__init__.py",
+        ROOT / "scripts" / "verify_package_catalog.py",
         ROOT / "scripts" / "render_command_catalog.py",
         ROOT / "scripts" / "package_rust_cli.py",
         ROOT / "src" / "pixel_commands.py",
