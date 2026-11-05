@@ -25,11 +25,14 @@ try {
     }
     Copy-Item -LiteralPath LICENSE,README.md -Destination dist/windows
     # 同梱するCLIの表は、署名や圧縮の前に、実際のパーサーから生成して配布フォルダへ置く。
-    $env:PYTHONPATH = "src"
-    & $Python scripts/render_command_catalog.py python --out dist/windows/docs/cli/python
-    $catalogExit = $LASTEXITCODE
-    $env:PYTHONPATH = $null
-    if ($catalogExit -ne 0) { throw "Command catalog generation failed." }
+    $previousPythonPath = $env:PYTHONPATH
+    try {
+        $env:PYTHONPATH = "src"
+        & $Python scripts/render_command_catalog.py python --out dist/windows/docs/cli/python
+        if ($LASTEXITCODE -ne 0) { throw "Command catalog generation failed." }
+    } finally {
+        $env:PYTHONPATH = $previousPythonPath
+    }
     & $Python -m pip list --format=freeze | Out-File -LiteralPath dist/windows/build-dependencies.txt -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw "Dependency manifest failed." }
     & $Python scripts/distribution_notices.py dist/windows

@@ -203,6 +203,11 @@ def usage_of(name: str, parser: argparse.ArgumentParser) -> str:
 def command_entry(name: str, parser: argparse.ArgumentParser) -> dict[str, Any]:
     if name not in SUMMARY_JA:
         raise SystemExit(f"no Japanese documentation for command {name}")
+    if any(
+        not action.option_strings and not isinstance(action, argparse._HelpAction)
+        for action in parser._actions
+    ):
+        raise SystemExit(f"{name}: positional arguments are not catalogued yet")
     options = [
         option_entry(action)
         for action in parser._actions
@@ -240,6 +245,22 @@ def build_catalog() -> dict[str, Any]:
     subparsers = next(
         action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
     )
+    names = set(subparsers.choices)
+    for table in (SUMMARY_JA, EFFECT, SIDE_EFFECTS, EXAMPLES):
+        if set(table) != names:
+            raise SystemExit(
+                f"documentation tables do not match the commands: {sorted(set(table) ^ names)}"
+            )
+    real_options = {
+        [o for o in action.option_strings if o.startswith("--")][0]
+        for sub in subparsers.choices.values()
+        for action in sub._actions
+        if action.option_strings and not isinstance(action, argparse._HelpAction)
+    }
+    if real_options != set(OPTION_JA):
+        raise SystemExit(
+            f"option descriptions do not match the parser: {sorted(real_options ^ set(OPTION_JA))}"
+        )
     commands = [command_entry(name, sub) for name, sub in subparsers.choices.items()]
     return {
         "schema_version": 1,
