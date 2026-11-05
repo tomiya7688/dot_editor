@@ -221,7 +221,8 @@ def main(argv: list[str] | None = None) -> int:
     windows = "windows" in args.target
     suffix = ".exe" if windows else ""
     version = cargo_version()
-    check_version(args.build_dir / f"pixel-cli{suffix}", version)
+    for executable in EXECUTABLES:
+        check_version(args.build_dir / f"{executable}{suffix}", version)
     name, archive_file = archive_name(version, args.target, windows)
     args.out.mkdir(parents=True, exist_ok=True)
     folder = args.out / "stage" / name
