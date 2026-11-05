@@ -273,6 +273,7 @@ class PixelEditor:
         self.canvas.bind("<Return>", lambda event: self.enter_child_cell())
         self.canvas.bind("<Escape>", lambda event: self.leave_child_cell())
         self.canvas.bind("<B1-Motion>", self.paint_pixel)
+        self.canvas.bind("<ButtonRelease-1>", self.on_canvas_release)
         self.canvas.bind("<ButtonPress-2>", self.begin_pan)
         self.canvas.bind("<B2-Motion>", self.pan_canvas)
 
@@ -1769,14 +1770,27 @@ class PixelEditor:
     #   責務: [on_canvas_press: キャンバスにフォーカスを移してから通常の描画処理を行う]
     #   処理: [
     #     1: キーボード操作が届くようキャンバスへフォーカスを設定する
-    #     2: マウス位置のセルを選択・編集する
+    #     2: 離し損ねた前のドラッグがあれば確定し、ブラシと消しゴムは離すまでを1回の取り消しにまとめ始める
+    #     3: マウス位置のセルを選択・編集する
     #   ]
     #   引数: [event: ポインター座標を持つTkイベント]
     #   戻り値: [なし。フォーカスと作品表示を更新する]
     # }
     def on_canvas_press(self, event):
         self.canvas.focus_set()
+        self.end_edit_transaction()
+        if self.tool in ("brush", "eraser"):
+            self.begin_edit_transaction()
         self.paint_pixel(event)
+
+    # {
+    #   責務: [on_canvas_release: マウスのボタンを離したら、ドラッグ全体を1回の取り消しとして確定する]
+    #   処理: [押してから離すまでの編集を、変更があれば1件の履歴にして終える]
+    #   引数: [event: Tkのイベント。使わない]
+    #   戻り値: [なし。履歴と表示を更新する]
+    # }
+    def on_canvas_release(self, event=None):
+        self.end_edit_transaction()
 
     # {
     #   責務: [select_cell: セルを選択し、キーボードカーソルと枠を同じ位置へ合わせる]

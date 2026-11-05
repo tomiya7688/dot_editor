@@ -158,6 +158,7 @@ class MenuStructureTests(unittest.TestCase):
                 [
                     "<Button-1>",
                     "<B1-Motion>",
+                    "<ButtonRelease-1>",
                     "<ButtonPress-2>",
                     "<B2-Motion>",
                     "<Left>",
