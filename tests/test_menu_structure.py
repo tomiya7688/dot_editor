@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import unittest
 
 from canvas_cursor import CanvasCursor
+from stroke import StrokeSession
 from dot_editor import (
     CELL_MENU_ACTIONS,
     KEY_BINDINGS,
@@ -165,6 +166,9 @@ class MenuStructureTests(unittest.TestCase):
                     "<Down>",
                     "<Return>",
                     "<Escape>",
+                    "<KeyPress-space>",
+                    "<KeyRelease-space>",
+                    "<FocusOut>",
                 ]
             ),
         )
@@ -316,6 +320,7 @@ class MenuStructureTests(unittest.TestCase):
         editor = stub.__new__(stub)
         editor.canvas = canvas
         editor.cursor = CanvasCursor()
+        editor.stroke = StrokeSession()
         editor.selected_cell = None
         editor.num_pixels_x, editor.num_pixels_y = 3, 2
         editor.canvas_width, editor.canvas_height, editor.zoom_factor = 300, 200, 1.0
