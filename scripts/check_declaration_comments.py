@@ -5,6 +5,7 @@ also audit every declaration in owned Python/Rust files changed since that revis
 Python uses AST; Rust scans ordinary declarations outside literals/comments, so
 macro-generated declarations require code review. Semantic accuracy needs review.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -18,7 +19,8 @@ import tokenize
 ROOT = Path(__file__).resolve().parents[1]
 RUST_DECLARATION = re.compile(
     r"\b(?:(?:pub(?:\([^)]*\))?|const|async|unsafe|extern(?:\s+\"[^\"]*\")?)\s+)*"
-    r"(fn|struct|enum|trait)\s+(\w+)", re.MULTILINE
+    r"(fn|struct|enum|trait)\s+(\w+)",
+    re.MULTILINE,
 )
 RUST_NONCODE = re.compile(
     r'//[^\n]*|/\*|(?:br|r)(?P<hashes>\#*)"|(?:b|c)?"(?:\\[\s\S]|[^"\\])*"'
@@ -116,11 +118,16 @@ def declarations(text, suffix):
 # }
 def comment_lines(text, suffix):
     if suffix == ".py":
-        return {item.start[0] - 1: item.string[1:].strip()
-                for item in tokenize.generate_tokens(io.StringIO(text).readline)
-                if item.type == tokenize.COMMENT and not item.line[:item.start[1]].strip()}
-    return {index: match[1].strip() for index, line in enumerate(text.splitlines())
-            if (match := re.match(r"\s*///(?!/)(.*)$", line))}
+        return {
+            item.start[0] - 1: item.string[1:].strip()
+            for item in tokenize.generate_tokens(io.StringIO(text).readline)
+            if item.type == tokenize.COMMENT and not item.line[: item.start[1]].strip()
+        }
+    return {
+        index: match[1].strip()
+        for index, line in enumerate(text.splitlines())
+        if (match := re.match(r"\s*///(?!/)(.*)$", line))
+    }
 
 
 # {
@@ -248,7 +255,7 @@ def default_paths():
         ROOT / "src" / "pixel_backend.py",
         ROOT / "src" / "pixel_layers.py",
         ROOT / "src" / "resolution_field.py",
-    ROOT / "src" / "canvas_cursor.py",
+        ROOT / "src" / "canvas_cursor.py",
         ROOT / "src" / "pixel_commands.py",
         ROOT / "src" / "pixel_cli.py",
         ROOT / "scripts" / "test_rust_json_compat.py",
@@ -273,7 +280,7 @@ def default_paths():
         ROOT / "tests" / "test_cli_coordinates.py",
         ROOT / "tests" / "test_resolution.py",
         ROOT / "tests" / "test_resolution_field.py",
-    ROOT / "tests" / "test_canvas_cursor.py",
+        ROOT / "tests" / "test_canvas_cursor.py",
     ]
 
 
@@ -290,8 +297,23 @@ def default_paths():
 # }
 def changed_paths(base):
     result = subprocess.run(
-        ["git", "diff", "--name-only", "--diff-filter=ACMR", "-z", base, "HEAD", "--",
-         "src", "scripts", "tests", "rust"], cwd=ROOT, check=True, capture_output=True,
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "--diff-filter=ACMR",
+            "-z",
+            base,
+            "HEAD",
+            "--",
+            "src",
+            "scripts",
+            "tests",
+            "rust",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
     )
     paths = [ROOT / name for name in result.stdout.decode("utf-8").split("\0") if name]
     return [path for path in paths if path.suffix in (".py", ".rs") and path.is_file()]
@@ -310,7 +332,9 @@ def changed_paths(base):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paths", nargs="*", type=Path)
-    parser.add_argument("--changed-base", help="also audit owned sources changed from revision to HEAD")
+    parser.add_argument(
+        "--changed-base", help="also audit owned sources changed from revision to HEAD"
+    )
     options = parser.parse_args()
     paths = options.paths or default_paths()
     if options.changed_base:
