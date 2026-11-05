@@ -379,11 +379,64 @@ fn write_temporary(path: &Path, bytes: &[u8]) -> Result<PathBuf, CliError> {
 }
 
 /// {
+///   責務: [sync_parent_directory: 置換した名前を親フォルダに確定させるため、親フォルダを同期する]
+///   処理: [
+///     1: Unixでは親フォルダを開いてディスクへ同期する
+///     2: Windowsでは標準ライブラリにフォルダの同期がないため、何もしない（文書に未対応と記載）
+///   ]
+///   引数: [
+///     path: 置換したファイルのパス
+///   ]
+///   戻り値: [同期の結果]
+/// }
+fn sync_parent_directory(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        let parent = match path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent,
+            _ => Path::new("."),
+        };
+        File::open(parent)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
+
+/// {
+///   責務: [commit_outcome: 置換の後の同期の結果を、利用者への約束に直す]
+///   処理: [
+///     1: 同期に成功していれば成功にする
+///     2: 失敗していれば、置換は済んでいて旧状態を約束できないcommit_uncertainにする
+///   ]
+///   引数: [
+///     path: 置換したファイルのパス
+///     synced: 親フォルダの同期の結果
+///   ]
+///   戻り値: [成功時は単位値、失敗時は再読込を促すcommit_uncertain]
+/// }
+fn commit_outcome(path: &Path, synced: std::io::Result<()>) -> Result<(), CliError> {
+    synced.map_err(|error| {
+        CliError::failure(
+            "commit_uncertain",
+            format!(
+                "{} was replaced but syncing its folder failed ({error}); \
+                 the file may have changed, so read it again (status) before retrying",
+                path.display()
+            ),
+        )
+    })
+}
+
+/// {
 ///   責務: [write_atomic: 途中で失敗しても元のファイルを壊さずに書き込む]
 ///   処理: [
 ///     1: 同じフォルダの一意な一時ファイルへ全内容を書いて同期する
 ///     2: 一時ファイルを最終ファイルへ置き換える
-///     3: どこかで失敗したら一時ファイルを消して失敗を返す
+///     3: 置換の後に親フォルダを同期し、失敗したら置換済みの可能性をcommit_uncertainで知らせる
+///     4: 置換の前に失敗したら一時ファイルを消して、元のファイルを変えずに失敗を返す
 ///   ]
 ///   引数: [
 ///     path: 書き込み先のパス
@@ -397,7 +450,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
         let _ = fs::remove_file(&temporary);
         return Err(io_failure("write", path, &error));
     }
-    Ok(())
+    commit_outcome(path, sync_parent_directory(path))
 }
 
 /// {
@@ -418,7 +471,7 @@ pub fn create_new_atomic(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
     let linked = fs::hard_link(&temporary, path);
     let _ = fs::remove_file(&temporary);
     match linked {
-        Ok(()) => Ok(()),
+        Ok(()) => commit_outcome(path, sync_parent_directory(path)),
         Err(error) if error.kind() == ErrorKind::AlreadyExists => Err(CliError::failure(
             "file_exists",
             format!(
@@ -465,4 +518,45 @@ pub fn save_new(path: &Path, document: &LayeredCanvas) -> Result<String, CliErro
     let bytes = document.to_json()?.into_bytes();
     create_new_atomic(path, &bytes)?;
     Ok(revision_of(&bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::path::Path;
+
+    use super::{commit_outcome, sync_parent_directory};
+
+    /// {
+    ///   責務: [failed_sync_after_replace_is_commit_uncertain: 置換後の同期の失敗が、再読込を促すcommit_uncertainになることを検証する]
+    ///   処理: [
+    ///     1: 同期の成功は成功になることを確認する
+    ///     2: 同期の失敗は終了値1・commit_uncertainで、再読込の案内を含むことを確認する
+    ///   ]
+    ///   引数: []
+    ///   戻り値: [なし。不一致ならテストが失敗する]
+    /// }
+    #[test]
+    fn failed_sync_after_replace_is_commit_uncertain() {
+        let path = Path::new("art.json");
+        assert!(commit_outcome(path, Ok(())).is_ok());
+        let error = commit_outcome(path, Err(io::Error::other("disk gone"))).unwrap_err();
+        assert_eq!((error.exit_code, error.code), (1, "commit_uncertain"));
+        assert!(error.message.contains("read it again"), "{}", error.message);
+        assert!(error.message.contains("disk gone"));
+    }
+
+    /// {
+    ///   責務: [syncing_a_real_folder_succeeds: 実在のフォルダの同期が成功することを検証する]
+    ///   処理: [
+    ///     1: 一時フォルダ内のパスについて親フォルダの同期を行い、成功を確認する
+    ///   ]
+    ///   引数: []
+    ///   戻り値: [なし。不一致ならテストが失敗する]
+    /// }
+    #[test]
+    fn syncing_a_real_folder_succeeds() {
+        let folder = std::env::temp_dir();
+        assert!(sync_parent_directory(&folder.join("never-created.json")).is_ok());
+    }
 }
