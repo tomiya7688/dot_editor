@@ -249,6 +249,8 @@ class PixelEditor:
         self.bind_global_shortcuts()
         self.build_menu_bar()
         self.initialize_canvas_input()
+        self.mark_saved()
+        self.master.protocol("WM_DELETE_WINDOW", self.on_close)
 
     # {
     #   責務: [initialize_canvas_input: 初期表示を整え、キャンバスのマウス入力を登録する]
@@ -2035,13 +2037,71 @@ class PixelEditor:
         self.perform_edit(self.commands.import_image, path)
 
     # {
+    #   責務: [mark_saved: 現在の作品を「保存済みの基準」として記録する]
+    #   処理: [作品データと解像度のスナップショットを基準として保存する]
+    #   引数: []
+    #   戻り値: [なし。以降のis_dirtyはこの基準と比べる]
+    # }
+    def mark_saved(self):
+        self.saved_snapshot = self.make_snapshot()
+
+    # {
+    #   責務: [is_dirty: 保存済みの基準と比べて、作品が実際に変わっているかを返す]
+    #   処理: [
+    #     1: 基準が無ければ変わっていないとみなす
+    #     2: 操作のたびではなく、確認が必要なときだけ、作品の意味で比べる（履歴の長さでは判定しない）
+    #   ]
+    #   引数: []
+    #   戻り値: [未保存の変更があれば真]
+    # }
+    def is_dirty(self):
+        saved = getattr(self, "saved_snapshot", None)
+        return saved is not None and self.make_snapshot() != saved
+
+    # {
+    #   責務: [confirm_discard: 未保存の変更を失う操作の前に、保存・破棄・取消を確認する]
+    #   処理: [
+    #     1: 未保存の変更が無ければ確認せずに続行する
+    #     2: 「保存・破棄・キャンセル」を、初期選択をキャンセルにして尋ねる
+    #     3: 保存を選んだ場合は保存し、保存できなければ続行しない
+    #   ]
+    #   引数: [what: これから行う操作の名前（確認文に使う）]
+    #   戻り値: [続行してよければ真、キャンセルや保存失敗なら偽（作品・履歴・パスは元のまま）]
+    # }
+    def confirm_discard(self, what):
+        if not self.is_dirty():
+            return True
+        answer = self.run_dialog(
+            messagebox.askyesnocancel,
+            "未保存の変更",
+            f"保存されていない変更があります。{what}の前に保存しますか？\n"
+            "「いいえ」を選ぶと、変更を捨てて続けます。",
+            default=messagebox.CANCEL,
+        )
+        if answer is None:
+            return False
+        if answer:
+            return bool(self.save_project())
+        return True
+
+    # {
+    #   責務: [on_close: ウィンドウを閉じる操作で、未保存の変更を確認してから終了する]
+    #   処理: [確認で続行が選ばれたときだけ、ウィンドウを閉じる]
+    #   引数: []
+    #   戻り値: [なし。キャンセルされたら作品もウィンドウもそのまま]
+    # }
+    def on_close(self):
+        if self.confirm_discard("終了"):
+            self.master.destroy()
+
+    # {
     #   責務: [save_project: 現在の作品をJSONプロジェクトとして保存する]
     #   処理: [
     #     1: JSON保存先を選択する
     #     2: 選択された場合に共有APIで保存し、I/O・形式エラーを通知する
     #   ]
     #   引数: []
-    #   戻り値: [なし。ダイアログをキャンセルした場合は保存しない]
+    #   戻り値: [保存できたら真。キャンセルや保存失敗なら偽で、保存済みの基準は変えない]
     # }
     def save_project(self):
         path = self.run_dialog(
@@ -2049,11 +2109,15 @@ class PixelEditor:
             defaultextension=".json",
             filetypes=[("JSON project", "*.json")],
         )
-        if path:
-            try:
-                self.commands.save(Path(path))
-            except (OSError, ValueError) as error:
-                self.report_error(error)
+        if not path:
+            return False
+        try:
+            self.commands.save(Path(path))
+        except (OSError, ValueError) as error:
+            self.report_error(error)
+            return False
+        self.mark_saved()
+        return True
 
     # {
     #   責務: [load_project: JSONプロジェクトを検証後に作品へ読み込む]
@@ -2066,6 +2130,8 @@ class PixelEditor:
     #   戻り値: [なし。キャンセルまたは検証失敗時は既存作品を維持する]
     # }
     def load_project(self):
+        if not self.confirm_discard("別の作品を開く"):
+            return
         path = self.run_dialog(
             filedialog.askopenfilename, filetypes=[("JSON project", "*.json"), ("All files", "*.*")]
         )
@@ -2087,6 +2153,7 @@ class PixelEditor:
         self.future.clear()
         self.refresh_layer_list()
         self.update_canvas_size()
+        self.mark_saved()
 
     # {
     #   責務: [save_image: 現在の合成画像をPNGで書き出す]
@@ -2125,6 +2192,7 @@ class PixelEditor:
         ):
             return
         self.reset_canvas_model()
+        self.mark_saved()
 
     # {
     #   責務: [upscale_resolution: 細部処理方針を適用して論理解像度を上げる]
