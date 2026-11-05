@@ -22,6 +22,16 @@ CELL_MENU_ACTIONS = (
     "discard_selected_detail",
 )
 
+# 画面下に常に見える、ファイル操作と元に戻す・やり直すのボタン（ラベル, メソッド名）。
+TOOLBAR_ACTIONS = (
+    ("作品をリセット", "reset_canvas"),
+    ("開く", "load_project"),
+    ("保存", "save_project"),
+    ("PNG書き出し", "save_image"),
+    ("元に戻す", "undo"),
+    ("やり直す", "redo"),
+)
+
 # キーボード操作の正本。READMEの操作表と一致することをテストで確認する。
 KEY_BINDINGS = (
     ("Alt", "メニューバーに入る"),
@@ -246,6 +256,7 @@ class PixelEditor:
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.canvas.bind("<Configure>", self.on_canvas_configure, add="+")
         self.canvas.bind("<Control-MouseWheel>", self.zoom_with_wheel)
+        self.build_toolbar()
         self.build_sidebar()
         self.bind_focus_region_navigation()
         self.bind_global_shortcuts()
@@ -2061,6 +2072,32 @@ class PixelEditor:
         if not path:
             return
         self.perform_edit(self.commands.import_image, path)
+
+    # {
+    #   責務: [build_toolbar: キャンバスの下に、常に見えるファイル操作のボタン列を作る]
+    #   処理: [
+    #     1: キャンバスの下の1行に枠を置く（スクロールするサイドバーとは別で、画面外へ隠れない）
+    #     2: 割当表の各項目をボタンにし、既存のメニューと同じ操作を呼ぶ
+    #   ]
+    #   引数: []
+    #   戻り値: [なし。ボタン列をselfへ登録する]
+    # }
+    def build_toolbar(self):
+        self.toolbar = tk.Frame(self.master, bg="#0b0f14")
+        self.toolbar.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 8))
+        for index, (label, action) in enumerate(TOOLBAR_ACTIONS):
+            button = tk.Button(
+                self.toolbar,
+                text=label,
+                command=getattr(self, action),
+                bg="#17212b",
+                fg="#f0f3f6",
+                activebackground="#263747",
+                activeforeground="#ffffff",
+                relief="flat",
+                padx=10,
+            )
+            button.grid(row=0, column=index, padx=(0, 6), pady=2)
 
     # {
     #   責務: [mark_saved: 現在の作品を「保存済みの基準」として記録する]
