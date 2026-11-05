@@ -9,6 +9,7 @@ import sys
 import tarfile
 import zipfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from command_catalog import build_catalog
 from render_command_catalog import render_markdown
