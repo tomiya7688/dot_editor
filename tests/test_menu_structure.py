@@ -1,11 +1,18 @@
 """Headless checks for menu access-key uniqueness and live editor actions."""
 
 import inspect
+import re
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
-from dot_editor import CELL_MENU_ACTIONS, KEY_BINDINGS, PixelEditor, menu_spec
+from dot_editor import (
+    CELL_MENU_ACTIONS,
+    KEY_BINDINGS,
+    PixelEditor,
+    choose_restore_target,
+    menu_spec,
+)
 
 
 # {
@@ -191,6 +198,70 @@ class MenuStructureTests(unittest.TestCase):
         readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
         for key, _ in KEY_BINDINGS:
             self.assertIn(key, readme)
+
+    # {
+    #   責務: [test_restore_target_order: フォーカス復帰先が保存要素、近い要素、既定の順で決まることを検証する]
+    #   処理: [
+    #     1: すべて使える場合は保存要素が選ばれることを確認する
+    #     2: 保存要素が使えない場合は近い要素、次に既定が選ばれることを確認する
+    #     3: 候補がすべて使えない場合はNoneになることを確認する
+    #   ]
+    #   引数: [self: テスト対象のMenuStructureTestsケース]
+    #   戻り値: [なし、復帰先の決定が誤っていればassertionで失敗する]
+    # }
+    def test_restore_target_order(self):
+        self.assertEqual(choose_restore_target("a", ["n"], "c", lambda w: True), "a")
+        self.assertEqual(choose_restore_target("a", ["n"], "c", lambda w: w != "a"), "n")
+        self.assertEqual(choose_restore_target("a", ["n"], "c", lambda w: w == "c"), "c")
+        self.assertEqual(choose_restore_target(None, [], "c", lambda w: False), None)
+
+    # {
+    #   責務: [test_run_dialog_sets_parent_and_restores_focus: ダイアログが親付きで開き、例外時も復帰することを検証する]
+    #   処理: [
+    #     1: 偽のウィンドウとキャンバスを持つ編集部を作る
+    #     2: parentが渡され、保存した要素へフォーカスが戻ることを確認する
+    #     3: ダイアログが例外を出しても復帰し、例外が伝わることを確認する
+    #   ]
+    #   引数: [self: テスト対象のMenuStructureTestsケース]
+    #   戻り値: [なし、親指定または復帰が誤っていればassertionで失敗する]
+    # }
+    def test_run_dialog_sets_parent_and_restores_focus(self):
+        focused = []
+        saved = SimpleNamespace(
+            winfo_exists=lambda: True, focus_set=lambda: focused.append("saved")
+        )
+        canvas = SimpleNamespace(
+            winfo_exists=lambda: True, focus_set=lambda: focused.append("canvas")
+        )
+        editor = PixelEditor.__new__(PixelEditor)
+        editor.master = SimpleNamespace(focus_get=lambda: saved)
+        editor.canvas = canvas
+        seen = {}
+        result = editor.run_dialog(lambda **kw: seen.update(kw) or "ok")
+        self.assertEqual((result, seen["parent"], focused), ("ok", editor.master, ["saved"]))
+        saved.winfo_exists = lambda: False
+        focused.clear()
+
+        with self.assertRaises(ValueError):
+            editor.run_dialog(lambda **kw: (_ for _ in ()).throw(ValueError("boom")))
+        self.assertEqual(focused, ["canvas"])
+
+    # {
+    #   責務: [test_no_dialog_bypasses_run_dialog: すべてのダイアログがrun_dialog経由であることを検証する]
+    #   処理: [
+    #     1: エディターのソースを読む
+    #     2: ダイアログ関数の直接呼び出しがないことを確認する
+    #   ]
+    #   引数: [self: テスト対象のMenuStructureTestsケース]
+    #   戻り値: [なし、直接呼び出しがあればassertionで失敗する]
+    # }
+    def test_no_dialog_bypasses_run_dialog(self):
+        source = (Path(__file__).resolve().parents[1] / "src" / "dot_editor.py").read_text(
+            encoding="utf-8"
+        )
+        direct = re.findall(r"(?:simpledialog|filedialog|messagebox)\.(?:ask|show)\w*\(", source)
+        direct += re.findall(r"(?<!run_dialog\()\baskcolor\(", source)
+        self.assertEqual(direct, [])
 
 
 if __name__ == "__main__":

@@ -30,6 +30,38 @@ KEY_BINDINGS = (
 
 
 # {
+#   責務: [choose_restore_target: ダイアログを閉じた後にフォーカスを戻す先を決める]
+#   処理: [
+#     1: 保存した要素、近い要素、最後の既定の順に候補を見る
+#     2: 使用可能と判定された最初の候補を返す
+#   ]
+#   引数: [saved: ダイアログを開く前の要素, neighbors: 代わりの要素, fallback: 最後の既定, is_usable: 使用可否を返す関数]
+#   戻り値: [フォーカスを戻す要素。候補がなければNone]
+# }
+def choose_restore_target(saved, neighbors, fallback, is_usable):
+    for candidate in (saved, *neighbors, fallback):
+        if candidate is not None and is_usable(candidate):
+            return candidate
+    return None
+
+
+# {
+#   責務: [widget_exists: Tkの部品がまだ存在して使えるかを調べる]
+#   処理: [
+#     1: 部品の存在を問い合わせる
+#     2: 破棄済みでエラーになる場合は存在しないとみなす
+#   ]
+#   引数: [widget: 調べるTkの部品]
+#   戻り値: [使用できれば真]
+# }
+def widget_exists(widget):
+    try:
+        return bool(widget.winfo_exists())
+    except tk.TclError:
+        return False
+
+
+# {
 #   責務: [menu_spec: メニューバーと各操作項目の構造を一元定義する]
 #   処理: [ファイル・編集・描画・レイヤー・色・表示メニューをアクセスキーと操作名付きで返す]
 #   引数: []
@@ -908,6 +940,44 @@ class PixelEditor:
         return PixelCommandAPI(self.backend)
 
     # {
+    #   責務: [run_dialog: ダイアログを親付きで開き、閉じた後にフォーカスを元へ戻す]
+    #   処理: [
+    #     1: 開く前のフォーカス要素を保存し、parentを必ず指定する
+    #     2: ダイアログを実行する
+    #     3: 終了後、保存した要素が使えなければキャンバスへフォーカスを戻す
+    #   ]
+    #   引数: [dialog: ダイアログを開く関数, args: 位置引数, kwargs: キー引数]
+    #   戻り値: [ダイアログの戻り値]
+    # }
+    def run_dialog(self, dialog, *args, **kwargs):
+        master = getattr(self, "master", None)
+        if master is None:
+            return dialog(*args, **kwargs)
+        try:
+            saved = master.focus_get()
+        except (KeyError, tk.TclError):
+            saved = None
+        kwargs.setdefault("parent", master)
+        try:
+            return dialog(*args, **kwargs)
+        finally:
+            self.restore_focus(saved)
+
+    # {
+    #   責務: [restore_focus: 保存した要素、なければキャンバスへフォーカスを戻す]
+    #   処理: [
+    #     1: 保存した要素とキャンバスのうち使用可能な方を決める
+    #     2: 決まった要素へフォーカスを設定する
+    #   ]
+    #   引数: [saved: ダイアログを開く前のフォーカス要素]
+    #   戻り値: [なし。フォーカスを設定する]
+    # }
+    def restore_focus(self, saved):
+        target = choose_restore_target(saved, (), self.canvas, widget_exists)
+        if target is not None:
+            target.focus_set()
+
+    # {
     #   責務: [report_error: 操作失敗を利用者へ通知する]
     #   処理: [メインウィンドウが初期化済みの場合にエラーダイアログを表示する]
     #   引数: [error: 表示する例外またはエラー内容]
@@ -915,7 +985,7 @@ class PixelEditor:
     # }
     def report_error(self, error):
         if hasattr(self, "master"):
-            messagebox.showerror("操作できません", str(error), parent=self.master)
+            self.run_dialog(messagebox.showerror, "操作できません", str(error), parent=self.master)
 
     # {
     #   責務: [refresh_composite: レイヤー合成結果から表示用画像を作り直す]
@@ -998,7 +1068,7 @@ class PixelEditor:
     #   戻り値: [なし。成功時は作品・履歴・表示を更新する]
     # }
     def add_layer(self):
-        name = simpledialog.askstring("レイヤー追加", "レイヤー名")
+        name = self.run_dialog(simpledialog.askstring, "レイヤー追加", "レイヤー名")
         if not name:
             return
         before = self.make_snapshot()
@@ -1034,8 +1104,12 @@ class PixelEditor:
     # }
     def rename_layer(self):
         current = self.backend.active_layer
-        new_name = simpledialog.askstring(
-            "レイヤー名称変更", "新しいレイヤー名", initialvalue=current, parent=self.master
+        new_name = self.run_dialog(
+            simpledialog.askstring,
+            "レイヤー名称変更",
+            "新しいレイヤー名",
+            initialvalue=current,
+            parent=self.master,
         )
         if new_name is not None:
             self.perform_edit(self.commands.rename_layer, new_name)
@@ -1305,7 +1379,7 @@ class PixelEditor:
     #   戻り値: [なし。キャンセル時は現在色を維持する]
     # }
     def choose_color(self):
-        color = askcolor()[1]
+        color = self.run_dialog(askcolor)[1]
         if color:
             self.current_color = self.hex_to_rgb(color)
 
@@ -1536,8 +1610,9 @@ class PixelEditor:
     #   戻り値: [なし。キャンセル時は作品を変更しない]
     # }
     def import_image(self):
-        path = filedialog.askopenfilename(
-            filetypes=[("画像ファイル", "*.png;*.jpg;*.jpeg;*.bmp"), ("すべて", "*.*")]
+        path = self.run_dialog(
+            filedialog.askopenfilename,
+            filetypes=[("画像ファイル", "*.png;*.jpg;*.jpeg;*.bmp"), ("すべて", "*.*")],
         )
         if not path:
             return
@@ -1553,8 +1628,10 @@ class PixelEditor:
     #   戻り値: [なし。ダイアログをキャンセルした場合は保存しない]
     # }
     def save_project(self):
-        path = filedialog.asksaveasfilename(
-            defaultextension=".json", filetypes=[("JSON project", "*.json")]
+        path = self.run_dialog(
+            filedialog.asksaveasfilename,
+            defaultextension=".json",
+            filetypes=[("JSON project", "*.json")],
         )
         if path:
             try:
@@ -1573,8 +1650,8 @@ class PixelEditor:
     #   戻り値: [なし。キャンセルまたは検証失敗時は既存作品を維持する]
     # }
     def load_project(self):
-        path = filedialog.askopenfilename(
-            filetypes=[("JSON project", "*.json"), ("All files", "*.*")]
+        path = self.run_dialog(
+            filedialog.askopenfilename, filetypes=[("JSON project", "*.json"), ("All files", "*.*")]
         )
         if not path:
             return
@@ -1605,8 +1682,10 @@ class PixelEditor:
     #   戻り値: [なし。ダイアログをキャンセルした場合は出力しない]
     # }
     def save_image(self):
-        path = filedialog.asksaveasfilename(
-            defaultextension=".png", filetypes=[("PNG files", "*.png")]
+        path = self.run_dialog(
+            filedialog.asksaveasfilename,
+            defaultextension=".png",
+            filetypes=[("PNG files", "*.png")],
         )
         if path:
             try:
@@ -1621,7 +1700,8 @@ class PixelEditor:
     #   戻り値: [なし。拒否・キャンセル時は現在状態を維持する]
     # }
     def reset_canvas(self):
-        if not messagebox.askyesno(
+        if not self.run_dialog(
+            messagebox.askyesno,
             "作品をリセット",
             "すべてのレイヤー・描画・Undo/Redo履歴を消去します。\n"
             "この操作は元に戻せません。リセットしますか？",
@@ -1694,7 +1774,8 @@ class PixelEditor:
     #   戻り値: [なし。確認拒否や入力キャンセル時は作品を変更しない]
     # }
     def change_size(self):
-        width = simpledialog.askinteger(
+        width = self.run_dialog(
+            simpledialog.askinteger,
             "論理解像度",
             "横のセル数",
             initialvalue=self.backend.width,
@@ -1703,7 +1784,8 @@ class PixelEditor:
         )
         if width is None:
             return
-        height = simpledialog.askinteger(
+        height = self.run_dialog(
+            simpledialog.askinteger,
             "論理解像度",
             "縦のセル数",
             initialvalue=self.backend.height,
@@ -1713,8 +1795,11 @@ class PixelEditor:
         if height is None:
             return
         policy = self.current_detail_policy()
-        if policy == "discard" and not messagebox.askyesno(
-            "細部を破棄", "全レイヤーの細部を新しい解像度に統合しますか？"
+        if policy == "discard" and not self.run_dialog(
+            messagebox.askyesno,
+            "細部を破棄",
+            "全レイヤーの細部を新しい解像度に統合しますか？",
+            default=messagebox.NO,
         ):
             return
         try:
@@ -1729,13 +1814,21 @@ class PixelEditor:
     #   戻り値: [なし。作品モデルと編集履歴は変更しない]
     # }
     def change_canvas_size(self):
-        width = simpledialog.askinteger(
-            "キャンバス幅", "表示の横幅（ピクセル）", minvalue=100, maxvalue=5000
+        width = self.run_dialog(
+            simpledialog.askinteger,
+            "キャンバス幅",
+            "表示の横幅（ピクセル）",
+            minvalue=100,
+            maxvalue=5000,
         )
         if width is None:
             return
-        height = simpledialog.askinteger(
-            "キャンバス高さ", "表示の縦幅（ピクセル）", minvalue=100, maxvalue=5000
+        height = self.run_dialog(
+            simpledialog.askinteger,
+            "キャンバス高さ",
+            "表示の縦幅（ピクセル）",
+            minvalue=100,
+            maxvalue=5000,
         )
         if height is not None:
             self.set_display_size(width, height)
