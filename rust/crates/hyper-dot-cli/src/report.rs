@@ -88,12 +88,15 @@ pub fn success(
 /// }
 pub fn failure(json: bool, operation: &str, error: &CliError) -> Outcome {
     let stdout = if json {
-        let document = json!({
+        let mut document = json!({
             "status": "error",
             "operation": operation,
             "error": error.code,
             "message": error.message,
         });
+        if let Some(details) = &error.details {
+            document["details"] = details.clone();
+        }
         format!("{document}\n")
     } else {
         String::new()

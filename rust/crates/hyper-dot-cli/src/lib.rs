@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+mod batch_commands;
 mod canvas_commands;
 mod catalog;
 mod cli_error;

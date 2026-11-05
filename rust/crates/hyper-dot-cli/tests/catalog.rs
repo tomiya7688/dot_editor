@@ -47,7 +47,7 @@ fn catalog() -> Value {
 /// {
 ///   責務: [catalog_matches_help_for_every_command: 全コマンドのカタログと個別ヘルプが一致することを検証する]
 ///   処理: [
-///     1: 22件のコマンドがあり、IDが一意で日本語説明が空でないことを確認する
+///     1: 23件のコマンドがあり、IDが一意で日本語説明が空でないことを確認する
 ///     2: 各コマンドの個別ヘルプに、カタログのオプション名と別名がすべて載っていることを確認する
 ///     3: 位置引数の数が書式と一致することを確認する
 ///   ]
@@ -61,7 +61,7 @@ fn catalog_matches_help_for_every_command() {
     assert_eq!(catalog["cli_implementation"], "rust");
     assert_eq!(catalog["cli_version"], env!("CARGO_PKG_VERSION"));
     let commands = catalog["commands"].as_array().unwrap();
-    assert_eq!(commands.len(), 22);
+    assert_eq!(commands.len(), 23);
     let mut ids = HashSet::new();
     for command in commands {
         let id = command["id"].as_str().unwrap();

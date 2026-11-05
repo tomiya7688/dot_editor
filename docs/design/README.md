@@ -21,7 +21,7 @@
 | #32 #33 | 別名、SKILL.md、リリースバイナリのE2E | [別名・SKILL.md・E2E](cli-alias-skill-e2e.md) | 実装済み |
 | #38 | 3 OSの単体実行ファイル配布 | [配布の設計](release-distribution.md) | 設計案 |
 | #63 | 同時編集の保護（revisionと排他保存） | [保存安全性](cli-concurrency.md) | 一部実装（revision・ロック・置換禁止の新規作成） |
-| #64 | 順序付きの原子的バッチ編集 | [バッチAPI](cli-batch.md) | 設計案 |
+| #64 | 順序付きの原子的バッチ編集 | [バッチAPI](cli-batch.md) | 実装済み（B1〜B4。速度比較B5は未測定） |
 | #66 | コマンド表の自動生成と同梱 | [コマンド表の同梱](command-reference-delivery.md)、[スキーマ](catalog-schema-v1.json) | 一部実装（#66-A: Rustの`--commands-json`と生成器。同梱は未実装） |
 | #26 〜 #30 | GUIのキーボード操作 | [キーボード操作](keyboard-operation.md) | 設計案 |
 | #67 | 軽量GUIとオフラインヘルプ | [軽量GUI](lightweight-gui.md)、[画面の操作仕様](../ユーザー操作インターフェース仕様.md) | 設計案 |
