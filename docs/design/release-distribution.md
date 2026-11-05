@@ -1,6 +1,6 @@
 # Rust CLIの単体実行ファイル配布（3 OS）の詳細設計（一部実装）
 
-対象: [Issue #38](https://github.com/tomiya7688/dot_editor/issues/38)。先行する[#32/#33の設計](cli-alias-skill-e2e.md)（別名・SKILL.md・E2E）と、署名・出所の[供給網の設計](supply-chain-security.md)（#55）に依存します。状態: **一部実装。** CIに`Rust release (windows-x86_64 / linux-x86_64 / macos-arm64)`の3行があり、`scripts/package_rust_cli.py`が版の照合・アーカイブ作成・新しい空のフォルダへの展開・展開後のE2E・大きさとSHA-256の記録を行います。サイズ最適化は測定のうえ採用済みです（下記）。**未実装**: 出所情報（attestation）、署名、公開（#55待ち。未署名の成果物はアップロードしません）。 現行の`windows-build`ジョブはPython製のGUI/CLI配布物（PyInstaller）で、Rust CLIの配布物ではありません。
+対象: [Issue #38](https://github.com/tomiya7688/dot_editor/issues/38)。先行する[#32/#33の設計](cli-alias-skill-e2e.md)（別名・SKILL.md・E2E）と、署名・出所の[供給網の設計](supply-chain-security.md)（#55）に依存します。状態: **一部実装。** CIに`Rust release (windows-x86_64 / linux-x86_64 / macos-arm64)`の3行があり、`scripts/package_rust_cli.py`が版の照合・アーカイブ作成・新しい空のフォルダへの展開・展開後のE2E・大きさとSHA-256の記録を行います。サイズ最適化は測定のうえ採用済みです（下記）。出所情報（attestation）は、pushのときに各アーカイブへ付与し、同じジョブで作成元・ソースSHA・refを検証します（PRでは権限が無いため作りません）。**未実装**: 署名（Authenticode・Developer ID）、公開（#55待ち。未署名の成果物はアップロードしません）。 現行の`windows-build`ジョブはPython製のGUI/CLI配布物（PyInstaller）で、Rust CLIの配布物ではありません。
 
 ## 背景・目的・入口
 

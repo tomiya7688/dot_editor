@@ -282,6 +282,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--build-dir", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
+    # 別の作業フォルダで実行ファイルを起動するため、相対パスで渡されても絶対パスにしておく。
+    args.build_dir = args.build_dir.resolve()
+    args.out = args.out.resolve()
     windows = "windows" in args.target
     suffix = ".exe" if windows else ""
     version = cargo_version()

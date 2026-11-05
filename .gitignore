@@ -20,3 +20,5 @@ dot_editor/pyvenv.cfg
 
 # Local review checklist; shared standards remain tracked.
 /レビュー基準.md
+# CIとローカルで作る配布アーカイブの作業フォルダ。
+/rust-release-out/
