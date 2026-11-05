@@ -248,6 +248,7 @@ def default_paths():
         ROOT / "src" / "pixel_backend.py",
         ROOT / "src" / "pixel_layers.py",
         ROOT / "src" / "resolution_field.py",
+    ROOT / "src" / "canvas_cursor.py",
         ROOT / "src" / "pixel_commands.py",
         ROOT / "src" / "pixel_cli.py",
         ROOT / "scripts" / "test_rust_json_compat.py",
@@ -272,6 +273,7 @@ def default_paths():
         ROOT / "tests" / "test_cli_coordinates.py",
         ROOT / "tests" / "test_resolution.py",
         ROOT / "tests" / "test_resolution_field.py",
+    ROOT / "tests" / "test_canvas_cursor.py",
     ]
 
 

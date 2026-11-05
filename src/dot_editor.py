@@ -5,6 +5,7 @@ from tkinter.colorchooser import askcolor
 
 from PIL import Image, ImageTk
 
+from canvas_cursor import CanvasCursor, cell_bounds, scroll_offset
 from pixel_backend import PixelCanvas
 from pixel_commands import PixelCommandAPI
 from pixel_layers import LayeredPixelCanvas
@@ -195,6 +196,7 @@ class PixelEditor:
         self.num_pixels_x = self.num_pixels_y = 2
         self.current_color = (255, 255, 255)
         self.selected_cell = None
+        self.cursor = CanvasCursor()
         self.tool = "brush"
         self.palette_colors = [
             (255, 255, 255),
@@ -240,7 +242,11 @@ class PixelEditor:
     def initialize_canvas_input(self):
         self.update_canvas_size()
         self.refresh_layer_list()
-        self.canvas.bind("<Button-1>", self.paint_pixel)
+        self.canvas.bind("<Button-1>", self.on_canvas_press)
+        for key, step in (("Left", (-1, 0)), ("Right", (1, 0)), ("Up", (0, -1)), ("Down", (0, 1))):
+            self.canvas.bind(f"<{key}>", lambda event, step=step: self.move_cursor(*step))
+        self.canvas.bind("<Return>", lambda event: self.enter_child_cell())
+        self.canvas.bind("<Escape>", lambda event: self.leave_child_cell())
         self.canvas.bind("<B1-Motion>", self.paint_pixel)
         self.canvas.bind("<ButtonPress-2>", self.begin_pan)
         self.canvas.bind("<B2-Motion>", self.pan_canvas)
@@ -1482,7 +1488,7 @@ class PixelEditor:
             return
         x = int(image_x * self.num_pixels_x / self.canvas_width)
         y = int(image_y * self.num_pixels_y / self.canvas_height)
-        self.selected_cell = (x, y)
+        self.select_cell(x, y)
         child = self._child_coordinate(x, y, image_x, image_y)
         if self.tool == "picker":
             self.current_color = self.commands.sample(x, y, child=child)[:3]
@@ -1505,6 +1511,157 @@ class PixelEditor:
                     else {"color": color, "child": child, "detail_policy": policy}
                 ),
             )
+
+    # {
+    #   責務: [on_canvas_press: キャンバスにフォーカスを移してから通常の描画処理を行う]
+    #   処理: [
+    #     1: キーボード操作が届くようキャンバスへフォーカスを設定する
+    #     2: マウス位置のセルを選択・編集する
+    #   ]
+    #   引数: [event: ポインター座標を持つTkイベント]
+    #   戻り値: [なし。フォーカスと作品表示を更新する]
+    # }
+    def on_canvas_press(self, event):
+        self.canvas.focus_set()
+        self.paint_pixel(event)
+
+    # {
+    #   責務: [select_cell: セルを選択し、キーボードカーソルと枠を同じ位置へ合わせる]
+    #   処理: [
+    #     1: 選択セルを記録する
+    #     2: カーソルが使える場合は親セルへ置き、枠を描き直す
+    #   ]
+    #   引数: [x: 横の論理セル, y: 縦の論理セル]
+    #   戻り値: [なし。選択状態と枠を更新する]
+    # }
+    def select_cell(self, x, y):
+        self.selected_cell = (x, y)
+        cursor = getattr(self, "cursor", None)
+        if cursor is not None:
+            cursor.place(x, y)
+            self.draw_cursor()
+
+    # {
+    #   責務: [move_cursor: 矢印キーでセルカーソルを動かし表示に追従させる]
+    #   処理: [
+    #     1: 選択セルがなければ左上のセルから始める
+    #     2: 位置を動かして選択セルへ反映し、カーソルを描き直す
+    #     3: 動かした先が見えるようキャンバスをスクロールする
+    #   ]
+    #   引数: [dx: 横の移動量, dy: 縦の移動量]
+    #   戻り値: ["break"。Tkの既定処理へ渡さない]
+    # }
+    def move_cursor(self, dx, dy):
+        if self.selected_cell is None:
+            self.cursor.place(0, 0)
+            self.selected_cell = (0, 0)
+        else:
+            self.cursor.place_keeping_child(*self.selected_cell)
+            self.cursor.move(dx, dy, self.num_pixels_x, self.num_pixels_y)
+            self.selected_cell = (self.cursor.x, self.cursor.y)
+        self.scroll_cursor_into_view(self.draw_cursor())
+        return "break"
+
+    # {
+    #   責務: [enter_child_cell: 分割済みセルで子セルのモードに入る]
+    #   処理: [
+    #     1: 選択セルがあるときだけ、分割済みか確認して入る
+    #     2: 入れたらカーソルを子セルの大きさで描き直す
+    #   ]
+    #   引数: []
+    #   戻り値: ["break"。Tkの既定処理へ渡さない]
+    # }
+    def enter_child_cell(self):
+        if self.selected_cell is not None:
+            self.cursor.place_keeping_child(*self.selected_cell)
+            if self.cursor.enter_child(self.commands.is_split):
+                self.scroll_cursor_into_view(self.draw_cursor())
+        return "break"
+
+    # {
+    #   責務: [leave_child_cell: 子セルのモードを抜けて親セルのカーソルへ戻す]
+    #   処理: [抜けられたらカーソルを親セルの大きさで描き直す]
+    #   引数: []
+    #   戻り値: ["break"。Tkの既定処理へ渡さない]
+    # }
+    def leave_child_cell(self):
+        if self.cursor.leave_child():
+            self.draw_cursor()
+        return "break"
+
+    # {
+    #   責務: [draw_cursor: 選択セルまたは子セルの外枠を二重の輪郭で描く]
+    #   処理: [
+    #     1: 古いカーソルを消し、選択セルがなければ子セルのモードも解除する
+    #     2: 解像度や分割の変化に合わせて位置を範囲内へ補正する
+    #     3: 明暗の二重の枠を描き、作品の上に重ねる
+    #   ]
+    #   引数: []
+    #   戻り値: [描いた外枠（左、上、右、下）。描かなければNone]
+    # }
+    def draw_cursor(self):
+        cursor = getattr(self, "cursor", None)
+        if cursor is None:
+            return None
+        self.canvas.delete("cursor")
+        if self.selected_cell is None:
+            cursor.child = None
+            return None
+        cursor.x, cursor.y = self.selected_cell
+        cursor.clamp(self.num_pixels_x, self.num_pixels_y, self.commands.is_split)
+        self.selected_cell = (cursor.x, cursor.y)
+        shape = (
+            max(1, round(self.canvas_width * self.zoom_factor)),
+            max(1, round(self.canvas_height * self.zoom_factor)),
+        )
+        origin = self.image_origin(*self.viewport_size(), *shape)
+        bounds = cell_bounds(
+            origin,
+            shape,
+            (self.num_pixels_x, self.num_pixels_y),
+            cursor.x,
+            cursor.y,
+            cursor.child,
+        )
+        left, top, right, bottom = bounds
+        self.canvas.create_rectangle(
+            left, top, right, bottom, outline="#ffffff", width=1, tags="cursor"
+        )
+        self.canvas.create_rectangle(
+            left + 1, top + 1, right - 1, bottom - 1, outline="#000000", width=1, tags="cursor"
+        )
+        self.canvas.tag_raise("cursor")
+        return bounds
+
+    # {
+    #   責務: [scroll_cursor_into_view: カーソルが表示範囲外なら最小量だけスクロールする]
+    #   処理: [
+    #     1: 表示範囲とスクロール領域の全体寸法を取得する
+    #     2: 横と縦それぞれで必要なスクロール量を求めて移動する
+    #   ]
+    #   引数: [bounds: カーソルの外枠（左、上、右、下）。Noneなら何もしない]
+    #   戻り値: [なし。必要なら表示位置を動かす]
+    # }
+    def scroll_cursor_into_view(self, bounds):
+        if bounds is None:
+            return
+        try:
+            region = [float(value) for value in str(self.canvas.cget("scrollregion")).split()]
+        except ValueError:
+            return
+        if len(region) != 4:
+            return
+        left, top, right, bottom = bounds
+        offset_x = scroll_offset(
+            left, right, self.canvas.canvasx(0), self.canvas.canvasx(self.canvas.winfo_width())
+        )
+        offset_y = scroll_offset(
+            top, bottom, self.canvas.canvasy(0), self.canvas.canvasy(self.canvas.winfo_height())
+        )
+        if offset_x is not None and region[2] > 0:
+            self.canvas.xview_moveto(max(0.0, offset_x) / region[2])
+        if offset_y is not None and region[3] > 0:
+            self.canvas.yview_moveto(max(0.0, offset_y) / region[3])
 
     # {
     #   責務: [activate_eyedropper: スポイトツールを選択する]
@@ -1603,6 +1760,7 @@ class PixelEditor:
         self.canvas.create_image(*origin, anchor="nw", image=self.photo, tags="artwork")
         self.canvas.tag_lower("artwork")
         self.canvas.image = self.photo
+        self.draw_cursor()
 
     # {
     #   責務: [import_image: 画像ファイルを選んで作品へ読み込む]

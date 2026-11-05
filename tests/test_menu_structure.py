@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
+from canvas_cursor import CanvasCursor
 from dot_editor import (
     CELL_MENU_ACTIONS,
     KEY_BINDINGS,
@@ -152,7 +153,20 @@ class MenuStructureTests(unittest.TestCase):
         editor.initialize_canvas_input()
         self.assertEqual(
             sorted(events),
-            sorted(["<Button-1>", "<B1-Motion>", "<ButtonPress-2>", "<B2-Motion>"]),
+            sorted(
+                [
+                    "<Button-1>",
+                    "<B1-Motion>",
+                    "<ButtonPress-2>",
+                    "<B2-Motion>",
+                    "<Left>",
+                    "<Right>",
+                    "<Up>",
+                    "<Down>",
+                    "<Return>",
+                    "<Escape>",
+                ]
+            ),
         )
         self.assertIn("self.initialize_canvas_input()", inspect.getsource(PixelEditor.__init__))
 
@@ -269,6 +283,57 @@ class MenuStructureTests(unittest.TestCase):
         direct = re.findall(r"(?:simpledialog|filedialog|messagebox)\.(?:ask|show)\w*\(", source)
         direct += re.findall(r"(?<!run_dialog\()\baskcolor\(", source)
         self.assertEqual(direct, [])
+
+    # {
+    #   責務: [test_arrow_keys_move_selected_cell_and_redraw: 矢印キーが選択セルを動かし枠を描き直すことを検証する]
+    #   処理: [
+    #     1: 偽のキャンバスと3x2の作品を持つ編集部を作る
+    #     2: 初回の矢印で左上、続く移動で端に止まることを確認する
+    #     3: 分割済みセルでEnterを押すと子セルの枠になり、Escで戻ることを確認する
+    #   ]
+    #   引数: [self: テスト対象のMenuStructureTestsケース]
+    #   戻り値: [なし、移動や枠の描画が誤っていればassertionで失敗する]
+    # }
+    def test_arrow_keys_move_selected_cell_and_redraw(self):
+        rectangles = []
+        canvas = SimpleNamespace(
+            delete=lambda tag: rectangles.clear(),
+            create_rectangle=lambda *box, **options: rectangles.append(box),
+            tag_raise=lambda tag: None,
+            cget=lambda name: "0 0 300 200",
+            canvasx=lambda value: value,
+            canvasy=lambda value: value,
+            winfo_width=lambda: 300,
+            winfo_height=lambda: 200,
+            xview_moveto=lambda fraction: None,
+            yview_moveto=lambda fraction: None,
+        )
+        stub = type(
+            "Stub",
+            (PixelEditor,),
+            {"commands": SimpleNamespace(is_split=lambda x, y: (x, y) == (1, 0))},
+        )
+        editor = stub.__new__(stub)
+        editor.canvas = canvas
+        editor.cursor = CanvasCursor()
+        editor.selected_cell = None
+        editor.num_pixels_x, editor.num_pixels_y = 3, 2
+        editor.canvas_width, editor.canvas_height, editor.zoom_factor = 300, 200, 1.0
+        editor.viewport_size = lambda: (300, 200)
+        self.assertEqual(editor.move_cursor(1, 0), "break")
+        self.assertEqual(editor.selected_cell, (0, 0))
+        editor.move_cursor(1, 0)
+        editor.move_cursor(1, 0)
+        editor.move_cursor(1, 0)
+        self.assertEqual(editor.selected_cell, (2, 0))
+        editor.move_cursor(-1, 0)
+        self.assertEqual(editor.selected_cell, (1, 0))
+        editor.enter_child_cell()
+        self.assertEqual(editor.cursor.child, (0, 0))
+        self.assertEqual(rectangles[0], (100.0, 0.0, 150.0, 50.0))
+        editor.leave_child_cell()
+        self.assertIsNone(editor.cursor.child)
+        self.assertEqual(rectangles[0], (100.0, 0.0, 200.0, 100.0))
 
 
 if __name__ == "__main__":
