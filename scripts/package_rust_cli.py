@@ -251,7 +251,12 @@ def check_bundled_catalog(unpacked: Path, suffix: str) -> None:
         )
     if shown.returncode != 0 or shown.stderr or helped.returncode != 0:
         raise SystemExit("the extracted executable cannot print its catalog or help without Python")
-    live = json.loads(shown.stdout)
+    try:
+        live = json.loads(shown.stdout)
+    except ValueError as error:
+        raise SystemExit(
+            f"the executable printed invalid JSON for --commands-json: {error}"
+        ) from error
     bundled_dir = unpacked / "docs" / "cli" / "rust"
     bundled = json.loads((bundled_dir / "commands.json").read_text(encoding="utf-8"))
     if bundled != live:
