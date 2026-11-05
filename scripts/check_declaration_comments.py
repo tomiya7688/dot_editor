@@ -293,6 +293,7 @@ def default_paths():
         ROOT / "tests" / "test_mouse_stroke.py",
         ROOT / "tests" / "test_python_command_catalog.py",
         ROOT / "tests" / "test_help_content.py",
+        ROOT / "tests" / "test_toolbar.py",
         ROOT / "tests" / "test_recent_files.py",
         ROOT / "tests" / "test_command_catalog.py",
         ROOT / "tests" / "test_package_rust_cli.py",
