@@ -5,6 +5,7 @@ from tkinter.colorchooser import askcolor
 
 from PIL import Image, ImageTk
 
+import help_content
 from canvas_cursor import CanvasCursor, cell_bounds, scroll_offset
 from stroke import StrokeSession
 from pixel_backend import PixelCanvas
@@ -28,6 +29,10 @@ KEY_BINDINGS = (
     ("Ctrl+Z", "元に戻す"),
     ("Ctrl+Y", "やり直す"),
     ("Ctrl+ホイール", "拡大・縮小"),
+    ("矢印キー", "キャンバスでセルカーソルを動かす"),
+    ("Space", "カーソル位置にツールを適用（ブラシと消しゴムは押している間、動かした経路を描く）"),
+    ("Enter", "分割済みセルの子セルのモードに入る"),
+    ("Esc", "子セルのモードを抜ける"),
 )
 
 
@@ -143,6 +148,16 @@ def menu_spec():
                 ("command", "解像度アップ", "U", "upscale_resolution"),
                 ("command", "ズームイン", "I", "zoom_in"),
                 ("command", "ズームアウト", "O", "zoom_out"),
+            ),
+        ),
+        (
+            "ヘルプ (H)",
+            "H",
+            (
+                ("command", "基本操作", "B", "help_basic"),
+                ("command", "キーボード", "K", "help_keyboard"),
+                ("command", "CLIコマンド表", "C", "help_commands"),
+                ("command", "バージョン情報", "V", "help_about"),
             ),
         ),
     )
@@ -1661,6 +1676,92 @@ class PixelEditor:
             return
         for x, y in self.stroke.extend((self.cursor.x, self.cursor.y)):
             self.apply_tool_at(x, y, None)
+
+    # {
+    #   責務: [help_basic: 基本操作のヘルプを開く]
+    #   処理: [基本操作の文章を読み取り専用の窓に表示する]
+    #   引数: []
+    #   戻り値: [なし。ヘルプ窓を開く]
+    # }
+    def help_basic(self):
+        self.show_help("基本操作", help_content.basic_text())
+
+    # {
+    #   責務: [help_keyboard: キーボード操作のヘルプを開く]
+    #   処理: [キー割当表から作った文章を表示する]
+    #   引数: []
+    #   戻り値: [なし。ヘルプ窓を開く]
+    # }
+    def help_keyboard(self):
+        self.show_help("キーボード", help_content.keyboard_text(KEY_BINDINGS))
+
+    # {
+    #   責務: [help_commands: CLIコマンド表のヘルプを開く]
+    #   処理: [この版のCLI定義から作った文章を表示する。作れなければ理由を表示する]
+    #   引数: []
+    #   戻り値: [なし。ヘルプ窓を開く]
+    # }
+    def help_commands(self):
+        self.show_help("CLIコマンド表", help_content.load_commands_text())
+
+    # {
+    #   責務: [help_about: バージョン情報を開く]
+    #   処理: [版を求めて文章を表示する]
+    #   引数: []
+    #   戻り値: [なし。ヘルプ窓を開く]
+    # }
+    def help_about(self):
+        from command_catalog import cli_version
+
+        self.show_help("バージョン情報", help_content.about_text(cli_version()))
+
+    # {
+    #   責務: [show_help: 読み取り専用のヘルプ窓を開く]
+    #   処理: [
+    #     1: 開く前のフォーカス要素を保存し、前のヘルプ窓があれば閉じる
+    #     2: 文章とスクロールバーの付いた読み取り専用の窓を作る
+    #     3: Escまたは閉じるで保存した要素へフォーカスを戻す
+    #   ]
+    #   引数: [title: 窓の題名, text: 表示する文章]
+    #   戻り値: [なし。作品・履歴・保存状態は変えない]
+    # }
+    def show_help(self, title, text):
+        try:
+            saved = self.master.focus_get()
+        except (KeyError, tk.TclError):
+            saved = None
+        previous = getattr(self, "help_window", None)
+        if previous is not None and widget_exists(previous):
+            previous.destroy()
+        window = tk.Toplevel(self.master)
+        window.title(title)
+        window.transient(self.master)
+        scrollbar = tk.Scrollbar(window, orient="vertical")
+        body = tk.Text(
+            window, wrap="word", width=88, height=30, padx=10, pady=8, yscrollcommand=scrollbar.set
+        )
+        scrollbar.configure(command=body.yview)
+        scrollbar.pack(side="right", fill="y")
+        body.pack(side="left", fill="both", expand=True)
+        body.insert("1.0", text)
+        body.configure(state="disabled")
+        window.bind("<Escape>", lambda event: self.close_help(saved))
+        window.protocol("WM_DELETE_WINDOW", lambda: self.close_help(saved))
+        self.help_window = window
+        body.focus_set()
+
+    # {
+    #   責務: [close_help: ヘルプ窓を閉じ、開く前のフォーカスへ戻す]
+    #   処理: [窓を壊し、保存した要素が使えればフォーカスを戻す]
+    #   引数: [saved: ヘルプを開く前にフォーカスのあった要素]
+    #   戻り値: [なし]
+    # }
+    def close_help(self, saved):
+        window = getattr(self, "help_window", None)
+        self.help_window = None
+        if window is not None and widget_exists(window):
+            window.destroy()
+        self.restore_focus(saved)
 
     # {
     #   責務: [on_canvas_press: キャンバスにフォーカスを移してから通常の描画処理を行う]

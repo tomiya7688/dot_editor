@@ -37,7 +37,7 @@ class MenuStructureTests(unittest.TestCase):
         menus = menu_spec()
         keys = [access_key.casefold() for _, access_key, _ in menus]
         self.assertEqual(len(keys), len(set(keys)))
-        self.assertEqual(len(menus), 6)
+        self.assertEqual(len(menus), 7)
         for label, access_key, _ in menus:
             self.assertIn(access_key.casefold(), label.casefold())
 
