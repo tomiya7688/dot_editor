@@ -259,6 +259,7 @@ def default_paths():
         ROOT / "src" / "stroke.py",
         ROOT / "src" / "command_catalog.py",
         ROOT / "scripts" / "render_command_catalog.py",
+        ROOT / "scripts" / "package_rust_cli.py",
         ROOT / "src" / "pixel_commands.py",
         ROOT / "src" / "pixel_cli.py",
         ROOT / "scripts" / "test_rust_json_compat.py",
@@ -287,6 +288,7 @@ def default_paths():
         ROOT / "tests" / "test_stroke.py",
         ROOT / "tests" / "test_python_command_catalog.py",
         ROOT / "tests" / "test_command_catalog.py",
+        ROOT / "tests" / "test_package_rust_cli.py",
         ROOT / "tests" / "test_keyboard_stroke_wiring.py",
     ]
 
