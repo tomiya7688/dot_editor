@@ -6,6 +6,7 @@ from tkinter.colorchooser import askcolor
 from PIL import Image, ImageTk
 
 from canvas_cursor import CanvasCursor, cell_bounds, scroll_offset
+from stroke import StrokeSession
 from pixel_backend import PixelCanvas
 from pixel_commands import PixelCommandAPI
 from pixel_layers import LayeredPixelCanvas
@@ -197,6 +198,10 @@ class PixelEditor:
         self.current_color = (255, 255, 255)
         self.selected_cell = None
         self.cursor = CanvasCursor()
+        self.stroke = StrokeSession()
+        self.release_job = None
+        self.transaction_before = None
+        self.transaction_changed = False
         self.tool = "brush"
         self.palette_colors = [
             (255, 255, 255),
@@ -245,11 +250,16 @@ class PixelEditor:
         self.canvas.bind("<Button-1>", self.on_canvas_press)
         for key, step in (("Left", (-1, 0)), ("Right", (1, 0)), ("Up", (0, -1)), ("Down", (0, 1))):
             self.canvas.bind(f"<{key}>", lambda event, step=step: self.move_cursor(*step))
+        self.canvas.bind("<KeyPress-space>", self.on_space_down)
+        self.canvas.bind("<KeyRelease-space>", self.on_space_up)
+        self.canvas.bind("<FocusOut>", self.cancel_stroke)
         self.canvas.bind("<Return>", lambda event: self.enter_child_cell())
         self.canvas.bind("<Escape>", lambda event: self.leave_child_cell())
         self.canvas.bind("<B1-Motion>", self.paint_pixel)
         self.canvas.bind("<ButtonPress-2>", self.begin_pan)
         self.canvas.bind("<B2-Motion>", self.pan_canvas)
+
+    RELEASE_CONFIRM_MS = 30
 
     # {
     #   責務: [access_label: メニュー表示名へアクセスキーと下線位置を反映する]
@@ -956,6 +966,7 @@ class PixelEditor:
     #   戻り値: [ダイアログの戻り値]
     # }
     def run_dialog(self, dialog, *args, **kwargs):
+        self.cancel_stroke()
         master = getattr(self, "master", None)
         if master is None:
             return dialog(*args, **kwargs)
@@ -1057,6 +1068,17 @@ class PixelEditor:
     #   戻り値: [作品が変化した場合はTrue、それ以外はFalse]
     # }
     def perform_edit(self, command, *args, **kwargs):
+        if getattr(self, "transaction_before", None) is not None:
+            try:
+                changed = command(*args, **kwargs)
+            except (ValueError, IndexError, KeyError, OSError) as error:
+                self.report_error(error)
+                return False
+            if changed:
+                self.transaction_changed = True
+                self.refresh_composite()
+                self.update_canvas()
+            return bool(changed)
         before = self.make_snapshot()
         try:
             changed = command(*args, **kwargs)
@@ -1294,6 +1316,7 @@ class PixelEditor:
         shape = self.backend.resolution if size is None else resolution(size, height)
         self.backend = PixelCommandAPI.new(*shape, layered=True).canvas
         self.num_pixels_x, self.num_pixels_y = shape
+        self.cancel_stroke()
         self.selected_cell = None
         self.history.clear()
         self.future.clear()
@@ -1490,6 +1513,19 @@ class PixelEditor:
         y = int(image_y * self.num_pixels_y / self.canvas_height)
         self.select_cell(x, y)
         child = self._child_coordinate(x, y, image_x, image_y)
+        self.apply_tool_at(x, y, child)
+
+    # {
+    #   責務: [apply_tool_at: 現在のツールを指定セルまたは子セルへ適用する]
+    #   処理: [
+    #     1: スポイトは色を読み取り、ブラシへ戻す
+    #     2: 塗りつぶしは塗って、ブラシへ戻す
+    #     3: 消しゴムとブラシは細部の方針に従って編集する
+    #   ]
+    #   引数: [x: 横の論理セル, y: 縦の論理セル, child: 子セル(cx, cy)またはNone]
+    #   戻り値: [なし。選択色または作品データと表示を更新する]
+    # }
+    def apply_tool_at(self, x, y, child):
         if self.tool == "picker":
             self.current_color = self.commands.sample(x, y, child=child)[:3]
             self.set_tool("brush")
@@ -1511,6 +1547,120 @@ class PixelEditor:
                     else {"color": color, "child": child, "detail_policy": policy}
                 ),
             )
+
+    # {
+    #   責務: [begin_edit_transaction: 複数の編集を1回の取り消しにまとめ始める]
+    #   処理: [すでに開始していなければ、開始前の状態を保存して変更なしにする]
+    #   引数: []
+    #   戻り値: [なし]
+    # }
+    def begin_edit_transaction(self):
+        if getattr(self, "transaction_before", None) is None:
+            self.transaction_before = self.make_snapshot()
+            self.transaction_changed = False
+
+    # {
+    #   責務: [end_edit_transaction: まとめた編集を、変更があれば1件の履歴にして終える]
+    #   処理: [
+    #     1: 開始していなければ何もしない
+    #     2: 変更があれば開始前の状態を1件だけ履歴へ積み、やり直し履歴を消す
+    #     3: 一覧と表示を現在の作品に合わせる
+    #   ]
+    #   引数: []
+    #   戻り値: [なし。履歴と表示を更新する]
+    # }
+    def end_edit_transaction(self):
+        before = getattr(self, "transaction_before", None)
+        if before is None:
+            return
+        changed = self.transaction_changed
+        self.transaction_before = None
+        self.transaction_changed = False
+        if changed:
+            self.history.append(before)
+            del self.history[:-100]
+            self.future.clear()
+            self.refresh_layer_list()
+            self.update_canvas_size()
+
+    # {
+    #   責務: [on_space_down: Spaceでツールを適用し、ブラシと消しゴムはストロークを始める]
+    #   処理: [
+    #     1: キーリピートによる再押下は、離したとみなす確認を取り消すだけにする
+    #     2: 選択セルがなければ左上から始め、現在のセルまたは子セルへ適用する
+    #     3: ブラシと消しゴムは編集を1回の取り消しにまとめる
+    #   ]
+    #   引数: [event: Tkのキーイベント]
+    #   戻り値: ["break"。Tkの既定処理へ渡さない]
+    # }
+    def on_space_down(self, event=None):
+        job = getattr(self, "release_job", None)
+        if job is not None:
+            self.master.after_cancel(job)
+            self.release_job = None
+        if self.stroke.active:
+            return "break"
+        if self.selected_cell is None:
+            self.select_cell(0, 0)
+        self.cursor.place_keeping_child(*self.selected_cell)
+        (cell,) = self.stroke.begin(self.selected_cell)
+        if self.tool in ("brush", "eraser"):
+            self.begin_edit_transaction()
+        self.apply_tool_at(*cell, self.cursor.child)
+        return "break"
+
+    # {
+    #   責務: [on_space_up: Spaceを離した可能性を、短い確認時間の後に確定する]
+    #   処理: [すぐ確定せず、同じキーが再び押されなければ終了する予約をする]
+    #   引数: [event: Tkのキーイベント]
+    #   戻り値: ["break"。Tkの既定処理へ渡さない]
+    # }
+    def on_space_up(self, event=None):
+        if self.stroke.active and getattr(self, "release_job", None) is None:
+            self.release_job = self.master.after(self.RELEASE_CONFIRM_MS, self.cancel_stroke)
+        return "break"
+
+    # {
+    #   責務: [cancel_stroke: ストロークを終え、まとめた編集を確定する]
+    #   処理: [
+    #     1: 予約中の確認時間を取り消す
+    #     2: ストロークの状態を解除する
+    #     3: 描いた分を1回の取り消しとして確定する
+    #   ]
+    #   引数: [event: Tkのイベント。使わない]
+    #   戻り値: [なし。ストローク状態と履歴を更新する]
+    # }
+    def cancel_stroke(self, event=None):
+        job = getattr(self, "release_job", None)
+        if job is not None:
+            self.release_job = None
+            try:
+                self.master.after_cancel(job)
+            except tk.TclError:
+                pass
+        stroke = getattr(self, "stroke", None)
+        if stroke is not None:
+            stroke.end()
+        self.end_edit_transaction()
+
+    # {
+    #   責務: [extend_stroke: ストローク中にカーソルが動いた先まで描く]
+    #   処理: [
+    #     1: ブラシと消しゴムのストローク中でなければ何もしない
+    #     2: 親セルでは前のセルから経路を補間し、子セルでは現在の子セルだけを描く
+    #   ]
+    #   引数: []
+    #   戻り値: [なし。作品と表示を更新する]
+    # }
+    def extend_stroke(self):
+        if not self.stroke.active or self.tool not in ("brush", "eraser"):
+            return
+        if self.cursor.child is not None:
+            self.stroke.last = (self.cursor.x, self.cursor.y)
+            self.apply_tool_at(self.cursor.x, self.cursor.y, self.cursor.child)
+            return
+        for x, y in self.stroke.extend((self.cursor.x, self.cursor.y)):
+            self.apply_tool_at(x, y, None)
 
     # {
     #   責務: [on_canvas_press: キャンバスにフォーカスを移してから通常の描画処理を行う]
@@ -1559,6 +1709,7 @@ class PixelEditor:
             self.cursor.place_keeping_child(*self.selected_cell)
             self.cursor.move(dx, dy, self.num_pixels_x, self.num_pixels_y)
             self.selected_cell = (self.cursor.x, self.cursor.y)
+        self.extend_stroke()
         self.scroll_cursor_into_view(self.draw_cursor())
         return "break"
 
@@ -1724,6 +1875,7 @@ class PixelEditor:
     #   戻り値: [なし。履歴がない場合は何もしない]
     # }
     def undo(self):
+        self.cancel_stroke()
         if self.history:
             self.future.append(self.make_snapshot())
             self.restore_snapshot(self.history.pop())
@@ -1735,6 +1887,7 @@ class PixelEditor:
     #   戻り値: [なし。履歴がない場合は何もしない]
     # }
     def redo(self):
+        self.cancel_stroke()
         if self.future:
             self.history.append(self.make_snapshot())
             self.restore_snapshot(self.future.pop())
