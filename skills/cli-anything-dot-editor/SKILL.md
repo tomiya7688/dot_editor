@@ -22,6 +22,7 @@ description: Hyper Dot Editorのドット絵プロジェクトを、画面を使
 | `--dry-run` | ファイルを保存・書き出さずに、結果だけを評価します。 |
 | `--if-revision REV` | `status`の`result.revision`と同じ値のときだけ保存します。違えば`revision_conflict`で何も保存しません。 |
 | `--lock-timeout-ms N` | 同じ作品のロックを待つ最長時間（0〜60000、既定5000ミリ秒）。超えると`project_busy`。 |
+| `--commands-json` | 実装済みの全コマンドと引数を、機械可読なJSON（schema v1）で表示します。他の引数とは併用できません。 |
 | `-h`, `--help` | ヘルプを表示します。`pixel-cli pixel paint --help`のように、コマンドごとの説明も出ます。 |
 | `-V`, `--version` | バージョンを表示します（`--json`と併用するとJSONで返します）。 |
 | 標準出力 / 標準エラー | 結果は標準出力、説明とエラーは標準エラーです。 |

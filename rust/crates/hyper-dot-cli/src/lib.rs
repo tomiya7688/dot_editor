@@ -8,7 +8,9 @@
 #![forbid(unsafe_code)]
 
 mod canvas_commands;
+mod catalog;
 mod cli_error;
+mod command_docs;
 mod command_input;
 mod command_spec;
 mod command_table;

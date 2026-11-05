@@ -6,10 +6,11 @@ use std::time::Duration;
 use hyper_dot_core::layered_canvas::LayeredCanvas;
 use serde_json::{Value, json};
 
+use crate::catalog;
 use crate::cli_error::CliError;
 use crate::command_spec::{EditHandler, ExportPlan, Handler};
 use crate::command_table::COMMANDS;
-use crate::global_options::GlobalOptions;
+use crate::global_options::{DEFAULT_LOCK_TIMEOUT_MS, GlobalOptions};
 use crate::help_text;
 use crate::parsed_command::ParsedCommand;
 use crate::project_file::{self, ProjectLock, Snapshot};
@@ -350,6 +351,33 @@ fn show_help(words: &[String]) -> Outcome {
 }
 
 /// {
+///   責務: [show_catalog: コマンド表をJSONで表示する]
+///   処理: [
+///     1: 他の引数が一緒に指定されていれば、黙って捨てずに使い方の誤りにする
+///     2: 実行ファイル自身のコマンド表を、JSON1個とLFで返す
+///   ]
+///   引数: [
+///     options: 共通オプション
+///     words: 共通オプションを除いた語
+///   ]
+///   戻り値: [終了値0の出力、または使い方の誤り]
+/// }
+fn show_catalog(options: &GlobalOptions, words: &[String]) -> Outcome {
+    let conflicting = options.project.is_some()
+        || options.dry_run
+        || options.help
+        || options.version
+        || options.if_revision.is_some()
+        || options.lock_timeout_ms != DEFAULT_LOCK_TIMEOUT_MS
+        || !words.is_empty();
+    if conflicting {
+        let error = CliError::usage("--commands-json cannot be combined with other arguments");
+        return report::failure(options.json, UNRESOLVED_OPERATION, &error);
+    }
+    report::text(catalog::render())
+}
+
+/// {
 ///   責務: [show_version: バージョンを表示する]
 ///   処理: [
 ///     1: --jsonなら結果のJSON、そうでなければ1行の文章にする
@@ -386,6 +414,9 @@ pub fn run(arguments: &[String]) -> Outcome {
         Ok(parsed) => parsed,
         Err(error) => return report::failure(json_hint, UNRESOLVED_OPERATION, &error),
     };
+    if options.commands_json {
+        return show_catalog(&options, &words);
+    }
     if options.version {
         return show_version(options.json);
     }

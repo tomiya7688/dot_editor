@@ -23,7 +23,7 @@ rust/target/release/pixel-cli --json -p art.json export render -o art.png
 
 **現在のRust CLI**は`--help`に全コマンドと共通オプション、`pixel-cli pixel paint --help`等に個別オプションの説明を表示します。実装・引数の正本は`command_table.rs`で、`help_text.rs`がそこから生成します。Python CLIは別の`argparse`文法を持つため、実行例と説明表でRust版と区別します。
 
-**目標・未実装（[#66](https://github.com/tomiya7688/dot_editor/issues/66)）**：実行したCLI自身のコマンド一覧をJSONで出す読取専用入口（案：`--commands-json`）を追加し、同じ定義から`COMMANDS.md`と`commands.json`を生成します。Windows GUI+Python CLI ZIP、Python wheel/sdist、将来のRust OS別アーカイブには、それぞれ**同梱されたCLI実装と版の一致する表**が自動的に入ります。最終配布物を展開して表・JSON・ヘルプを照合し、漏れや旧版があれば配布を停止します。署名・attestation要件は引き続き適用します。
+**一部実装（[#66](https://github.com/tomiya7688/dot_editor/issues/66)）**：Rust CLIは`pixel-cli --commands-json`で、実行したCLI自身の全コマンド・引数・日本語説明・使用例をJSON（schema v1）で出します（他の引数とは併用できず、使用すると終了値2）。`python scripts/render_command_catalog.py <実行ファイル> --out <フォルダ>`が、そのJSONから`COMMANDS.md`と`commands.json`を決定的に生成し、CIのRust Coreで実バイナリに対して実行します。**未実装**: Python CLIのカタログ、Windows GUI+Python CLI ZIP・Python wheel/sdist・Rust OS別アーカイブへの同梱と、最終配布物を展開しての照合です。署名・attestation要件は引き続き適用します。
 
 設計の生成/同梱経路は[コマンドカタログ設計](design/command-reference-delivery.md)に分割しています。操作表や将来の新オプションを、このv1の「実装済みコマンド」の一覧に先行記載しません。
 
