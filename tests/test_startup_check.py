@@ -49,6 +49,12 @@ class StartupCheckTests(unittest.TestCase):
         with mock.patch("builtins.print"):
             self.assertEqual(startup_check.ask_yes_no("?", lambda _prompt: next(answers)), "y")
 
+        # {
+        #   責務: [at_eof: 入力が尽きた状態を再現するため、常にEOFErrorを起こす]
+        #   処理: [1: EOFErrorを送出する]
+        #   引数: [_prompt: 使わない質問文]
+        #   戻り値: [なし（常に例外）]
+        # }
         def at_eof(_prompt):
             raise EOFError
 
