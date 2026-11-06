@@ -22,6 +22,7 @@ python scripts/check_declaration_comments.py
 python scripts/check_declaration_comments.py --changed-base origin/main
 python scripts/evaluate.py
 python -m unittest discover -s tests
+python scripts/measure_gui_startup.py --runs 5   # GUI起動時間とメモリ(#67)。表示環境がなければ終了値2=未実行
 cargo fmt --all --manifest-path rust/Cargo.toml -- --check
 cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --all-features -- -D warnings
 cargo test --manifest-path rust/Cargo.toml --workspace
