@@ -1,4 +1,4 @@
-"""Measure GUI startup time and peak memory by launching PixelEditor in fresh processes (Issue #67)."""
+"""Measure GUI startup time (window hidden, until first update) and peak memory in fresh processes (Issue #67)."""
 
 from __future__ import annotations
 
@@ -37,12 +37,13 @@ try:
     k = ctypes.windll.kernel32
     k.GetCurrentProcess.restype = wintypes.HANDLE
     ctypes.windll.psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(C), wintypes.DWORD]
-    ctypes.windll.psapi.GetProcessMemoryInfo(k.GetCurrentProcess(), ctypes.byref(c), c.cb)
-    peak = c.PeakWorkingSetSize
+    ok = ctypes.windll.psapi.GetProcessMemoryInfo(k.GetCurrentProcess(), ctypes.byref(c), c.cb)
+    peak = c.PeakWorkingSetSize if ok else 0
 except Exception:
     try:
         import resource
-        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        peak = rss if sys.platform == "darwin" else rss * 1024
     except Exception:
         peak = 0
 print(json.dumps({"seconds": elapsed, "peak_bytes": peak}))
@@ -70,8 +71,16 @@ def run_once(timeout: float) -> dict | None:
     except subprocess.TimeoutExpired:
         return None
     if done.returncode != 0 or not done.stdout.strip():
+        print(
+            f"[measure] child failed (exit {done.returncode}): {done.stderr.strip()[-300:]}",
+            file=sys.stderr,
+        )
         return None
-    return json.loads(done.stdout.strip().splitlines()[-1])
+    try:
+        return json.loads(done.stdout.strip().splitlines()[-1])
+    except json.JSONDecodeError:
+        print("[measure] child output was not JSON", file=sys.stderr)
+        return None
 
 
 # {
@@ -93,21 +102,25 @@ def main(argv: list[str] | None = None) -> int:
     for _ in range(max(1, args.runs)):
         measured = run_once(args.timeout)
         if measured is None:
-            break  # 1回でも起動できなければ表示環境がないとみなし、残りを待たない
+            if results:
+                continue  # 測定済みなら一時的な失敗として飛ばす
+            break  # 最初の1回が起動できなければ表示環境がないとみなし、残りを待たない
         results.append(measured)
     if not results:
         print("[measure] not run: GUI could not start (no display?)", file=sys.stderr)
         return 2
     seconds = [r["seconds"] for r in results]
-    mib = [r["peak_bytes"] / 1048576 for r in results]
+    mib = [
+        r["peak_bytes"] / 1048576 for r in results if r["peak_bytes"] > 0
+    ]  # 0は計測不能として除く
     print(
         json.dumps(
             {
                 "runs": len(results),
                 "seconds_median": round(statistics.median(seconds), 3),
                 "seconds_max": round(max(seconds), 3),
-                "peak_mib_median": round(statistics.median(mib), 1),
-                "peak_mib_max": round(max(mib), 1),
+                "peak_mib_median": round(statistics.median(mib), 1) if mib else None,
+                "peak_mib_max": round(max(mib), 1) if mib else None,
             }
         )
     )

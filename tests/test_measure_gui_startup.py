@@ -10,7 +10,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import measure_gui_startup  # noqa: E402
 
 
+# {
+#   責務: [MeasureGuiStartupTests: 起動測定スクリプトの集計と未実行判定を確かめる]
+#   フィールド: [unittest.TestCaseの検証状態のみ]
+# }
 class MeasureGuiStartupTests(unittest.TestCase):
+    # {
+    #   責務: [test_reports_median_and_max: 中央値と最大値が正しく出ることを確かめる]
+    #   処理: [1: 3件の測定値を与える, 2: JSON出力を検査する]
+    #   引数: [なし]
+    #   戻り値: [なし]
+    # }
     def test_reports_median_and_max(self):
         samples = [
             {"seconds": 1.0, "peak_bytes": 100 * 1048576},
@@ -29,6 +39,12 @@ class MeasureGuiStartupTests(unittest.TestCase):
         self.assertEqual(report["seconds_max"], 3.0)
         self.assertEqual(report["peak_mib_median"], 200.0)
 
+    # {
+    #   責務: [test_not_run_when_gui_cannot_start: 起動できない時に1回で諦め終了値2になることを確かめる]
+    #   処理: [1: run_onceをNoneにする, 2: 呼出し回数と終了値を検査する]
+    #   引数: [なし]
+    #   戻り値: [なし]
+    # }
     def test_not_run_when_gui_cannot_start(self):
         err = io.StringIO()
         with (
