@@ -98,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=60.0)
     args = parser.parse_args(argv)
+    if args.timeout <= 0:
+        parser.error("--timeout must be positive")
     results = []
     for _ in range(max(1, args.runs)):
         measured = run_once(args.timeout)

@@ -143,7 +143,7 @@ fn resolved(path: &Path) -> Option<PathBuf> {
 ///   処理: [
 ///     1: 存在しなければ安全とする
 ///     2: シンボリックリンクと通常でないもの（フォルダなど）を拒否する
-///     3: Unixでは、ハードリンクが複数あるファイルを拒否する
+///     3: UnixとWindowsでは、ハードリンクが複数あるファイル（Windowsはリンク数を調べられない場合も）を拒否する
 ///   ]
 ///   引数: [
 ///     path: 書き込み先のパス
@@ -577,6 +577,26 @@ mod tests {
     use super::{commit_outcome, sync_parent_directory};
 
     /// {
+    ///   責務: [RemoveOnDrop: テストが途中で失敗しても、自分が作った一時フォルダを片付ける]
+    ///   フィールド: [0: 削除する一時フォルダ]
+    /// }
+    #[cfg(any(unix, windows))]
+    struct RemoveOnDrop(std::path::PathBuf);
+
+    #[cfg(any(unix, windows))]
+    impl Drop for RemoveOnDrop {
+        /// {
+        ///   責務: [drop: 一時フォルダを消す。失敗しても無視する]
+        ///   処理: [1: remove_dir_allを呼ぶ]
+        ///   引数: [なし]
+        ///   戻り値: [なし]
+        /// }
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// {
     ///   責務: [failed_sync_after_replace_is_commit_uncertain: 置換後の同期の失敗が、再読込を促すcommit_uncertainになることを検証する]
     ///   処理: [
     ///     1: 同期の成功は成功になることを確認する
@@ -621,9 +641,15 @@ mod tests {
     #[cfg(any(unix, windows))]
     #[test]
     fn hard_linked_target_is_refused() {
+        // 実行ごとに一意な名前にし、他の実行の残りを再利用も削除もしない。
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let folder =
-            std::env::temp_dir().join(format!("hyper-dot-hardlink-{}", std::process::id()));
+            std::env::temp_dir().join(format!("hyper-dot-hardlink-{}-{nanos}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
+        let _cleanup = RemoveOnDrop(folder.clone());
         let original = folder.join("a.json");
         let linked = folder.join("b.json");
         std::fs::write(&original, b"{}").unwrap();
@@ -631,7 +657,6 @@ mod tests {
         std::fs::hard_link(&original, &linked).unwrap();
         let first = super::ensure_safe_target(&original).unwrap_err();
         let second = super::ensure_safe_target(&linked).unwrap_err();
-        std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(first.code, "unsafe_path");
         assert_eq!(second.code, "unsafe_path");
     }
