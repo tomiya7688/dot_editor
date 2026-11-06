@@ -21,3 +21,6 @@ path = "src/bin/cli-anything-dot-editor.rs"
 [dependencies]
 hyper-dot-core = { path = "../hyper-dot-core" }
 serde_json = "1.0"
+
+[target."cfg(windows)".dependencies]
+winapi-util = "0.1.11"
