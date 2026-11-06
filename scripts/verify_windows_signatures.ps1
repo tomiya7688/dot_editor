@@ -3,7 +3,10 @@ param(
     [string]$Directory,
 
     [ValidateRange(1, 3600)]
-    [int]$TimeoutSeconds = 300
+    [int]$TimeoutSeconds = 300,
+
+    # 指定すると、署名者証明書の名前(CN)がこの文字列と完全一致する場合だけ成功にする。
+    [string]$ExpectedPublisher = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,4 +21,8 @@ if (-not $IsWindows) {
 $PowerShell = Join-Path $PSHOME 'pwsh.exe'
 $Worker = Join-Path $PSScriptRoot 'verify_windows_signatures_worker.ps1'
 $WorkerArguments = @('-NoProfile', '-NonInteractive', '-File', $Worker, '-Directory', $Directory, '-DedicatedProcess')
+# 想定発行元は指定された場合だけ渡し、未指定なら従来どおり固定しない診断として動く。
+if ($ExpectedPublisher -ne '') {
+    $WorkerArguments += @('-ExpectedPublisher', $ExpectedPublisher)
+}
 Invoke-BoundedProcess -FilePath $PowerShell -Arguments $WorkerArguments -TimeoutSeconds $TimeoutSeconds

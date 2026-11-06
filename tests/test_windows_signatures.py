@@ -9,11 +9,15 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
+
+from tests.signature_job_guard import SignatureTestJob
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "verify_windows_signatures.ps1"
 WORKER = ROOT / "scripts" / "verify_windows_signatures_worker.ps1"
 BOUNDED_PROCESS = ROOT / "scripts" / "invoke_bounded_process.ps1"
+SIGNATURE_JOB = ROOT / "scripts" / "enter_signature_job.ps1"
 
 
 # {
@@ -458,6 +462,312 @@ class WindowsSignatureTests(unittest.TestCase):
                 kernel32.CloseHandle(process_handle)
 
     # {
+    #   責務: [assert_worker_lock_held: 試験用ワーカーが排他的にファイルを保持することを確認する]
+    #   処理: [1: Windows APIでファイルを開く, 2: 共有違反で拒否されることを確認する]
+    #   引数: [self: テストインスタンス, path: ロック対象]
+    #   戻り値: [なし]
+    # }
+    def assert_worker_lock_held(self, path):
+        # CRTが隠すWindowsエラーを直接取得し、権限不足との混同を避ける。
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateFileW.argtypes = [
+            ctypes.c_wchar_p,
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+        ]
+        kernel32.CreateFileW.restype = ctypes.c_void_p
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        handle = kernel32.CreateFileW(str(path), 0x80000000, 7, None, 3, 0, None)
+        if handle != ctypes.c_void_p(-1).value:
+            kernel32.CloseHandle(handle)
+            self.fail("Worker lock was not held")
+        self.assertEqual(ctypes.get_last_error(), 32, "Expected a Windows sharing violation")
+
+    # {
+    #   責務: [assert_worker_lock_released: 試験用ワーカーの排他ロック解放を確認する]
+    #   処理: [1: 期限付きでファイルを開く, 2: 期限を超えたら失敗する]
+    #   引数: [self: テストインスタンス, path: ロック対象]
+    #   戻り値: [なし]
+    # }
+    def assert_worker_lock_released(self, path):
+        # OSのハンドル解放が完了するまで短時間だけ待つ。
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                with path.open("rb"):
+                    return
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
+
+    # {
+    #   責務: [check_public_worker_cleanup: 公開入口のワーカー終了を検証する]
+    #   処理: [1: 試験用Jobの中で公開入口を実行する, 2: 指定した終了方法でワーカーの停止を確認する]
+    #   引数: [self: テストインスタンス, abort_before_publish: 準備完了通知前にJobを終了するか, skip_inner_job: 対象Jobの設定を省いて保護用Jobを検証するか]
+    #   戻り値: [なし]
+    # }
+    def check_public_worker_cleanup(
+        self, abort_before_publish, skip_inner_job=False, suppress_ready=False, ready_timeout=80
+    ):
+        # 入口の相対パス解決を保ちつつ、ワーカーだけを一時領域の試験用処理に置き換える。
+        scripts = self.directory / "scripts"
+        scripts.mkdir()
+        distribution = self.directory / "distribution"
+        distribution.mkdir()
+        shutil.copyfile(SCRIPT, scripts / SCRIPT.name)
+        shutil.copyfile(BOUNDED_PROCESS, scripts / BOUNDED_PROCESS.name)
+        shutil.copyfile(SIGNATURE_JOB, scripts / SIGNATURE_JOB.name)
+        lock_file = self.directory / "worker.lock"
+        ready_file = self.directory / "worker.ready"
+        published_file = self.directory / "worker.published"
+        # 排他利用前に読み取れることを確認し、権限不足と区別する。
+        lock_file.write_bytes(b"fixture")
+        self.assertEqual(lock_file.read_bytes(), b"fixture")
+        (scripts / WORKER.name).write_text(
+            "param($Directory, [switch]$DedicatedProcess)\n"
+            "$lock = [IO.File]::Open($env:DOT_EDITOR_WORKER_LOCK, 'Open', 'ReadWrite', 'None')\n"
+            "try {\n"
+            "  if ($env:DOT_EDITOR_SUPPRESS_READY -ne '1') { [IO.File]::WriteAllText($env:DOT_EDITOR_WORKER_READY, 'ready') }\n"
+            "  if ($env:DOT_EDITOR_ABORT_BEFORE_PUBLISH -eq '1') { Start-Sleep -Seconds 150 }\n"
+            "  [IO.File]::WriteAllText($env:DOT_EDITOR_WORKER_PUBLISHED, 'ready')\n"
+            "  Start-Sleep -Seconds 150\n"
+            "} finally { $lock.Dispose() }\n",
+            encoding="utf-8",
+        )
+        # 試験用Jobを先に作り、その配下で入口とワーカーを起動する。
+        wrapper = scripts / "test_wrapper.ps1"
+        entry_done = self.directory / "entry.done"
+        release_wrapper = self.directory / "wrapper.release"
+        start_wrapper = self.directory / "wrapper.start"
+        wrapper.write_text(
+            "$gate = [Diagnostics.Stopwatch]::StartNew()\n"
+            "while (-not [IO.File]::Exists($env:DOT_EDITOR_WRAPPER_START) -and $gate.Elapsed.TotalSeconds -lt 120) { Start-Sleep -Milliseconds 100 }\n"
+            "if (-not [IO.File]::Exists($env:DOT_EDITOR_WRAPPER_START)) { throw 'Test job assignment was not confirmed' }\n"
+            ". (Join-Path $PSScriptRoot 'enter_signature_job.ps1')\n"
+            "if ($env:DOT_EDITOR_SKIP_INNER_JOB -ne '1') { Enter-SignatureJob }\n"
+            "& (Join-Path $PSHOME 'pwsh.exe') -NoProfile -NonInteractive -File "
+            "(Join-Path $PSScriptRoot 'verify_windows_signatures.ps1') "
+            "-Directory $env:DOT_EDITOR_TEST_DIRECTORY -TimeoutSeconds 90\n"
+            "$result = $LASTEXITCODE\n"
+            "$pendingResult = $env:DOT_EDITOR_ENTRY_DONE + '.pending'\n"
+            "[IO.File]::WriteAllText($pendingResult, [string]$result)\n"
+            "[IO.File]::Move($pendingResult, $env:DOT_EDITOR_ENTRY_DONE)\n"
+            "$watch = [Diagnostics.Stopwatch]::StartNew()\n"
+            "while (-not [IO.File]::Exists($env:DOT_EDITOR_WRAPPER_RELEASE) -and $watch.Elapsed.TotalSeconds -lt 150) { Start-Sleep -Milliseconds 100 }\n"
+            "exit $result\n",
+            encoding="utf-8",
+        )
+        # 保護用Jobはテスト対象のJobとは別に保持し、割当完了までラッパーを待機させる。
+        guard = SignatureTestJob()
+        try:
+            process = subprocess.Popen(
+                [
+                    "pwsh",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-File",
+                    str(wrapper),
+                ],
+                env={
+                    **os.environ,
+                    "DOT_EDITOR_WORKER_LOCK": str(lock_file),
+                    "DOT_EDITOR_WORKER_READY": str(ready_file),
+                    "DOT_EDITOR_WORKER_PUBLISHED": str(published_file),
+                    "DOT_EDITOR_TEST_DIRECTORY": str(distribution),
+                    "DOT_EDITOR_ABORT_BEFORE_PUBLISH": "1" if abort_before_publish else "0",
+                    "DOT_EDITOR_SUPPRESS_READY": "1" if suppress_ready else "0",
+                    "DOT_EDITOR_SKIP_INNER_JOB": "1" if skip_inner_job else "0",
+                    "DOT_EDITOR_ENTRY_DONE": str(entry_done),
+                    "DOT_EDITOR_WRAPPER_RELEASE": str(release_wrapper),
+                    "DOT_EDITOR_WRAPPER_START": str(start_wrapper),
+                },
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        except BaseException as process_start_error:
+            try:
+                guard.close()
+            except OSError as cleanup_error:
+                raise process_start_error from cleanup_error
+            raise
+        # 試験用ワーカーが独占するファイルを用い、PIDやプロセスハンドルの移送を不要にする。
+        try:
+            # 子プロセスを起動する前に保護用Jobへ所属させる。
+            # WindowsのCPythonが保持する起動時ハンドルを使い、PID再取得を避ける。
+            try:
+                guard.assign(process._handle)
+            except OSError as assignment_error:
+                # 所属前のラッパーは保護Jobでは回収できないため、直接終了して待つ。
+                try:
+                    process.kill()
+                    process.wait(timeout=5)
+                except (OSError, subprocess.TimeoutExpired) as cleanup_error:
+                    raise cleanup_error from assignment_error
+                raise
+            start_wrapper.touch()
+            deadline = time.monotonic() + ready_timeout
+            expected_ready = ready_file if abort_before_publish else published_file
+            while (
+                not expected_ready.is_file()
+                and process.poll() is None
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.05)
+            if not expected_ready.is_file():
+                if process.poll() is None:
+                    process.kill()
+                stdout, stderr = process.communicate(timeout=5)
+                self.fail(f"Worker did not become ready: {stdout}\n{stderr}")
+            self.assert_worker_lock_held(lock_file)
+            if abort_before_publish:
+                # 準備完了通知の前にJob保持者を終了し、子孫停止を確認する。
+                process.kill()
+                if skip_inner_job:
+                    # 対象Jobがない場合は独立した保護用Jobで子孫を回収する。
+                    guard.close()
+            else:
+                # Jobを開いたまま入口の終了とワーカーの停止を別々に確認する。
+                entry_deadline = time.monotonic() + 120
+                while (
+                    not entry_done.is_file()
+                    and process.poll() is None
+                    and time.monotonic() < entry_deadline
+                ):
+                    time.sleep(0.1)
+                self.assertTrue(entry_done.is_file(), "Entry did not finish before the timeout")
+                self.assertNotEqual(int(entry_done.read_text("ascii")), 0)
+                self.assert_worker_lock_released(lock_file)
+                release_wrapper.touch()
+            stdout, stderr = process.communicate(timeout=120)
+            self.assertNotEqual(process.returncode, 0, stdout)
+            if not abort_before_publish:
+                self.assertIn("timed out after 90 second", stderr)
+            self.assert_worker_lock_released(lock_file)
+        finally:
+            active_error = sys.exc_info()[1]
+            cleanup_errors = []
+            try:
+                if process.poll() is None:
+                    release_wrapper.touch()
+                    # 通常の期限切れ処理に子を停止させる機会を与える。
+                    try:
+                        process.wait(timeout=95)
+                    except subprocess.TimeoutExpired:
+                        try:
+                            process.kill()
+                            process.wait(timeout=5)
+                        except (OSError, subprocess.TimeoutExpired) as cleanup_error:
+                            cleanup_errors.append(cleanup_error)
+            except OSError as cleanup_error:
+                cleanup_errors.append(cleanup_error)
+            finally:
+                try:
+                    # 対象Jobが壊れていても独立したJobで残った子孫を回収する。
+                    try:
+                        guard.close()
+                    except OSError as cleanup_error:
+                        cleanup_errors.append(cleanup_error)
+                    finally:
+                        if process.stdout is not None:
+                            try:
+                                process.stdout.close()
+                            except OSError as cleanup_error:
+                                cleanup_errors.append(cleanup_error)
+                        if process.stderr is not None:
+                            try:
+                                process.stderr.close()
+                            except OSError as cleanup_error:
+                                cleanup_errors.append(cleanup_error)
+                finally:
+                    try:
+                        self.assert_worker_lock_released(lock_file)
+                    except AssertionError as cleanup_error:
+                        cleanup_errors.append(cleanup_error)
+            if active_error is not None:
+                if cleanup_errors:
+                    raise active_error from cleanup_errors[0]
+                raise active_error
+            if cleanup_errors:
+                raise cleanup_errors[0]
+
+    # {
+    #   責務: [test_public_timeout_stops_worker: 公開入口の期限切れでワーカーを停止する]
+    #   処理: [1: 応答しないワーカーを起動する, 2: 期限切れと停止を確認する]
+    #   引数: [self: テストインスタンス]
+    #   戻り値: [なし]
+    # }
+    def test_public_timeout_stops_worker(self):
+        # 実際の公開入口に期限を渡す。
+        self.check_public_worker_cleanup(False)
+
+    # {
+    #   責務: [test_outer_job_stops_hung_worker: 試験用Jobの終了で待機中のワーカーを回収する]
+    #   処理: [1: 試験用ワーカーを待機させる, 2: Job保持者の終了とワーカーの停止を確認する]
+    #   引数: [self: テストインスタンス]
+    #   戻り値: [なし]
+    # }
+    def test_outer_job_stops_hung_worker(self):
+        # 排他的ロックの解放により、試験用ワーカーの停止を確認する。
+        self.check_public_worker_cleanup(True)
+
+    # {
+    #   責務: [test_guard_stops_worker_without_inner_job: 対象Jobがない場合も試験用の保護が子孫を回収する]
+    #   処理: [1: 対象Jobを省略してワーカーを待機させる, 2: 保護用Jobを閉じて停止を確認する]
+    #   引数: [self: テストインスタンス]
+    #   戻り値: [なし]
+    # }
+    def test_guard_stops_worker_without_inner_job(self):
+        # 対象Jobを使わない失敗経路で保護用Jobを検証する。
+        self.check_public_worker_cleanup(True, skip_inner_job=True)
+
+    # {
+    #   責務: [test_missing_ready_stops_worker: 準備通知がない場合に入口を停止する]
+    #   処理: [1: 通知を抑止して入口を起動する, 2: 期限後の停止とロック解放を確認する]
+    #   引数: [self: テストインスタンス]
+    #   戻り値: [なし]
+    # }
+    def test_missing_ready_stops_worker(self):
+        # 短い試験用期限で準備未完了の回収経路を通す。
+        with self.assertRaisesRegex(AssertionError, "Worker did not become ready"):
+            self.check_public_worker_cleanup(True, suppress_ready=True, ready_timeout=1)
+
+    # {
+    #   責務: [test_guard_assignment_failure_stops_wrapper: Job割当失敗を呼び出し元に伝える]
+    #   処理: [1: Job割当を失敗させる, 2: 例外を確認する]
+    #   引数: [self: テストインスタンス]
+    #   戻り値: [なし]
+    # }
+    def test_guard_assignment_failure_stops_wrapper(self):
+        # ゲート解放前の失敗を注入し、割当に失敗したまま子を起動しない。
+        original_wait = subprocess.Popen.wait
+        original_kill = subprocess.Popen.kill
+        with (
+            mock.patch.object(SignatureTestJob, "assign", side_effect=OSError("assignment failed")),
+            mock.patch.object(
+                subprocess.Popen, "wait", autospec=True, side_effect=original_wait
+            ) as wait,
+            mock.patch.object(
+                subprocess.Popen, "kill", autospec=True, side_effect=original_kill
+            ) as kill,
+        ):
+            with self.assertRaisesRegex(OSError, "assignment failed"):
+                self.check_public_worker_cleanup(True)
+        # ラッパーの終了と子の起動ゲートが未開放であることを確認する。
+        self.assertTrue(kill.called, "Wrapper termination was not requested")
+        self.assertTrue(wait.called, "Wrapper termination was not awaited")
+        self.assertIsNotNone(wait.call_args.args[0].poll())
+        self.assertFalse((self.directory / "wrapper.start").exists())
+        self.assertFalse((self.directory / "worker.ready").exists())
+
+    # {
     #   責務: [copy_signed_system_file: 署名付きの実ファイルを検査用に複製する]
     #   処理: [1: Windows標準ファイルの署名を確認する, 2: 一時領域に複製する]
     #   引数: [self: テストインスタンス]
@@ -520,6 +830,80 @@ class WindowsSignatureTests(unittest.TestCase):
         tampered = self.run_verifier()
         self.assertNotEqual(tampered.returncode, 0, tampered.stdout)
         self.assertIn("Invalid signature", tampered.stderr)
+
+    # {
+    #   責務: [run_pinned: 想定発行元を指定して子PowerShellで検査を実行する]
+    #   処理: [1: -ExpectedPublisherを引数として渡す, 2: 負荷の高い環境でも待てる上限で実行する]
+    #   引数: [self: テストインスタンス, publisher: 想定する署名者名]
+    #   戻り値: [終了値と標準出力・標準エラー]
+    # }
+    def run_pinned(self, publisher):
+        return subprocess.run(
+            [
+                "pwsh",
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                str(SCRIPT),
+                str(self.directory),
+                "-ExpectedPublisher",
+                publisher,
+                "-TimeoutSeconds",
+                "300",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=330,
+        )
+
+    # {
+    #   責務: [signer_name: 署名済みファイルの署名者名(CN)を実際に取得する]
+    #   処理: [1: 子PowerShellで署名者証明書の名前を読む, 2: 空なら失敗にする]
+    #   引数: [self: テストインスタンス, sample: 署名済みファイル]
+    #   戻り値: [署名者名]
+    # }
+    def signer_name(self, sample):
+        done = subprocess.run(
+            [
+                "pwsh",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "(Get-AuthenticodeSignature -LiteralPath $env:DOT_EDITOR_SIGNED_SAMPLE)"
+                ".SignerCertificate.GetNameInfo('SimpleName', $false)",
+            ],
+            env={**os.environ, "DOT_EDITOR_SIGNED_SAMPLE": str(sample)},
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+        )
+        name = done.stdout.strip()
+        self.assertTrue(name, done.stderr)
+        return name
+
+    # {
+    #   責務: [test_expected_publisher_matches: 想定発行元が一致すれば受け入れ、不一致や部分一致は拒否する]
+    #   処理: [
+    #     1: 署名済みの標準ファイルと実際の署名者名を取得する
+    #     2: 完全一致なら成功、別名・大文字小文字違い・部分一致なら失敗を確認する
+    #   ]
+    #   引数: [self: テストインスタンス]
+    #   戻り値: [なし。署名情報を利用できない場合はskip]
+    # }
+    def test_expected_publisher_matches(self):
+        sample = self.copy_signed_system_file()
+        name = self.signer_name(sample)
+        accepted = self.run_pinned(name)
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertIn(f"every publisher matched '{name}'", accepted.stdout)
+        for wrong in ("Tomiya7688", name.upper() if name.upper() != name else name.lower(), name[:-1]):
+            rejected = self.run_pinned(wrong)
+            self.assertNotEqual(rejected.returncode, 0, wrong)
+            self.assertIn("Unexpected publisher", rejected.stderr)
 
 
 if __name__ == "__main__":

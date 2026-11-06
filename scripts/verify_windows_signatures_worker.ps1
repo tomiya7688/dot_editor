@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Directory,
-    [switch]$DedicatedProcess
+    [switch]$DedicatedProcess,
+    [string]$ExpectedPublisher = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -119,6 +120,14 @@ try {
             $FailureCount++
             Write-Error -Message "Invalid signature or missing timestamp: $Executable ($($Signature.Status))" -ErrorAction Continue
         }
+        elseif ($ExpectedPublisher -ne '') {
+            # 想定発行元は大文字小文字を区別して完全一致を求める(部分一致や別名義を通さない)。
+            $Publisher = $Signature.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+            if ($Publisher -cne $ExpectedPublisher) {
+                $FailureCount++
+                Write-Error -Message "Unexpected publisher '$Publisher' (expected '$ExpectedPublisher'): $Executable" -ErrorAction Continue
+            }
+        }
     }
     if ($FailureCount -ne 0) {
         throw "Windows signature verification failed for $FailureCount file(s)."
@@ -156,4 +165,9 @@ finally {
     }
 }
 # 全ハンドルの解放が成功して初めて、対象拡張子と診断の限界を通知する。
-Write-Output "Validated Windows signatures and checked timestamp presence for $($InitialSnapshot.Count) EXE/DLL/PYD file(s); publishers are not pinned. Diagnostic only; distribution is not authorized."
+if ($ExpectedPublisher -ne '') {
+    Write-Output "Validated Windows signatures and checked timestamp presence for $($InitialSnapshot.Count) EXE/DLL/PYD file(s); every publisher matched '$ExpectedPublisher'. The RFC 3161 method and TOCTOU are not covered, so distribution is not authorized by this check alone."
+}
+else {
+    Write-Output "Validated Windows signatures and checked timestamp presence for $($InitialSnapshot.Count) EXE/DLL/PYD file(s); publishers are not pinned. Diagnostic only; distribution is not authorized."
+}
