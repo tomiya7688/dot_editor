@@ -410,7 +410,8 @@ fn write_temporary(path: &Path, bytes: &[u8]) -> Result<PathBuf, CliError> {
 ///   責務: [sync_parent_directory: 置換した名前を親フォルダに確定させるため、親フォルダを同期する]
 ///   処理: [
 ///     1: Unixでは親フォルダを開いてディスクへ同期する
-///     2: Windowsでは標準ライブラリにフォルダの同期がないため、何もしない（文書に未対応と記載）
+///     2: Windowsではフォルダを開いて同期を試みる。開けない・流せなくても成功として扱う（努力目標）
+///     3: それ以外のOSでは何もしない
 ///   ]
 ///   引数: [
 ///     path: 置換したファイルのパス
@@ -426,7 +427,27 @@ fn sync_parent_directory(path: &Path) -> std::io::Result<()> {
         };
         File::open(parent)?.sync_all()
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // フォルダのハンドルを開くにはFILE_FLAG_BACKUP_SEMANTICSが要る。
+        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+        let parent = match path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent,
+            _ => Path::new("."),
+        };
+        // 努力目標の同期: フォルダのハンドルを開けない・流せない環境（ネットワークドライブなど）があるため、
+        // 失敗してもcommit_uncertainにせず成功として扱う（保証範囲は文書に記載）。
+        if let Ok(folder) = OpenOptions::new()
+            .write(true)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(parent)
+        {
+            let _ = folder.sync_all();
+        }
+        Ok(())
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = path;
         Ok(())
