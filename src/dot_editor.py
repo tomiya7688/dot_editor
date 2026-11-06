@@ -1097,6 +1097,7 @@ class PixelEditor:
         self.num_pixels_x, self.num_pixels_y = self.backend.resolution
         self.refresh_layer_list()
         self.update_canvas_size()
+        self.refresh_title()
 
     # {
     #   責務: [perform_edit: 編集コマンドを実行し成功時だけ履歴へ記録する]
@@ -1623,6 +1624,7 @@ class PixelEditor:
             self.future.clear()
             self.refresh_layer_list()
             self.update_canvas_size()
+            self.refresh_title()
 
     # {
     #   責務: [on_space_down: Spaceでツールを適用し、ブラシと消しゴムはストロークを始める]
@@ -2019,6 +2021,7 @@ class PixelEditor:
         if self.history:
             self.future.append(self.make_snapshot())
             self.restore_snapshot(self.history.pop())
+        self.refresh_title(exact=True)
 
     # {
     #   責務: [redo: 取り消した編集を再適用する]
@@ -2031,6 +2034,7 @@ class PixelEditor:
         if self.future:
             self.history.append(self.make_snapshot())
             self.restore_snapshot(self.future.pop())
+        self.refresh_title(exact=True)
 
     # {
     #   責務: [update_canvas: 合成画像を倍率付きでキャンバスへ描画する]
@@ -2107,6 +2111,30 @@ class PixelEditor:
     # }
     def mark_saved(self):
         self.saved_snapshot = self.make_snapshot()
+        self.saved_history_length = len(self.history)
+        self.refresh_title()
+
+    # {
+    #   責務: [refresh_title: 未保存の変更の有無をウィンドウの題名の先頭の「*」で示す]
+    #   処理: [
+    #     1: 安価な目印（履歴が保存時と違う、やり直しがある、履歴が上限で入れ替わりうる）がなければ保存済みとする
+    #     2: 目印があるときは「*」を付ける（変更がなくても付けうる安全側の表示）
+    #     3: 元に戻す・やり直しの直後だけは、作品の意味で正確に比べて「*」を外せるようにする
+    #   ]
+    #   引数: [exact: 真なら、作品の意味で正確に比べる]
+    #   戻り値: [なし。題名を更新する。窓が無ければ何もしない]
+    # }
+    def refresh_title(self, exact=False):
+        master = getattr(self, "master", None)
+        if master is None or not hasattr(master, "title"):
+            return
+        saved_length = getattr(self, "saved_history_length", None)
+        hint = saved_length is not None and (
+            len(self.history) != saved_length or bool(self.future) or len(self.history) >= 100
+        )
+        if hint and exact:
+            hint = self.is_dirty()
+        master.title(("*" if hint else "") + "ドット絵エディタ")
 
     # {
     #   責務: [is_dirty: 保存済みの基準と比べて、作品が実際に変わっているかを返す]
