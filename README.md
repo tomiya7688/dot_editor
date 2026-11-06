@@ -249,6 +249,8 @@ GitHub ActionsのWindowsジョブでもビルドして検査しますが、署�
 
 GUIウィンドウを開かず起動状態を確認したい場合は `python -m dot_editor --smoke-test` を実行します。このコマンドではGUIの画面操作をテストしません。
 
+窓が開くか、基本の操作ができるかを実際の画面で確認したいWindows利用者は、リポジトリ直下の `起動確認.bat` をダブルクリックしてください。確認する項目と結果の見方は[起動確認の手順](docs/起動確認の手順.md)にあります。
+
 ## 仕様・APIリファレンス
 
 - [共通Command API](docs/Command_API.md)
