@@ -203,17 +203,18 @@ fn has_other_hard_links(_path: &Path, metadata: &fs::Metadata) -> bool {
 ///     path: ファイルのパス
 ///     metadata: 使わない（Unix版と形をそろえる）
 ///   ]
-///   戻り値: [他のハードリンクがあれば真。開けない・取得失敗なら偽]
+///   戻り値: [他のハードリンクがあれば真。開けない・取得失敗でも安全側の真]
 /// }
 #[cfg(windows)]
 fn has_other_hard_links(path: &Path, _metadata: &fs::Metadata) -> bool {
     // 安全なラッパー(winapi-util)を使い、unsafe_codeの禁止を保つ。
+    // 判定できない場合は安全側に倒し、書き込みを拒否する（開けないファイルは書けない可能性が高い）。
     let Ok(file) = File::open(path) else {
-        return false;
+        return true;
     };
     match winapi_util::file::information(&file) {
         Ok(information) => information.number_of_links() > 1,
-        Err(_) => false,
+        Err(_) => true,
     }
 }
 
