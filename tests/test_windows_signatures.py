@@ -900,7 +900,11 @@ class WindowsSignatureTests(unittest.TestCase):
         accepted = self.run_pinned(name)
         self.assertEqual(accepted.returncode, 0, accepted.stderr)
         self.assertIn(f"every publisher matched '{name}'", accepted.stdout)
-        for wrong in ("Tomiya7688", name.upper() if name.upper() != name else name.lower(), name[:-1]):
+        for wrong in (
+            "Tomiya7688",
+            name.upper() if name.upper() != name else name.lower(),
+            name[:-1],
+        ):
             rejected = self.run_pinned(wrong)
             self.assertNotEqual(rejected.returncode, 0, wrong)
             self.assertIn("Unexpected publisher", rejected.stderr)
