@@ -31,6 +31,7 @@
 
 | Issue | 内容 | 設計書・手順 | 状態 |
 | --- | --- | --- | --- |
+| — | コード索引ツールGraphifyの導入検討（見送り） | [導入検討](graphify-evaluation.md) | 判断済み |
 | #54 #55 | Pythonの信頼ストア更新、署名と出所の検証 | [供給網の設計](supply-chain-security.md)、[成果物の検証](../成果物の検証.md) | 一部実装済み |
 | #46 | mainの保護設定と必須チェック | [保護設定の手順書](main-protection-runbook.md) | 方針（所有者が適用） |
 | #51 | 案内の効果を実セッションで測る | [実験計画](context-routing-experiment.md) | 計画のみ |
