@@ -160,7 +160,7 @@ pub fn ensure_safe_target(path: &Path) -> Result<(), CliError> {
         Some("is a symbolic link")
     } else if !metadata.is_file() {
         Some("is not a regular file")
-    } else if has_other_hard_links(&metadata) {
+    } else if has_other_hard_links(path, &metadata) {
         Some("has more than one hard link")
     } else {
         None
@@ -178,15 +178,17 @@ pub fn ensure_safe_target(path: &Path) -> Result<(), CliError> {
 ///   責務: [has_other_hard_links: ファイルに他のハードリンクがあるかを調べる]
 ///   処理: [
 ///     1: Unixではリンク数が2以上かを返す
-///     2: それ以外のOSでは標準ライブラリで判定できないため偽を返す（文書に未対応と記載）
+///     2: Windowsではファイルを開き、GetFileInformationByHandleのリンク数が2以上かを返す
+///     3: それ以外のOSでは判定できないため偽を返す
 ///   ]
 ///   引数: [
+///     path: ファイルのパス
 ///     metadata: ファイルのメタデータ
 ///   ]
-///   戻り値: [他のハードリンクがあれば真]
+///   戻り値: [他のハードリンクがあれば真。Windowsで開けない場合は偽]
 /// }
 #[cfg(unix)]
-fn has_other_hard_links(metadata: &fs::Metadata) -> bool {
+fn has_other_hard_links(_path: &Path, metadata: &fs::Metadata) -> bool {
     use std::os::unix::fs::MetadataExt;
     metadata.nlink() > 1
 }
@@ -194,15 +196,40 @@ fn has_other_hard_links(metadata: &fs::Metadata) -> bool {
 /// {
 ///   責務: [has_other_hard_links: ファイルに他のハードリンクがあるかを調べる]
 ///   処理: [
-///     1: Unix以外では標準ライブラリで判定できないため偽を返す
+///     1: ファイルを読み取り専用で開く
+///     2: winapi_util::file::informationでリンク数を取得し、2以上かを返す
 ///   ]
 ///   引数: [
-///     metadata: ファイルのメタデータ
+///     path: ファイルのパス
+///     metadata: 使わない（Unix版と形をそろえる）
+///   ]
+///   戻り値: [他のハードリンクがあれば真。開けない・取得失敗なら偽]
+/// }
+#[cfg(windows)]
+fn has_other_hard_links(path: &Path, _metadata: &fs::Metadata) -> bool {
+    // 安全なラッパー(winapi-util)を使い、unsafe_codeの禁止を保つ。
+    let Ok(file) = File::open(path) else {
+        return false;
+    };
+    match winapi_util::file::information(&file) {
+        Ok(information) => information.number_of_links() > 1,
+        Err(_) => false,
+    }
+}
+
+/// {
+///   責務: [has_other_hard_links: ファイルに他のハードリンクがあるかを調べる]
+///   処理: [
+///     1: UnixでもWindowsでもないOSでは判定できないため偽を返す
+///   ]
+///   引数: [
+///     path: 使わない
+///     metadata: 使わない
 ///   ]
 ///   戻り値: [常に偽]
 /// }
-#[cfg(not(unix))]
-fn has_other_hard_links(_metadata: &fs::Metadata) -> bool {
+#[cfg(not(any(unix, windows)))]
+fn has_other_hard_links(_path: &Path, _metadata: &fs::Metadata) -> bool {
     false
 }
 
@@ -558,5 +585,32 @@ mod tests {
     fn syncing_a_real_folder_succeeds() {
         let folder = std::env::temp_dir();
         assert!(sync_parent_directory(&folder.join("never-created.json")).is_ok());
+    }
+
+    /// {
+    ///   責務: [hard_linked_target_is_refused: 他のハードリンクがあるファイルが、UnixでもWindowsでも拒否されることを検証する]
+    ///   処理: [
+    ///     1: 一時フォルダにファイルとそのハードリンクを作る
+    ///     2: 単独のファイルは安全、リンクを張った後は両方がunsafe_pathになることを確認する
+    ///   ]
+    ///   引数: []
+    ///   戻り値: [なし。不一致ならテストが失敗する]
+    /// }
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn hard_linked_target_is_refused() {
+        let folder =
+            std::env::temp_dir().join(format!("hyper-dot-hardlink-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let original = folder.join("a.json");
+        let linked = folder.join("b.json");
+        std::fs::write(&original, b"{}").unwrap();
+        assert!(super::ensure_safe_target(&original).is_ok());
+        std::fs::hard_link(&original, &linked).unwrap();
+        let first = super::ensure_safe_target(&original).unwrap_err();
+        let second = super::ensure_safe_target(&linked).unwrap_err();
+        std::fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(first.code, "unsafe_path");
+        assert_eq!(second.code, "unsafe_path");
     }
 }
