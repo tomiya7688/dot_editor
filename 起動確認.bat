@@ -1,8 +1,8 @@
 @echo off
-rem ワンクリック起動確認: ダブルクリックするだけで、自動確認と目で見る確認を順に行います。
-rem 手順: docs\起動確認の手順.md  /  設計: docs\design\startup-check.md
 chcp 65001 >nul
 set PYTHONUTF8=1
+rem ワンクリック起動確認: ダブルクリックするだけで、自動確認と目で見る確認を順に行います。
+rem 手順: docs\起動確認の手順.md  /  設計: docs\design\startup-check.md
 pushd "%~dp0"
 
 rem Pythonを探す: 開発用の仮想環境 > py ランチャー > python の順。
