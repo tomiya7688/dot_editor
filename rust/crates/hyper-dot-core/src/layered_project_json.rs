@@ -80,10 +80,10 @@ fn layer_entry(entry: &Value) -> Result<LayerEntry> {
 ///   戻り値: [成功時は単位値、不一致なら入力検証エラー]
 /// }
 fn check_root_shape(source: &Value, version: u64, expected: Resolution) -> Result<()> {
-    if let Some(declared) = source.get("canvas_size").filter(|value| !value.is_null()) {
-        if declared.as_u64() != Some(u64::from(expected.width())) {
-            return Err(invalid("layered canvas_size does not match layer size"));
-        }
+    if let Some(declared) = source.get("canvas_size").filter(|value| !value.is_null())
+        && declared.as_u64() != Some(u64::from(expected.width()))
+    {
+        return Err(invalid("layered canvas_size does not match layer size"));
     }
     if version == 2 {
         let shape = source.get("resolution").and_then(Value::as_array);

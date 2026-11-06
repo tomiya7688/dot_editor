@@ -20,6 +20,9 @@ description: Hyper Dot Editorのドット絵プロジェクトを、画面を使
 | `-p`, `--project PATH` | 対象のプロジェクトファイル。すべてのコマンドで必須です。 |
 | `--json` | 標準出力を、1つのJSONだけにします。 |
 | `--dry-run` | ファイルを保存・書き出さずに、結果だけを評価します。 |
+| `--if-revision REV` | `status`の`result.revision`と同じ値のときだけ保存します。違えば`revision_conflict`で何も保存しません。 |
+| `--lock-timeout-ms N` | 同じ作品のロックを待つ最長時間（0〜60000、既定5000ミリ秒）。超えると`project_busy`。 |
+| `--commands-json` | 実装済みの全コマンドと引数を、機械可読なJSON（schema v1）で表示します。他の引数とは併用できません。 |
 | `-h`, `--help` | ヘルプを表示します。`pixel-cli pixel paint --help`のように、コマンドごとの説明も出ます。 |
 | `-V`, `--version` | バージョンを表示します（`--json`と併用するとJSONで返します）。 |
 | 標準出力 / 標準エラー | 結果は標準出力、説明とエラーは標準エラーです。 |
@@ -53,6 +56,7 @@ description: Hyper Dot Editorのドット絵プロジェクトを、画面を使
 | `layer list` | 下の層から順に一覧する。 |
 | `export render -o PATH [--size N \| --resolution W H]` | 見えている層を重ねてPNGにする。 |
 | `status` | 解像度・選択中の層・層の一覧をまとめて見る。 |
+| `batch apply --file PATH` | JSONに書いた複数の編集（`pixel.paint`など）を順に適用し、全部成功したときだけ1回保存する。1件でも失敗したら何も保存せず、`details.failed_index`で場所を返す。 |
 
 ## 作品の考え方
 
@@ -91,5 +95,5 @@ else:
 ## 制約
 
 - 1回の起動が1つの操作です。操作の履歴（元に戻す）はプロセスをまたぎません。
-- 複数のプロセスが同じファイルを同時に編集した場合の保護は、まだありません。順番に実行してください。
+- 複数の`pixel-cli`が同じファイルを同時に編集しても、作品ごとのロックで順番に処理され、編集は失われません。`status`の`result.revision`を`--if-revision`に渡すと、読んだ後に他者が保存していた場合は`revision_conflict`で止まります。ロック待ちが長引くと`project_busy`です。
 - 多数の画素をまとめて1回で編集する機能は、まだありません。

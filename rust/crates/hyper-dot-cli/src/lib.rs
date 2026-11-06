@@ -7,8 +7,11 @@
 
 #![forbid(unsafe_code)]
 
+mod batch_commands;
 mod canvas_commands;
+mod catalog;
 mod cli_error;
+mod command_docs;
 mod command_input;
 mod command_spec;
 mod command_table;
@@ -24,6 +27,7 @@ mod project_commands;
 mod project_file;
 mod report;
 mod runner;
+mod sha256;
 mod status_command;
 
 use std::io::Write;

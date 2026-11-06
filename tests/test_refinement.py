@@ -1,4 +1,5 @@
 """Issue #3: refinement isolation across resolution, persistence and history."""
+
 from __future__ import annotations
 
 from fractions import Fraction
@@ -35,8 +36,9 @@ BLUE = (40, 60, 180, 128)
 # }
 def patterned_canvas() -> PixelCanvas:
     image = Image.new("RGBA", (16, 12))
-    image.putdata([(60 + 2*x, 80 + 3*y, 100 + x + y, 200)
-                   for y in range(12) for x in range(16)])
+    image.putdata(
+        [(60 + 2 * x, 80 + 3 * y, 100 + x + y, 200) for y in range(12) for x in range(16)]
+    )
     canvas = PixelCanvas(16, 12)
     canvas.import_image(image)
     canvas.set_resolution(4, 3)
@@ -71,6 +73,32 @@ def metadata_canvas(expanded: bool = False, point=(0, 0), size=16) -> PixelCanva
     if not expanded:
         canvas.collapse_cell(*point)
     return canvas
+
+
+_CONFIG = None
+
+
+# {
+#   責務: [setUpModule: このテストが本物の設定フォルダへ書かないよう、一時フォルダへ向ける]
+#   処理: [最近使った作品の設定フォルダを、このモジュールの間だけ一時フォルダにする]
+#   引数: []
+#   戻り値: [なし]
+# }
+def setUpModule():
+    global _CONFIG
+    _CONFIG = tempfile.TemporaryDirectory()
+    os.environ["HYPER_DOT_EDITOR_CONFIG_DIR"] = _CONFIG.name
+
+
+# {
+#   責務: [tearDownModule: 設定フォルダの向け先を元に戻し、一時フォルダを消す]
+#   処理: [環境変数を外し、一時フォルダを片付ける]
+#   引数: []
+#   戻り値: [なし]
+# }
+def tearDownModule():
+    os.environ.pop("HYPER_DOT_EDITOR_CONFIG_DIR", None)
+    _CONFIG.cleanup()
 
 
 # {
@@ -182,8 +210,10 @@ class RefinementTests(unittest.TestCase):
             result = canvas.render_resolution(73, 61)
             for y in range(61):
                 for x in range(73):
-                    px, py = Fraction(2*x+1, 146), Fraction(2*y+1, 122)
-                    inside = Fraction(3, 8) <= px < Fraction(1, 2) and Fraction(1, 2) <= py < Fraction(2, 3)
+                    px, py = Fraction(2 * x + 1, 146), Fraction(2 * y + 1, 122)
+                    inside = Fraction(3, 8) <= px < Fraction(1, 2) and Fraction(
+                        1, 2
+                    ) <= py < Fraction(2, 3)
                     if not inside:
                         self.assertEqual(result.getpixel((x, y)), reference.getpixel((x, y)))
 
@@ -226,10 +256,12 @@ class RefinementTests(unittest.TestCase):
         parent = canvas.sample(1, 1)
         canvas.set_resolution(2, 1)
         anchor = canvas.sample(0, 0)
-        replacement = tuple(v+5 if i < 3 else v for i, v in enumerate(anchor))
+        replacement = tuple(v + 5 if i < 3 else v for i, v in enumerate(anchor))
         canvas.paint(0, 0, replacement)
         canvas.set_resolution(4, 3)
-        self.assertEqual(canvas.sample(1, 1), tuple(v+5 if i < 3 else v for i, v in enumerate(parent)))
+        self.assertEqual(
+            canvas.sample(1, 1), tuple(v + 5 if i < 3 else v for i, v in enumerate(parent))
+        )
 
     # {
     #   責務: [test_cross_grid_discard_detects_parent_only_detail: 別グリッド上の破棄が親メタデータだけの細部を検出し、対象外を保つことを検証する]
@@ -390,9 +422,11 @@ class RefinementTests(unittest.TestCase):
         result = reload_canvas(canvas).render_resolution(73, 61)
         for y in range(61):
             for x in range(73):
-                gx, gy = Fraction(2*x+1, 146)*7, Fraction(2*y+1, 122)*5
+                gx, gy = Fraction(2 * x + 1, 146) * 7, Fraction(2 * y + 1, 122) * 5
                 inside = 1 <= gx < 3 and 1 <= gy < 3
-                expected = coarse.getpixel((int(gx), int(gy))) if inside else reference.getpixel((x, y))
+                expected = (
+                    coarse.getpixel((int(gx), int(gy))) if inside else reference.getpixel((x, y))
+                )
                 self.assertEqual(result.getpixel((x, y)), expected)
         self.assertTrue(canvas.undo())
         self.assertEqual(canvas.to_source(), before)
@@ -453,8 +487,13 @@ class RefinementTests(unittest.TestCase):
             cell = {"x": 0, "y": 0, "children": [["#FF0000", "#0000FF80"], [None, "#00FF00"]]}
             if not expanded:
                 cell["expanded"] = False
-            canvas = PixelCanvas.from_source({"canvas_size": 2,
-                "pixels": [["#112233", None], [None, None]], "refined_cells": [cell]})
+            canvas = PixelCanvas.from_source(
+                {
+                    "canvas_size": 2,
+                    "pixels": [["#112233", None], [None, None]],
+                    "refined_cells": [cell],
+                }
+            )
             before = canvas.to_source()
             canvas.set_resolution(7, 5)
             canvas = reload_canvas(canvas)
@@ -492,16 +531,18 @@ class RefinementTests(unittest.TestCase):
         canvas.set_resolution(7, 5)
         canvas.set_resolution(23, 17)
         with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)/"project.json"
+            project = Path(directory) / "project.json"
             project.write_text(json.dumps(canvas.to_source(), ensure_ascii=False), encoding="utf-8")
-            restored = LayeredPixelCanvas.from_source(json.loads(project.read_text(encoding="utf-8")))
+            restored = LayeredPixelCanvas.from_source(
+                json.loads(project.read_text(encoding="utf-8"))
+            )
             restored.set_resolution(4, 3)
             restored.select_layer("人物")
             self.assertEqual(restored.sample(1, 1), parent)
             self.assertEqual(restored.sample(1, 1, (1, 1)), BLUE)
             self.assertEqual(restored.layers["背景"].to_source(), background)
             self.assertEqual(restored.composite().tobytes(), rendered.tobytes())
-            path = Path(directory)/"result.png"
+            path = Path(directory) / "result.png"
             restored.save_png(path)
             with Image.open(path) as image:
                 self.assertEqual(image.size, rendered.size)
@@ -545,6 +586,7 @@ class RefinementTests(unittest.TestCase):
     # }
     def fake_editor(self, backend):
         from dot_editor import PixelEditor
+
         editor = PixelEditor.__new__(PixelEditor)
         editor.backend = backend
         editor.num_pixels_x, editor.num_pixels_y = backend.resolution
@@ -575,8 +617,11 @@ class RefinementTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1] / "src"
         result = subprocess.run(
             [sys.executable, str(root / "pixel_cli.py"), *map(str, arguments)],
-            stdin=subprocess.DEVNULL, capture_output=True, text=True,
-            encoding="utf-8", timeout=30,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
             env={**os.environ, "PYTHONIOENCODING": "utf-8", "NO_COLOR": "1"},
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -591,6 +636,7 @@ class RefinementTests(unittest.TestCase):
     # }
     def test_gui_child_edit_recompose_history_and_cross_load(self):
         from pixel_cli import load_project
+
         for policy in ("preserve", "discard"):
             with self.subTest(policy=policy):
                 layers = LayeredPixelCanvas(4, 3)
@@ -619,7 +665,9 @@ class RefinementTests(unittest.TestCase):
                 saved = editor.backend.to_source()
                 with tempfile.TemporaryDirectory() as directory:
                     project = Path(directory) / "gui.json"
-                    with patch("dot_editor.filedialog.asksaveasfilename", return_value=str(project)):
+                    with patch(
+                        "dot_editor.filedialog.asksaveasfilename", return_value=str(project)
+                    ):
                         editor.save_project()
                     loaded = load_project(project)
                     self.assertEqual(loaded.to_source(), saved)
@@ -669,7 +717,7 @@ class RefinementTests(unittest.TestCase):
     def test_cli_child_parent_and_png_survive_resolution_roundtrip(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            project, source, output = root/"art.json", root/"source.png", root/"art.png"
+            project, source, output = root / "art.json", root / "source.png", root / "art.png"
             Image.new("RGBA", (16, 12), (80, 100, 120, 255)).save(source)
             self.cli("new", "--resolution", 16, 12, "--output", project)
             self.cli("edit", "--project", project, "--import-image", source)
@@ -697,13 +745,39 @@ class RefinementTests(unittest.TestCase):
     # }
     def test_cli_discard_does_not_resurrect_hidden_parent(self):
         with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)/"art.json"
+            project = Path(directory) / "art.json"
             self.cli("new", "--size", 16, "--output", project)
             # 分割後に塗るため、赤色は親メタデータだけに存在する。
-            self.cli("edit", "--project", project, "--split", 0, 0,
-                     "--paint", 0, 0, "#FF0000", "--collapse", 0, 0)
-            self.cli("edit", "--project", project, "--split", 15, 15,
-                     "--paint", 15, 15, "#0000FF", "--collapse", 15, 15)
+            self.cli(
+                "edit",
+                "--project",
+                project,
+                "--split",
+                0,
+                0,
+                "--paint",
+                0,
+                0,
+                "#FF0000",
+                "--collapse",
+                0,
+                0,
+            )
+            self.cli(
+                "edit",
+                "--project",
+                project,
+                "--split",
+                15,
+                15,
+                "--paint",
+                15,
+                15,
+                "#0000FF",
+                "--collapse",
+                15,
+                15,
+            )
             self.cli("edit", "--project", project, "--resolution", 7, 7)
             self.cli("edit", "--project", project, "--discard-detail", 0, 0)
             before = project.read_bytes(), project.stat().st_mtime_ns
@@ -712,7 +786,9 @@ class RefinementTests(unittest.TestCase):
             self.cli("edit", "--project", project, "--resolution", 16, 16)
             report = json.loads(self.cli("inspect", "--project", project, "--sample", 0, 0).stdout)
             self.assertEqual(report["sample"]["rgba"], list(CLEAR))
-            report = json.loads(self.cli("inspect", "--project", project, "--sample", 15, 15).stdout)
+            report = json.loads(
+                self.cli("inspect", "--project", project, "--sample", 15, 15).stdout
+            )
             self.assertEqual(report["sample"]["rgba"], [0, 0, 255, 255])
 
 

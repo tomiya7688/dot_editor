@@ -19,18 +19,19 @@
 | #35 #36 | Rust Coreの解像度・保持/破棄・レイヤー・JSON・PNG | [非破壊解像度の仕様](../Non_destructive_resolution.md)、[開発予定](../開発予定.md) | 実装済み |
 | #31 #37 | シェルCLIの契約とRust実装 | [CLI契約](../CLI契約.md) | 実装済み |
 | #32 #33 | 別名、SKILL.md、リリースバイナリのE2E | [別名・SKILL.md・E2E](cli-alias-skill-e2e.md) | 実装済み |
-| #38 | 3 OSの単体実行ファイル配布 | [配布の設計](release-distribution.md) | 設計案 |
-| #63 | 同時編集の保護（revisionと排他保存） | [保存安全性](cli-concurrency.md) | 設計案 |
-| #64 | 順序付きの原子的バッチ編集 | [バッチAPI](cli-batch.md) | 設計案 |
-| #66 | コマンド表の自動生成と同梱 | [コマンド表の同梱](command-reference-delivery.md)、[スキーマ](catalog-schema-v1.json) | 設計案 |
+| #38 | 3 OSの単体実行ファイル配布 | [配布の設計](release-distribution.md) | 一部実装（3 OSのビルド・アーカイブ・展開後E2Eまで。署名・公開・サイズ測定は未実装） |
+| #63 | 同時編集の保護（revisionと排他保存） | [保存安全性](cli-concurrency.md) | 一部実装（revision・ロック・置換禁止の新規作成・unsafe_path） |
+| #64 | 順序付きの原子的バッチ編集 | [バッチAPI](cli-batch.md) | 実装済み（B1〜B5。メモリは未測定） |
+| #66 | コマンド表の自動生成と同梱 | [コマンド表の同梱](command-reference-delivery.md)、[スキーマ](catalog-schema-v1.json) | 実装済み（Rust表・Python表・Windows ZIP・wheel/sdist・Rustアーカイブへ同梱。署名後の最終配布物の照合のみ#55待ち） |
 | #26 〜 #30 | GUIのキーボード操作 | [キーボード操作](keyboard-operation.md) | 設計案 |
-| #67 | 軽量GUIとオフラインヘルプ | [軽量GUI](lightweight-gui.md)、[画面の操作仕様](../ユーザー操作インターフェース仕様.md) | 設計案 |
+| #67 | 軽量GUIとオフラインヘルプ | [軽量GUI](lightweight-gui.md)、[画面の操作仕様](../ユーザー操作インターフェース仕様.md) | 一部実装（ヘルプ (H)、保存確認、最近使った作品、固定のボタン列、題名の未保存マーク。画面構成の再編、DPI別の確認は未実装） |
 | #75 | GUIのキャンバス入力が起動直後に登録されない | [キーボード操作](keyboard-operation.md)の「現状」 | 不具合（先に修正） |
 
 ## 安全性・運用
 
 | Issue | 内容 | 設計書・手順 | 状態 |
 | --- | --- | --- | --- |
+| — | コード索引ツールGraphifyの導入検討（見送り） | [導入検討](graphify-evaluation.md) | 判断済み |
 | #54 #55 | Pythonの信頼ストア更新、署名と出所の検証 | [供給網の設計](supply-chain-security.md)、[成果物の検証](../成果物の検証.md) | 一部実装済み |
 | #46 | mainの保護設定と必須チェック | [保護設定の手順書](main-protection-runbook.md) | 方針（所有者が適用） |
 | #51 | 案内の効果を実セッションで測る | [実験計画](context-routing-experiment.md) | 計画のみ |

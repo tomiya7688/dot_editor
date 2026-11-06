@@ -1,17 +1,19 @@
 //! One invocation of `pixel-cli`: parse, load, apply, save and report.
 
 use std::path::Path;
+use std::time::Duration;
 
 use hyper_dot_core::layered_canvas::LayeredCanvas;
 use serde_json::{Value, json};
 
+use crate::catalog;
 use crate::cli_error::CliError;
 use crate::command_spec::{EditHandler, ExportPlan, Handler};
 use crate::command_table::COMMANDS;
-use crate::global_options::GlobalOptions;
+use crate::global_options::{DEFAULT_LOCK_TIMEOUT_MS, GlobalOptions};
 use crate::help_text;
 use crate::parsed_command::ParsedCommand;
-use crate::project_file;
+use crate::project_file::{self, ProjectLock, Snapshot};
 use crate::report::{self, Outcome};
 
 /// コマンドを特定できないときの`operation`。
@@ -53,15 +55,29 @@ fn create(
     build: fn(&ParsedCommand) -> Result<(LayeredCanvas, Value), CliError>,
 ) -> Result<Outcome, CliError> {
     let path = project_path(options)?;
+    let target = Path::new(path);
     let (document, result) = build(command)?;
-    if Path::new(path).exists() && !command.has_flag("--force") {
+    let _lock = lock_for(options, path)?;
+    project_file::ensure_safe_target(target)?;
+    let current = project_file::current_revision(target)?;
+    if options.if_revision.is_some() {
+        check_revision(options, path, current.as_deref())?;
+    }
+    let force = command.has_flag("--force");
+    if current.is_some() && !force {
         return Err(CliError::failure(
             "file_exists",
             format!("{path} already exists; use --force to replace it"),
         ));
     }
+    let mut result = result;
     if !options.dry_run {
-        project_file::save(Path::new(path), &document)?;
+        let revision = if current.is_some() {
+            project_file::save(target, &document)?
+        } else {
+            project_file::save_new(target, &document)?
+        };
+        result = with_revision(result, &revision);
     }
     Ok(finish(
         options,
@@ -70,6 +86,100 @@ fn create(
         !options.dry_run,
         result,
     ))
+}
+
+/// {
+///   責務: [lock_for: 変更を伴う実行のために作品のロックを取る]
+///   処理: [
+///     1: --dry-runではロックもsidecarも作らない
+///     2: それ以外は指定の時間までロックを待つ
+///   ]
+///   引数: [
+///     options: 共通オプション
+///     path: プロジェクトのパス
+///   ]
+///   戻り値: [ロック（dry-runではNone）、取得できなければ実行失敗]
+/// }
+fn lock_for(options: &GlobalOptions, path: &str) -> Result<Option<ProjectLock>, CliError> {
+    if options.dry_run {
+        return Ok(None);
+    }
+    let timeout = Duration::from_millis(options.lock_timeout_ms);
+    ProjectLock::acquire(Path::new(path), timeout).map(Some)
+}
+
+/// {
+///   責務: [check_revision: 期待したrevisionと現在のrevisionが一致するか確かめる]
+///   処理: [
+///     1: --if-revisionが無ければ何もしない
+///     2: 現在のrevisionが無い、または違えば競合として失敗する
+///   ]
+///   引数: [
+///     options: 共通オプション
+///     path: プロジェクトのパス
+///     actual: 現在のrevision（ファイルが無ければNone）
+///   ]
+///   戻り値: [一致すれば単位値、違えばrevision_conflict]
+/// }
+fn check_revision(
+    options: &GlobalOptions,
+    path: &str,
+    actual: Option<&str>,
+) -> Result<(), CliError> {
+    match &options.if_revision {
+        Some(expected) if actual != Some(expected.as_str()) => Err(CliError::failure(
+            "revision_conflict",
+            format!(
+                "{path} is at {} but --if-revision expected {expected}; nothing was saved",
+                actual.unwrap_or("no file")
+            ),
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// {
+///   責務: [load_checked: 作品を読み、--if-revisionがあれば一致を確かめる]
+///   処理: [
+///     1: スナップショットを読む。ファイルが無く期待があれば競合にする
+///     2: 読んだrevisionを期待と照合する
+///   ]
+///   引数: [
+///     options: 共通オプション
+///     path: プロジェクトのパス
+///   ]
+///   戻り値: [作品とrevision、競合や読み込みの失敗はエラー]
+/// }
+fn load_checked(options: &GlobalOptions, path: &str) -> Result<Snapshot, CliError> {
+    match project_file::load_snapshot(Path::new(path)) {
+        Ok(snapshot) => {
+            check_revision(options, path, Some(&snapshot.revision))?;
+            Ok(snapshot)
+        }
+        Err(error) if error.code == "file_not_found" && options.if_revision.is_some() => {
+            check_revision(options, path, None)?;
+            Err(error)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// {
+///   責務: [with_revision: 結果の連想配列にrevisionを加える]
+///   処理: [
+///     1: 結果が連想配列のときだけ「revision」を追加する
+///   ]
+///   引数: [
+///     result: コマンド固有の結果
+///     revision: 加えるrevision
+///   ]
+///   戻り値: [revisionを加えた結果]
+/// }
+fn with_revision(mut result: Value, revision: &str) -> Value {
+    if let Value::Object(map) = &mut result {
+        map.insert("revision".to_owned(), json!(revision));
+    }
+    result
 }
 
 /// {
@@ -91,8 +201,11 @@ fn read(
     query: fn(&ParsedCommand, &LayeredCanvas) -> Result<Value, CliError>,
 ) -> Result<Outcome, CliError> {
     let path = project_path(options)?;
-    let document = project_file::load(Path::new(path))?;
-    let result = query(command, &document)?;
+    let snapshot = project_file::load_snapshot(Path::new(path))?;
+    let mut result = query(command, &snapshot.canvas)?;
+    if matches!(command.spec.operation().as_str(), "status" | "project.info") {
+        result = with_revision(result, &snapshot.revision);
+    }
     Ok(finish(options, command, Some(path), false, result))
 }
 
@@ -116,11 +229,35 @@ fn edit(
     apply: EditHandler,
 ) -> Result<Outcome, CliError> {
     let path = project_path(options)?;
-    let mut document = project_file::load(Path::new(path))?;
-    let (result, changed) = apply(command, &mut document)?;
+    let is_batch = command.spec.path == ["batch", "apply"];
+    if is_batch
+        && let Some(file) = command
+            .flag_values("--file")
+            .and_then(|values| values.first())
+        && project_file::same_target(Path::new(file), Path::new(path))
+    {
+        return Err(CliError::failure(
+            "invalid_batch",
+            "the batch file must differ from the project file",
+        ));
+    }
+    let _lock = lock_for(options, path)?;
+    project_file::ensure_safe_target(Path::new(path))?;
+    let mut snapshot = load_checked(options, path)?;
+    let revision_before = snapshot.revision.clone();
+    let (result, changed) = apply(command, &mut snapshot.canvas)?;
     let saved = changed && !options.dry_run;
-    if saved {
-        project_file::save(Path::new(path), &document)?;
+    let revision = if saved {
+        project_file::save(Path::new(path), &snapshot.canvas)?
+    } else {
+        snapshot.revision
+    };
+    let mut result = with_revision(result, &revision);
+    if is_batch && let Value::Object(map) = &mut result {
+        map.insert("revision_before".to_owned(), json!(revision_before));
+        if saved {
+            map.insert("revision_after".to_owned(), json!(revision));
+        }
     }
     Ok(finish(options, command, Some(path), saved, result))
 }
@@ -145,14 +282,15 @@ fn export(
     plan: fn(&ParsedCommand, &LayeredCanvas) -> Result<ExportPlan, CliError>,
 ) -> Result<Outcome, CliError> {
     let path = project_path(options)?;
-    let document = project_file::load(Path::new(path))?;
+    let document = project_file::load_snapshot(Path::new(path))?.canvas;
     let planned = plan(command, &document)?;
-    if planned.path == Path::new(path) {
+    if project_file::same_target(&planned.path, Path::new(path)) {
         return Err(CliError::failure(
             "invalid_output",
             "the output file must differ from the project file",
         ));
     }
+    project_file::ensure_safe_target(&planned.path)?;
     if !options.dry_run {
         project_file::write_atomic(&planned.path, &planned.bytes)?;
     }
@@ -235,6 +373,33 @@ fn show_help(words: &[String]) -> Outcome {
 }
 
 /// {
+///   責務: [show_catalog: コマンド表をJSONで表示する]
+///   処理: [
+///     1: 他の引数が一緒に指定されていれば、黙って捨てずに使い方の誤りにする
+///     2: 実行ファイル自身のコマンド表を、JSON1個とLFで返す
+///   ]
+///   引数: [
+///     options: 共通オプション
+///     words: 共通オプションを除いた語
+///   ]
+///   戻り値: [終了値0の出力、または使い方の誤り]
+/// }
+fn show_catalog(options: &GlobalOptions, words: &[String]) -> Outcome {
+    let conflicting = options.project.is_some()
+        || options.dry_run
+        || options.help
+        || options.version
+        || options.if_revision.is_some()
+        || options.lock_timeout_ms != DEFAULT_LOCK_TIMEOUT_MS
+        || !words.is_empty();
+    if conflicting {
+        let error = CliError::usage("--commands-json cannot be combined with other arguments");
+        return report::failure(options.json, UNRESOLVED_OPERATION, &error);
+    }
+    report::text(catalog::render())
+}
+
+/// {
 ///   責務: [show_version: バージョンを表示する]
 ///   処理: [
 ///     1: --jsonなら結果のJSON、そうでなければ1行の文章にする
@@ -271,6 +436,9 @@ pub fn run(arguments: &[String]) -> Outcome {
         Ok(parsed) => parsed,
         Err(error) => return report::failure(json_hint, UNRESOLVED_OPERATION, &error),
     };
+    if options.commands_json {
+        return show_catalog(&options, &words);
+    }
     if options.version {
         return show_version(options.json);
     }

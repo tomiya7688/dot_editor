@@ -17,6 +17,14 @@ try {
         & $Python (Join-Path $PSScriptRoot "python_trust.py") --check
         if ($LASTEXITCODE -ne 0) { throw "Python trust verification failed after installation." }
     }
+    $previousPythonPath = $env:PYTHONPATH
+    try {
+        $env:PYTHONPATH = "src"
+        & $Python scripts/render_command_catalog.py python --out src/hyper_dot_editor_help
+        if ($LASTEXITCODE -ne 0) { throw "Command reference generation failed." }
+    } finally {
+        $env:PYTHONPATH = $previousPythonPath
+    }
     & $Python -m build
     if ($LASTEXITCODE -ne 0) { throw "Python package build failed." }
     foreach ($Target in @(@("DotEditor", "--windowed", "src/dot_editor.py"), @("DotEditorCLI", "--console", "src/pixel_cli.py"))) {
@@ -24,6 +32,15 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Executable build failed: $($Target[0])" }
     }
     Copy-Item -LiteralPath LICENSE,README.md -Destination dist/windows
+    # 同梱するCLIの表は、署名や圧縮の前に、実際のパーサーから生成して配布フォルダへ置く。
+    $previousPythonPath = $env:PYTHONPATH
+    try {
+        $env:PYTHONPATH = "src"
+        & $Python scripts/render_command_catalog.py python --out dist/windows/docs/cli/python
+        if ($LASTEXITCODE -ne 0) { throw "Command catalog generation failed." }
+    } finally {
+        $env:PYTHONPATH = $previousPythonPath
+    }
     & $Python -m pip list --format=freeze | Out-File -LiteralPath dist/windows/build-dependencies.txt -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw "Dependency manifest failed." }
     & $Python scripts/distribution_notices.py dist/windows

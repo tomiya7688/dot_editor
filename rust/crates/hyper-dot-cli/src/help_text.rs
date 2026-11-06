@@ -20,6 +20,8 @@ pub fn overview() -> String {
          \x20 -p, --project PATH  project file to read or write\n\
          \x20 --json              print only one JSON object on stdout\n\
          \x20 --dry-run           evaluate without saving or writing files\n\
+         \x20 --if-revision REV   save only if the project still has this revision (sha256:...)\n\
+         \x20 --lock-timeout-ms N wait up to N ms (0-60000, default 5000) for the project lock\n\
          \x20 -h, --help          show help (also `<command> --help`)\n\
          \x20 -V, --version       show the version\n\n\
          commands:\n",

@@ -16,6 +16,7 @@ pub const EXIT_USAGE: u8 = 2;
 ///     exit_code: プロセスの終了値。1は実行失敗、2は使い方の誤り
 ///     code: 変わらない英小文字の種別名
 ///     message: 利用者向けの説明
+///     details: 追加の機械可読な情報（バッチの失敗した操作の番号など）。なければNone
 ///   ]
 /// }
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,6 +24,7 @@ pub struct CliError {
     pub exit_code: u8,
     pub code: &'static str,
     pub message: String,
+    pub details: Option<serde_json::Value>,
 }
 
 impl CliError {
@@ -41,6 +43,7 @@ impl CliError {
             exit_code: EXIT_USAGE,
             code: "usage",
             message: message.into(),
+            details: None,
         }
     }
 
@@ -60,7 +63,24 @@ impl CliError {
             exit_code: EXIT_FAILURE,
             code,
             message: message.into(),
+            details: None,
         }
+    }
+
+    /// {
+    ///   責務: [with_details: 失敗に追加の機械可読な情報を付ける]
+    ///   処理: [
+    ///     1: 種別・終了値・説明はそのままに、detailsだけを設定する
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///     details: 追加情報のJSON値
+    ///   ]
+    ///   戻り値: [情報を付けた失敗]
+    /// }
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
     }
 }
 

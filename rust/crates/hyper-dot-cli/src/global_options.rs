@@ -10,15 +10,50 @@ use crate::cli_error::CliError;
 ///     dry_run: 保存せずに結果だけを評価するか
 ///     help: ヘルプを表示するか
 ///     version: バージョンを表示するか
+///     if_revision: 保存の前提とするrevision（sha256:付き）。違えば競合として失敗する
+///     lock_timeout_ms: 作品のロックを待つ最長時間（ミリ秒）
+///     commands_json: コマンド表をJSONで表示するか（他の引数とは併用できない）
 ///   ]
 /// }
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GlobalOptions {
     pub project: Option<String>,
     pub json: bool,
     pub dry_run: bool,
     pub help: bool,
     pub version: bool,
+    pub if_revision: Option<String>,
+    pub lock_timeout_ms: u64,
+    pub commands_json: bool,
+}
+
+/// ロックを待つ既定の時間（ミリ秒）。
+pub const DEFAULT_LOCK_TIMEOUT_MS: u64 = 5000;
+
+/// ロックを待つ時間として指定できる上限（ミリ秒）。
+const MAX_LOCK_TIMEOUT_MS: u64 = 60000;
+
+impl Default for GlobalOptions {
+    /// {
+    ///   責務: [default: すべてのオプションが未指定の状態を作る]
+    ///   処理: [
+    ///     1: 真偽値を偽、値を空にし、ロック待ちを既定の時間にする
+    ///   ]
+    ///   引数: []
+    ///   戻り値: [未指定の共通オプション]
+    /// }
+    fn default() -> Self {
+        Self {
+            project: None,
+            json: false,
+            dry_run: false,
+            help: false,
+            version: false,
+            if_revision: None,
+            lock_timeout_ms: DEFAULT_LOCK_TIMEOUT_MS,
+            commands_json: false,
+        }
+    }
 }
 
 impl GlobalOptions {
@@ -43,19 +78,87 @@ impl GlobalOptions {
                 "--dry-run" => options.dry_run = true,
                 "--help" | "-h" => options.help = true,
                 "--version" | "-V" => options.version = true,
+                "--commands-json" => options.commands_json = true,
                 "--project" | "-p" => {
                     let value = words
                         .next()
                         .ok_or_else(|| CliError::usage(format!("{word} needs a path")))?;
                     options.set_project(value.clone())?;
                 }
-                other => match other.strip_prefix("--project=") {
-                    Some(value) => options.set_project(value.to_owned())?,
-                    None => rest.push(word.clone()),
-                },
+                "--if-revision" => {
+                    let value = words
+                        .next()
+                        .ok_or_else(|| CliError::usage(format!("{word} needs a revision")))?;
+                    options.set_if_revision(value)?;
+                }
+                "--lock-timeout-ms" => {
+                    let value = words
+                        .next()
+                        .ok_or_else(|| CliError::usage(format!("{word} needs milliseconds")))?;
+                    options.set_lock_timeout(value)?;
+                }
+                other => {
+                    if let Some(value) = other.strip_prefix("--project=") {
+                        options.set_project(value.to_owned())?;
+                    } else if let Some(value) = other.strip_prefix("--if-revision=") {
+                        options.set_if_revision(value)?;
+                    } else if let Some(value) = other.strip_prefix("--lock-timeout-ms=") {
+                        options.set_lock_timeout(value)?;
+                    } else {
+                        rest.push(word.clone());
+                    }
+                }
             }
         }
         Ok((options, rest))
+    }
+
+    /// {
+    ///   責務: [set_if_revision: 期待するrevisionを1回だけ設定する]
+    ///   処理: [
+    ///     1: 表記が「sha256:」+小文字16進64文字であることを確認する
+    ///     2: 二重指定を拒否して保存する
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///     value: 指定された文字列
+    ///   ]
+    ///   戻り値: [成功時は単位値、不正な表記や二重指定は使い方の誤り]
+    /// }
+    fn set_if_revision(&mut self, value: &str) -> Result<(), CliError> {
+        if !crate::sha256::is_revision(value) {
+            return Err(CliError::usage(
+                "--if-revision needs sha256: followed by 64 lowercase hex digits",
+            ));
+        }
+        if self.if_revision.is_some() {
+            return Err(CliError::usage("--if-revision was given more than once"));
+        }
+        self.if_revision = Some(value.to_owned());
+        Ok(())
+    }
+
+    /// {
+    ///   責務: [set_lock_timeout: ロックを待つ最長時間を設定する]
+    ///   処理: [
+    ///     1: 0以上の整数で上限以内であることを確認して保存する
+    ///   ]
+    ///   引数: [
+    ///     self: 現在の値・状態
+    ///     value: 指定された文字列
+    ///   ]
+    ///   戻り値: [成功時は単位値、範囲外や整数でない値は使い方の誤り]
+    /// }
+    fn set_lock_timeout(&mut self, value: &str) -> Result<(), CliError> {
+        match value.parse::<u64>() {
+            Ok(milliseconds) if milliseconds <= MAX_LOCK_TIMEOUT_MS => {
+                self.lock_timeout_ms = milliseconds;
+                Ok(())
+            }
+            _ => Err(CliError::usage(format!(
+                "--lock-timeout-ms needs an integer from 0 to {MAX_LOCK_TIMEOUT_MS}"
+            ))),
+        }
     }
 
     /// {

@@ -215,3 +215,23 @@ impl<'de> Visitor<'de> for StrictJson {
         Ok(Self(Value::Object(values), self.1))
     }
 }
+
+/// {
+///   責務: [parse_strict_json: 重複キー・過剰な深さ・末尾の余分な文字を拒否してJSON文字列を読む]
+///   処理: [
+///     1: 厳密な訪問処理でJSON値を組み立てる
+///     2: 値の後ろに余分な文字がないことを確認する
+///   ]
+///   引数: [
+///     text: JSONの文字列
+///   ]
+///   戻り値: [JSON値、不正な場合は説明文]
+/// }
+pub fn parse_strict_json(text: &str) -> Result<Value, String> {
+    let mut parser = serde_json::Deserializer::from_str(text);
+    parser.disable_recursion_limit();
+    let StrictJson(value, _) =
+        <StrictJson as Deserialize>::deserialize(&mut parser).map_err(|error| error.to_string())?;
+    parser.end().map_err(|error| error.to_string())?;
+    Ok(value)
+}

@@ -28,7 +28,7 @@ pub fn parse_color(text: &str) -> Result<Color, CliError> {
         )));
     }
     let mut color = [0, 0, 0, 255];
-    for (index, pair) in digits.as_bytes().chunks_exact(2).enumerate() {
+    for (index, pair) in digits.as_bytes().chunks(2).enumerate() {
         let pair = std::str::from_utf8(pair).expect("hex digits are ASCII");
         color[index] = u8::from_str_radix(pair, 16).expect("digits were checked");
     }

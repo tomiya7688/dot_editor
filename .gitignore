@@ -6,6 +6,9 @@ build/
 dist/
 *.egg-info/
 /rust/target/
+# ビルド前に生成するコマンド表（wheel・sdistへ同梱する）。
+/src/hyper_dot_editor_help/COMMANDS.md
+/src/hyper_dot_editor_help/commands.json
 .venv-atlas/
 docs/atlas/
 
@@ -17,3 +20,5 @@ dot_editor/pyvenv.cfg
 
 # Local review checklist; shared standards remain tracked.
 /レビュー基準.md
+# CIとローカルで作る配布アーカイブの作業フォルダ。
+/rust-release-out/
