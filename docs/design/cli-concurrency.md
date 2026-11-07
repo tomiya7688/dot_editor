@@ -71,6 +71,8 @@
 - **C2** `GlobalOptions`へ`--if-revision`とlock timeout、`report`へrevision/新エラーを追加。既存JSON成功/失敗スキーマの回帰テスト。
 - **C3** `runner.rs`に編集時のロック所有者（guard）を導入し、読込から確定までの排他境界を単一経路へまとめる。
 - **C4** 2つの実`pixel-cli`プロセスへバリアを挿入し、競合/revision・順次編集・同時新規作成・kill・disk full相当・失敗注入・`dry-run`・同一ファイル別名を検証する。
+  - 検証済み(2026-11-07時点、`tests/concurrency.rs`): 古いrevisionの競合、並行編集の全適用、同時new、ロック競合時のバイト不変とdry-runの無生成、同一revisionの同時編集で勝者が1つ(`same_revision_race_has_one_winner`)、残骸の一時ファイルがあっても保存できる(`stale_temporary_files_do_not_break_saving`)、置換後の同期失敗=`commit_uncertain`、リンク・別名の拒否。
+  - 未検証: 保存途中のプロセスkill後に作品が旧版か新版のどちらかでロックが回収されること、書込前(open/write/flush/fsync/rename)の各失敗でのエラーコードとexitの区別、dry-runでの作品mtime不変。
 - **C5** Ubuntu/Windows/macOSで実ファイルを使って動作を確認。公開JSON v2をPythonで往復し、画素/レイヤー/保持細部/PNGが一致することを確認する。
 
 完了条件はIssue #63。成功例だけでなく競合・失敗注入の根拠をPRへ記録してください。既存Python 3.10〜3.14とRustの必須CIは維持します。
