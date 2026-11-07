@@ -470,3 +470,35 @@ fn stale_temporary_files_do_not_break_saving() {
     assert_eq!(fs::read(&stale).unwrap(), b"leftover");
     assert_eq!(cli(&["--json", "-p", &project, "status"]).0, 0);
 }
+
+/// {
+///   責務: [dry_run_keeps_modification_time: dry-runが作品の更新日時を変えないことを検証する]
+///   処理: [
+///     1: 作品の更新日時を控え、dry-runの編集を実行する
+///     2: 成功し、更新日時と内容が変わっていないことを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
+#[test]
+fn dry_run_keeps_modification_time() {
+    let project = new_project(&workspace("dry-mtime"));
+    let before = fs::metadata(&project).unwrap().modified().unwrap();
+    let bytes = fs::read(&project).unwrap();
+    // 更新日時の粒度より長く待ち、書き込みがあれば必ず差が出るようにする
+    thread::sleep(Duration::from_millis(1100));
+    let (code, _) = cli(&[
+        "--json",
+        "-p",
+        &project,
+        "--dry-run",
+        "pixel",
+        "paint",
+        "1",
+        "1",
+        "#FF0000",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(fs::metadata(&project).unwrap().modified().unwrap(), before);
+    assert_eq!(fs::read(&project).unwrap(), bytes);
+}
