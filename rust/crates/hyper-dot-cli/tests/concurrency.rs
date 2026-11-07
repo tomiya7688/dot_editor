@@ -502,3 +502,49 @@ fn dry_run_keeps_modification_time() {
     assert_eq!(fs::metadata(&project).unwrap().modified().unwrap(), before);
     assert_eq!(fs::read(&project).unwrap(), bytes);
 }
+
+/// {
+///   責務: [replace_failure_keeps_project_and_cleans_temporary: 置換前の失敗で作品が変わらず、一時ファイルが残らないことを検証する]
+///   処理: [
+///     1: Windowsでは作品を削除共有なしで開き続け、置換(rename)を実際に失敗させる
+///     2: 編集がio_errorで失敗し、作品のバイト列が変わっていないことを確認する
+///     3: 失敗後に一時ファイルが残っていないことを確認する
+///     4: 開いたハンドルを閉じると、同じ編集が成功することを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる。Windows以外では何もしない]
+/// }
+#[cfg(windows)]
+#[test]
+fn replace_failure_keeps_project_and_cleans_temporary() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let folder = workspace("replace-fail");
+    let project = new_project(&folder);
+    let bytes = fs::read(&project).unwrap();
+    // FILE_SHARE_READ(1)だけを許可し、削除・置換を拒否させる
+    let holder = OpenOptions::new()
+        .read(true)
+        .share_mode(1)
+        .open(&project)
+        .unwrap();
+    let (code, json) = cli(&[
+        "--json", "-p", &project, "pixel", "paint", "0", "0", "#FF0000",
+    ]);
+    assert_eq!((code, json["error"].as_str()), (1, Some("io_error")));
+    assert_eq!(fs::read(&project).unwrap(), bytes);
+    let leftovers: Vec<_> = fs::read_dir(&folder)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".tmp"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "temporary files remain: {leftovers:?}"
+    );
+    drop(holder);
+    let (code, _) = cli(&[
+        "--json", "-p", &project, "pixel", "paint", "0", "0", "#FF0000",
+    ]);
+    assert_eq!(code, 0);
+}
