@@ -398,3 +398,75 @@ fn export_to_an_alias_of_the_project_is_rejected() {
     assert_eq!((code, json["error"].as_str()), (1, Some("invalid_output")));
     assert_eq!(fs::read(&project).unwrap(), bytes);
 }
+
+/// {
+///   責務: [same_revision_race_has_one_winner: 同じrevisionを前提にした同時編集で、更新が失われないことを検証する]
+///   処理: [
+///     1: 現在のrevisionを控え、2つの実プロセスが同じrevisionを条件に別の色を塗る
+///     2: 成功は1つだけで、もう一方はrevision_conflictになることを確認する
+///     3: 保存後のrevisionが成功した側の結果と一致することを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
+#[test]
+fn same_revision_race_has_one_winner() {
+    let project = new_project(&workspace("race"));
+    let revision = revision_of_status(&project);
+    let handles: Vec<_> = ["#FF0000", "#00FF00"]
+        .into_iter()
+        .map(|color| {
+            let project = project.clone();
+            let revision = revision.clone();
+            thread::spawn(move || {
+                cli(&[
+                    "--json",
+                    "-p",
+                    &project,
+                    "--if-revision",
+                    &revision,
+                    "pixel",
+                    "paint",
+                    "2",
+                    "2",
+                    color,
+                ])
+            })
+        })
+        .collect();
+    let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    let winners: Vec<_> = results.iter().filter(|(code, _)| *code == 0).collect();
+    assert_eq!(winners.len(), 1, "exactly one writer wins: {results:?}");
+    for (code, json) in &results {
+        if *code != 0 {
+            assert_eq!(json["error"], "revision_conflict");
+        }
+    }
+    assert_eq!(
+        revision_of_status(&project),
+        winners[0].1["result"]["revision"].as_str().unwrap()
+    );
+}
+
+/// {
+///   責務: [stale_temporary_files_do_not_break_saving: 残骸の一時ファイルがあっても保存が成功し、作品が壊れないことを検証する]
+///   処理: [
+///     1: 作品と同じフォルダに、一時ファイル名の形をした残骸を置く
+///     2: 編集が成功し、残骸が無関係のまま残り、作品が読めることを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
+#[test]
+fn stale_temporary_files_do_not_break_saving() {
+    let folder = workspace("stale-tmp");
+    let project = new_project(&folder);
+    let stale = folder.join(".art.json.1.1.1.tmp");
+    fs::write(&stale, b"leftover").unwrap();
+    let (code, _) = cli(&[
+        "--json", "-p", &project, "pixel", "paint", "3", "3", "#0000FF",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(fs::read(&stale).unwrap(), b"leftover");
+    assert_eq!(cli(&["--json", "-p", &project, "status"]).0, 0);
+}
