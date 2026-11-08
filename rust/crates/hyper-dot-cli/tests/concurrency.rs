@@ -557,7 +557,7 @@ fn replace_failure_keeps_project_and_cleans_temporary() {
 ///     3: 最後に通常の編集が成功し、ロック待ちにならないことを確認する
 ///   ]
 ///   引数: []
-///   戻り値: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
 /// }
 #[test]
 fn killed_edits_leave_a_valid_project_and_release_the_lock() {
