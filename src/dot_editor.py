@@ -24,9 +24,11 @@ CELL_MENU_ACTIONS = (
 
 # 画面下に常に見える、ファイル操作と元に戻す・やり直すのボタン（ラベル, メソッド名）。
 TOOLBAR_ACTIONS = (
+    ("新規作品", "new_project"),
     ("作品をリセット", "reset_canvas"),
     ("開く", "load_project"),
     ("保存", "save_project"),
+    ("別名保存", "save_project_as"),
     ("PNG書き出し", "save_image"),
     ("元に戻す", "undo"),
     ("やり直す", "redo"),
@@ -91,9 +93,11 @@ def menu_spec():
             "ファイル (F)",
             "F",
             (
+                ("command", "新規作品", "N", "new_project"),
                 ("command", "画像を読み込む", "I", "import_image"),
                 ("command", "プロジェクトを読み込む", "O", "load_project"),
                 ("command", "プロジェクトを保存", "S", "save_project"),
+                ("command", "名前を付けて保存", "A", "save_project_as"),
                 ("recent", "最近使った作品", "E"),
                 ("command", "PNGを保存", "P", "save_image"),
                 ("separator",),
@@ -651,7 +655,9 @@ class PixelEditor:
             ("redo_button", "やり直す", self.redo),
             ("import_button", "画像を読み込む", self.import_image),
             ("save_button", "PNG保存", self.save_image),
+            ("new_project_button", "新規作品", self.new_project),
             ("save_project_button", "プロジェクト保存", self.save_project),
+            ("save_project_as_button", "名前を付けて保存", self.save_project_as),
             ("load_project_button", "プロジェクト読込", self.load_project),
             ("reset_button", "作品をリセット", self.reset_canvas),
         ]
@@ -2186,15 +2192,47 @@ class PixelEditor:
             self.master.destroy()
 
     # {
-    #   責務: [save_project: 現在の作品をJSONプロジェクトとして保存する]
+    #   責務: [write_project: 指定のパスへ作品をJSONで保存し、確定した場合だけ基準・現在パス・最近の一覧を更新する]
     #   処理: [
-    #     1: JSON保存先を選択する
-    #     2: 選択された場合に共有APIで保存し、I/O・形式エラーを通知する
+    #     1: 共有APIで保存し、I/O・形式エラーは通知して偽を返す
+    #     2: 保存できたときだけ保存済みの基準・現在のパス・最近の一覧を更新する
     #   ]
+    #   引数: [path: 保存先のパス]
+    #   戻り値: [保存できたら真。失敗時は基準・現在のパスを変えず偽]
+    # }
+    def write_project(self, path):
+        try:
+            self.commands.save(Path(path))
+        except (OSError, ValueError) as error:
+            self.report_error(error)
+            return False
+        self.current_path = str(path)
+        self.mark_saved()
+        recent_files.remember(path)
+        return True
+
+    # {
+    #   責務: [save_project: 現在の作品を保存する。保存先が決まっていれば上書き、未定なら名前を付けて保存へ進む]
+    #   処理: [現在のパスがあればダイアログなしで保存し、無ければ名前を付けて保存と同じ流れにする]
     #   引数: []
     #   戻り値: [保存できたら真。キャンセルや保存失敗なら偽で、保存済みの基準は変えない]
     # }
     def save_project(self):
+        path = getattr(self, "current_path", None)
+        if path:
+            return self.write_project(path)
+        return self.save_project_as()
+
+    # {
+    #   責務: [save_project_as: 保存先を選び直して作品をJSONプロジェクトとして保存する]
+    #   処理: [
+    #     1: JSON保存先を選択する（選ばなければ何もしない）
+    #     2: 選択された場合に保存し、確定したら現在のパスを新しい保存先にする
+    #   ]
+    #   引数: []
+    #   戻り値: [保存できたら真。キャンセルや保存失敗なら偽で、現在のパスも基準も変えない]
+    # }
+    def save_project_as(self):
         path = self.run_dialog(
             filedialog.asksaveasfilename,
             defaultextension=".json",
@@ -2202,13 +2240,24 @@ class PixelEditor:
         )
         if not path:
             return False
-        try:
-            self.commands.save(Path(path))
-        except (OSError, ValueError) as error:
-            self.report_error(error)
+        return self.write_project(path)
+
+    # {
+    #   責務: [new_project: 未保存の確認のうえ、保存先の無い空の新しい作品を作る]
+    #   処理: [
+    #     1: 未保存の変更があれば保存・破棄・キャンセルを確認する
+    #     2: 続行できるときだけ、現在の解像度の空の作品を作り、現在のパスを空にする
+    #     3: 新しい作品を保存済みの基準にする（リセットと違い、確認は未保存の変更に対してだけ）
+    #   ]
+    #   引数: []
+    #   戻り値: [作成したら真。キャンセルや保存失敗なら偽で、作品・履歴・パスは元のまま]
+    # }
+    def new_project(self):
+        if not self.confirm_discard("新規作品"):
             return False
+        self.reset_canvas_model()
+        self.current_path = None
         self.mark_saved()
-        recent_files.remember(path)
         return True
 
     # {
@@ -2291,6 +2340,7 @@ class PixelEditor:
         self.future.clear()
         self.refresh_layer_list()
         self.update_canvas_size()
+        self.current_path = str(path)
         self.mark_saved()
         recent_files.remember(path)
         return True
@@ -2332,6 +2382,8 @@ class PixelEditor:
         ):
             return
         self.reset_canvas_model()
+        # リセット後に前の保存先を上書きしないよう、保存先は未定に戻す
+        self.current_path = None
         self.mark_saved()
 
     # {
