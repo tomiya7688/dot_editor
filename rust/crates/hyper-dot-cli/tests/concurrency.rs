@@ -398,3 +398,198 @@ fn export_to_an_alias_of_the_project_is_rejected() {
     assert_eq!((code, json["error"].as_str()), (1, Some("invalid_output")));
     assert_eq!(fs::read(&project).unwrap(), bytes);
 }
+
+/// {
+///   責務: [same_revision_race_has_one_winner: 同じrevisionを前提にした同時編集で、更新が失われないことを検証する]
+///   処理: [
+///     1: 現在のrevisionを控え、2つの実プロセスが同じrevisionを条件に別の色を塗る
+///     2: 成功は1つだけで、もう一方はrevision_conflictになることを確認する
+///     3: 保存後のrevisionが成功した側の結果と一致することを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
+#[test]
+fn same_revision_race_has_one_winner() {
+    let project = new_project(&workspace("race"));
+    let revision = revision_of_status(&project);
+    let handles: Vec<_> = ["#FF0000", "#00FF00"]
+        .into_iter()
+        .map(|color| {
+            let project = project.clone();
+            let revision = revision.clone();
+            thread::spawn(move || {
+                cli(&[
+                    "--json",
+                    "-p",
+                    &project,
+                    "--if-revision",
+                    &revision,
+                    "pixel",
+                    "paint",
+                    "2",
+                    "2",
+                    color,
+                ])
+            })
+        })
+        .collect();
+    let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    let winners: Vec<_> = results.iter().filter(|(code, _)| *code == 0).collect();
+    assert_eq!(winners.len(), 1, "exactly one writer wins: {results:?}");
+    for (code, json) in &results {
+        if *code != 0 {
+            assert_eq!(json["error"], "revision_conflict");
+        }
+    }
+    assert_eq!(
+        revision_of_status(&project),
+        winners[0].1["result"]["revision"].as_str().unwrap()
+    );
+}
+
+/// {
+///   責務: [stale_temporary_files_do_not_break_saving: 残骸の一時ファイルがあっても保存が成功し、作品が壊れないことを検証する]
+///   処理: [
+///     1: 作品と同じフォルダに、一時ファイル名の形をした残骸を置く
+///     2: 編集が成功し、残骸が無関係のまま残り、作品が読めることを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
+#[test]
+fn stale_temporary_files_do_not_break_saving() {
+    let folder = workspace("stale-tmp");
+    let project = new_project(&folder);
+    let stale = folder.join(".art.json.1.1.1.tmp");
+    fs::write(&stale, b"leftover").unwrap();
+    let (code, _) = cli(&[
+        "--json", "-p", &project, "pixel", "paint", "3", "3", "#0000FF",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(fs::read(&stale).unwrap(), b"leftover");
+    assert_eq!(cli(&["--json", "-p", &project, "status"]).0, 0);
+}
+
+/// {
+///   責務: [dry_run_keeps_modification_time: dry-runが作品の更新日時を変えないことを検証する]
+///   処理: [
+///     1: 作品の更新日時を控え、dry-runの編集を実行する
+///     2: 成功し、更新日時と内容が変わっていないことを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
+#[test]
+fn dry_run_keeps_modification_time() {
+    let project = new_project(&workspace("dry-mtime"));
+    let before = fs::metadata(&project).unwrap().modified().unwrap();
+    let bytes = fs::read(&project).unwrap();
+    // 更新日時の粒度より長く待ち、書き込みがあれば必ず差が出るようにする
+    thread::sleep(Duration::from_millis(1100));
+    let (code, _) = cli(&[
+        "--json",
+        "-p",
+        &project,
+        "--dry-run",
+        "pixel",
+        "paint",
+        "1",
+        "1",
+        "#FF0000",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(fs::metadata(&project).unwrap().modified().unwrap(), before);
+    assert_eq!(fs::read(&project).unwrap(), bytes);
+}
+
+/// {
+///   責務: [replace_failure_keeps_project_and_cleans_temporary: 置換前の失敗で作品が変わらず、一時ファイルが残らないことを検証する]
+///   処理: [
+///     1: Windowsでは作品を削除共有なしで開き続け、置換(rename)を実際に失敗させる
+///     2: 編集がio_errorで失敗し、作品のバイト列が変わっていないことを確認する
+///     3: 失敗後に一時ファイルが残っていないことを確認する
+///     4: 開いたハンドルを閉じると、同じ編集が成功することを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる。Windows以外では何もしない]
+/// }
+#[cfg(windows)]
+#[test]
+fn replace_failure_keeps_project_and_cleans_temporary() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let folder = workspace("replace-fail");
+    let project = new_project(&folder);
+    let bytes = fs::read(&project).unwrap();
+    // FILE_SHARE_READ(1)だけを許可し、削除・置換を拒否させる
+    let holder = OpenOptions::new()
+        .read(true)
+        .share_mode(1)
+        .open(&project)
+        .unwrap();
+    let (code, json) = cli(&[
+        "--json", "-p", &project, "pixel", "paint", "0", "0", "#FF0000",
+    ]);
+    assert_eq!((code, json["error"].as_str()), (1, Some("io_error")));
+    assert_eq!(fs::read(&project).unwrap(), bytes);
+    let leftovers: Vec<_> = fs::read_dir(&folder)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".tmp"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "temporary files remain: {leftovers:?}"
+    );
+    drop(holder);
+    let (code, _) = cli(&[
+        "--json", "-p", &project, "pixel", "paint", "0", "0", "#FF0000",
+    ]);
+    assert_eq!(code, 0);
+}
+
+/// {
+///   責務: [killed_edits_leave_a_valid_project_and_release_the_lock: 編集中に強制終了しても作品が壊れず、ロックが回収されることを確かめる]
+///   処理: [
+///     1: 編集プロセスを起動し、0〜数十msの異なる遅延で強制終了する(40回)
+///     2: 毎回、statusが成功しrevisionが読めることを確認する
+///     3: 最後に通常の編集が成功し、ロック待ちにならないことを確認する
+///   ]
+///   引数: []
+///   戻り値: [なし、不一致ならテストを失敗させる]
+/// }
+#[test]
+fn killed_edits_leave_a_valid_project_and_release_the_lock() {
+    let folder = workspace("kill-mid-save");
+    let project = new_project(&folder);
+    for round in 0..40u64 {
+        let color = format!("#{:02X}0000", round + 1);
+        let mut child = Command::new(env!("CARGO_BIN_EXE_pixel-cli"))
+            .args(["--json", "-p", &project, "pixel", "paint", "1", "1", &color])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("pixel-cli starts");
+        // 起動直後から保存完了後までの様々な時点で止める
+        thread::sleep(Duration::from_micros(round * 700));
+        let _ = child.kill();
+        let _ = child.wait();
+        let (code, json) = cli(&["--json", "-p", &project, "status"]);
+        assert_eq!(code, 0, "round {round}: project must stay readable: {json}");
+        assert!(json["result"]["revision"].is_string());
+    }
+    let (code, json) = cli(&[
+        "--json",
+        "-p",
+        &project,
+        "--lock-timeout-ms",
+        "2000",
+        "pixel",
+        "paint",
+        "3",
+        "3",
+        "#00FF00",
+    ]);
+    assert_eq!(code, 0, "lock must be reclaimed after kills: {json}");
+}
