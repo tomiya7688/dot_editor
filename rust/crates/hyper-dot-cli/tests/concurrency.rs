@@ -548,3 +548,48 @@ fn replace_failure_keeps_project_and_cleans_temporary() {
     ]);
     assert_eq!(code, 0);
 }
+
+/// {
+///   責務: [killed_edits_leave_a_valid_project_and_release_the_lock: 編集中に強制終了しても作品が壊れず、ロックが回収されることを確かめる]
+///   処理: [
+///     1: 編集プロセスを起動し、0〜数十msの異なる遅延で強制終了する(40回)
+///     2: 毎回、statusが成功しrevisionが読めることを確認する
+///     3: 最後に通常の編集が成功し、ロック待ちにならないことを確認する
+///   ]
+///   引数: []
+///   戻り値: []
+/// }
+#[test]
+fn killed_edits_leave_a_valid_project_and_release_the_lock() {
+    let folder = workspace("kill-mid-save");
+    let project = new_project(&folder);
+    for round in 0..40u64 {
+        let color = format!("#{:02X}0000", round + 1);
+        let mut child = Command::new(env!("CARGO_BIN_EXE_pixel-cli"))
+            .args(["--json", "-p", &project, "pixel", "paint", "1", "1", &color])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("pixel-cli starts");
+        // 起動直後から保存完了後までの様々な時点で止める
+        thread::sleep(Duration::from_micros(round * 700));
+        let _ = child.kill();
+        let _ = child.wait();
+        let (code, json) = cli(&["--json", "-p", &project, "status"]);
+        assert_eq!(code, 0, "round {round}: project must stay readable: {json}");
+        assert!(json["result"]["revision"].is_string());
+    }
+    let (code, json) = cli(&[
+        "--json",
+        "-p",
+        &project,
+        "--lock-timeout-ms",
+        "2000",
+        "pixel",
+        "paint",
+        "3",
+        "3",
+        "#00FF00",
+    ]);
+    assert_eq!(code, 0, "lock must be reclaimed after kills: {json}");
+}
