@@ -189,5 +189,94 @@ class SaveConfirmTests(unittest.TestCase):
         self.assertEqual(closed, [True])
 
 
+# {
+#   責務: [NewProjectAndPathTests: 新規作品と、通常保存・名前を付けて保存の保存先管理の回帰テストを保持する]
+#   フィールド: [unittest.TestCaseの検証状態のみ]
+# }
+class NewProjectAndPathTests(unittest.TestCase):
+    # {
+    #   責務: [test_new_project_cancel_keeps_everything: 新規作品のキャンセルで作品・履歴・パスが変わらないことを検証する]
+    #   処理: [編集後に新規作品を取り消し、作品と履歴と保存先が元のままで未保存のままであることを確認する]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_new_project_cancel_keeps_everything(self):
+        editor = make_editor()
+        editor.current_path = "keep.json"
+        editor.perform_edit(editor.commands.paint, 0, 0, (255, 0, 0, 255))
+        before = editor.make_snapshot()
+        with patch("dot_editor.messagebox.askyesnocancel", return_value=None):
+            self.assertFalse(editor.new_project())
+        self.assertEqual((editor.make_snapshot(), editor.current_path), (before, "keep.json"))
+        self.assertEqual(len(editor.history), 1)
+        self.assertTrue(editor.is_dirty())
+
+    # {
+    #   責務: [test_new_project_discard_makes_untitled_clean_work: 破棄して新規作品を作ると保存先未定の保存済みの空の作品になることを検証する]
+    #   処理: [編集後に破棄を選び、画素が空・履歴が空・パスが空・未保存でないことを確認する]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_new_project_discard_makes_untitled_clean_work(self):
+        editor = make_editor()
+        editor.current_path = "old.json"
+        editor.perform_edit(editor.commands.paint, 0, 0, (255, 0, 0, 255))
+        with patch("dot_editor.messagebox.askyesnocancel", return_value=False):
+            self.assertTrue(editor.new_project())
+        self.assertIsNone(editor.current_path)
+        self.assertEqual(editor.history, [])
+        self.assertFalse(editor.is_dirty())
+
+    # {
+    #   責務: [test_save_uses_current_path_and_save_as_switches: 通常保存は現在のパスへ、名前を付けて保存は新しい先へ保存しパスを切り替えることを検証する]
+    #   処理: [
+    #     1: 保存先未定の保存が名前を付けて保存になることを確認する
+    #     2: 以後の保存がダイアログなしで同じ先へ上書きすることを確認する
+    #     3: 名前を付けて保存のキャンセルでパスが変わらず、成功で切り替わることを確認する
+    #   ]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_save_uses_current_path_and_save_as_switches(self):
+        editor = make_editor()
+        with tempfile.TemporaryDirectory() as directory:
+            first, second = Path(directory) / "a.json", Path(directory) / "b.json"
+            with patch("dot_editor.filedialog.asksaveasfilename", return_value=str(first)) as ask:
+                self.assertTrue(editor.save_project())
+                self.assertEqual(ask.call_count, 1)
+            editor.perform_edit(editor.commands.paint, 1, 1, (0, 255, 0, 255))
+            with patch("dot_editor.filedialog.asksaveasfilename") as ask:
+                self.assertTrue(editor.save_project())
+                ask.assert_not_called()
+            self.assertFalse(editor.is_dirty())
+            with patch("dot_editor.filedialog.asksaveasfilename", return_value=""):
+                self.assertFalse(editor.save_project_as())
+            self.assertEqual(editor.current_path, str(first))
+            with patch("dot_editor.filedialog.asksaveasfilename", return_value=str(second)):
+                self.assertTrue(editor.save_project_as())
+            self.assertEqual(editor.current_path, str(second))
+            self.assertTrue(second.is_file())
+
+    # {
+    #   責務: [test_failed_save_and_reset_keep_path_rules: 保存失敗ではパスを変えず、リセットでは前の保存先を忘れることを検証する]
+    #   処理: [書き込めない先への保存でパスと基準が変わらず、リセット後は保存先が未定になることを確認する]
+    #   引数: [self: テストケース]
+    #   戻り値: [なし、不一致なら失敗]
+    # }
+    def test_failed_save_and_reset_keep_path_rules(self):
+        editor = make_editor()
+        editor.current_path = "old.json"
+        editor.perform_edit(editor.commands.paint, 0, 0, (255, 0, 0, 255))
+        with tempfile.TemporaryDirectory() as directory:
+            bad = str(Path(directory) / "missing" / "x.json")
+            with patch("dot_editor.filedialog.asksaveasfilename", return_value=bad):
+                self.assertFalse(editor.save_project_as())
+        self.assertEqual(editor.current_path, "old.json")
+        self.assertTrue(editor.is_dirty())
+        with patch("dot_editor.messagebox.askyesno", return_value=True):
+            editor.reset_canvas()
+        self.assertIsNone(editor.current_path)
+
+
 if __name__ == "__main__":
     unittest.main()
